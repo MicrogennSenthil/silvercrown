@@ -47,7 +47,7 @@ export const ElementLogInScreen = (): JSX.Element => {
           <div className="flex flex-col items-center gap-10 w-full">
             <img
               className="w-[334px] h-[100px] object-cover"
-              alt="Silver Crown Group of Companies"
+              alt="Silver Crown Metals"
               src="/figmaAssets/image-1.png"
             />
 
