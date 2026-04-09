@@ -17,6 +17,13 @@ import Reports from "@/pages/Reports";
 import Suppliers from "@/pages/Suppliers";
 import Customers from "@/pages/Customers";
 import NotFound from "@/pages/not-found";
+// Masters
+import Employees from "@/pages/masters/Employees";
+import { Warehouses, UnitsOfMeasure, TaxRates } from "@/pages/masters/MastersList";
+// User Management
+import Users from "@/pages/usermgmt/Users";
+import Roles from "@/pages/usermgmt/Roles";
+import RoleRights from "@/pages/usermgmt/RoleRights";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -49,8 +56,22 @@ function Router() {
       <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
       <Route path="/tasks"><ProtectedRoute component={Tasks} /></Route>
       <Route path="/tally"><ProtectedRoute component={TallyIntegration} /></Route>
+      {/* Masters */}
+      <Route path="/masters/suppliers"><ProtectedRoute component={Suppliers} /></Route>
+      <Route path="/masters/customers"><ProtectedRoute component={Customers} /></Route>
+      <Route path="/masters/employees"><ProtectedRoute component={Employees} /></Route>
+      <Route path="/masters/warehouses"><ProtectedRoute component={Warehouses} /></Route>
+      <Route path="/masters/uom"><ProtectedRoute component={UnitsOfMeasure} /></Route>
+      <Route path="/masters/tax-rates"><ProtectedRoute component={TaxRates} /></Route>
+      <Route path="/masters/accounts"><ProtectedRoute component={Accounts} /></Route>
+      <Route path="/masters/inventory-categories"><ProtectedRoute component={Inventory} /></Route>
+      {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>
+      {/* User Management */}
+      <Route path="/usermgmt/users"><ProtectedRoute component={Users} /></Route>
+      <Route path="/usermgmt/roles"><ProtectedRoute component={Roles} /></Route>
+      <Route path="/usermgmt/role-rights"><ProtectedRoute component={RoleRights} /></Route>
       <Route><NotFound /></Route>
     </Switch>
   );

@@ -6,6 +6,7 @@ import {
   users, suppliers, customers, inventoryCategories, inventoryItems,
   purchaseInvoices, purchaseInvoiceItems, salesInvoices, salesInvoiceItems,
   accounts, journalEntries, journalEntryLines, tasks, tallySyncLogs,
+  employees, userRoles, roleRights, warehouses, unitsOfMeasure, taxRates,
   type User, type InsertUser,
   type Supplier, type InsertSupplier,
   type Customer, type InsertCustomer,
@@ -20,6 +21,12 @@ import {
   type JournalEntryLine, type InsertJournalEntryLine,
   type Task, type InsertTask,
   type TallySyncLog, type InsertTallySyncLog,
+  type Employee, type InsertEmployee,
+  type UserRole, type InsertUserRole,
+  type RoleRight, type InsertRoleRight,
+  type Warehouse, type InsertWarehouse,
+  type Uom, type InsertUom,
+  type TaxRate, type InsertTaxRate,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -99,6 +106,46 @@ export interface IStorage {
   // Tally Sync Logs
   listTallySyncLogs(): Promise<TallySyncLog[]>;
   createTallySyncLog(log: InsertTallySyncLog): Promise<TallySyncLog>;
+
+  // Users (extended)
+  updateUser(id: string, data: any): Promise<User>;
+  deleteUser(id: string): Promise<void>;
+
+  // Employees
+  listEmployees(): Promise<Employee[]>;
+  getEmployee(id: string): Promise<Employee | undefined>;
+  createEmployee(e: InsertEmployee): Promise<Employee>;
+  updateEmployee(id: string, e: Partial<InsertEmployee>): Promise<Employee>;
+  deleteEmployee(id: string): Promise<void>;
+
+  // User Roles
+  listUserRoles(): Promise<UserRole[]>;
+  getUserRole(id: string): Promise<UserRole | undefined>;
+  createUserRole(role: InsertUserRole): Promise<UserRole>;
+  updateUserRole(id: string, role: Partial<InsertUserRole>): Promise<UserRole>;
+  deleteUserRole(id: string): Promise<void>;
+
+  // Role Rights
+  listRoleRights(roleId: string): Promise<RoleRight[]>;
+  upsertRoleRights(roleId: string, rights: any[]): Promise<RoleRight[]>;
+
+  // Warehouses
+  listWarehouses(): Promise<Warehouse[]>;
+  createWarehouse(w: InsertWarehouse): Promise<Warehouse>;
+  updateWarehouse(id: string, w: Partial<InsertWarehouse>): Promise<Warehouse>;
+  deleteWarehouse(id: string): Promise<void>;
+
+  // Units of Measure
+  listUom(): Promise<Uom[]>;
+  createUom(u: InsertUom): Promise<Uom>;
+  updateUom(id: string, u: Partial<InsertUom>): Promise<Uom>;
+  deleteUom(id: string): Promise<void>;
+
+  // Tax Rates
+  listTaxRates(): Promise<TaxRate[]>;
+  createTaxRate(t: InsertTaxRate): Promise<TaxRate>;
+  updateTaxRate(id: string, t: Partial<InsertTaxRate>): Promise<TaxRate>;
+  deleteTaxRate(id: string): Promise<void>;
 
   // Dashboard stats
   getDashboardStats(): Promise<{
@@ -186,6 +233,56 @@ export class DatabaseStorage implements IStorage {
 
   async listTallySyncLogs() { return db.select().from(tallySyncLogs).orderBy(desc(tallySyncLogs.syncedAt)).limit(50); }
   async createTallySyncLog(log: InsertTallySyncLog) { const [r] = await db.insert(tallySyncLogs).values({ ...log, id: randomUUID() }).returning(); return r; }
+
+  // Users (extended)
+  async updateUser(id: string, data: Partial<InsertUser> & { employeeId?: string; userRoleId?: string }) {
+    const updateData: any = { ...data };
+    if (data.password) updateData.password = await bcrypt.hash(data.password, 10);
+    else delete updateData.password;
+    const [r] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
+    return r;
+  }
+  async deleteUser(id: string) { await db.delete(users).where(eq(users.id, id)); }
+
+  // Employees
+  async listEmployees() { return db.select().from(employees).orderBy(employees.name); }
+  async getEmployee(id: string) { const [e] = await db.select().from(employees).where(eq(employees.id, id)); return e; }
+  async createEmployee(e: InsertEmployee) { const [r] = await db.insert(employees).values({ ...e, id: randomUUID() }).returning(); return r; }
+  async updateEmployee(id: string, e: Partial<InsertEmployee>) { const [r] = await db.update(employees).set(e).where(eq(employees.id, id)).returning(); return r; }
+  async deleteEmployee(id: string) { await db.delete(employees).where(eq(employees.id, id)); }
+
+  // User Roles
+  async listUserRoles() { return db.select().from(userRoles).orderBy(userRoles.name); }
+  async getUserRole(id: string) { const [r] = await db.select().from(userRoles).where(eq(userRoles.id, id)); return r; }
+  async createUserRole(role: InsertUserRole) { const [r] = await db.insert(userRoles).values({ ...role, id: randomUUID() }).returning(); return r; }
+  async updateUserRole(id: string, role: Partial<InsertUserRole>) { const [r] = await db.update(userRoles).set(role).where(eq(userRoles.id, id)).returning(); return r; }
+  async deleteUserRole(id: string) { await db.delete(roleRights).where(eq(roleRights.roleId, id)); await db.delete(userRoles).where(eq(userRoles.id, id)); }
+
+  // Role Rights
+  async listRoleRights(roleId: string) { return db.select().from(roleRights).where(eq(roleRights.roleId, roleId)); }
+  async upsertRoleRights(roleId: string, rights: Omit<InsertRoleRight, "roleId">[]) {
+    await db.delete(roleRights).where(eq(roleRights.roleId, roleId));
+    if (rights.length) await db.insert(roleRights).values(rights.map(r => ({ ...r, roleId, id: randomUUID() })));
+    return db.select().from(roleRights).where(eq(roleRights.roleId, roleId));
+  }
+
+  // Warehouses
+  async listWarehouses() { return db.select().from(warehouses).orderBy(warehouses.name); }
+  async createWarehouse(w: InsertWarehouse) { const [r] = await db.insert(warehouses).values({ ...w, id: randomUUID() }).returning(); return r; }
+  async updateWarehouse(id: string, w: Partial<InsertWarehouse>) { const [r] = await db.update(warehouses).set(w).where(eq(warehouses.id, id)).returning(); return r; }
+  async deleteWarehouse(id: string) { await db.delete(warehouses).where(eq(warehouses.id, id)); }
+
+  // Units of Measure
+  async listUom() { return db.select().from(unitsOfMeasure).orderBy(unitsOfMeasure.name); }
+  async createUom(u: InsertUom) { const [r] = await db.insert(unitsOfMeasure).values({ ...u, id: randomUUID() }).returning(); return r; }
+  async updateUom(id: string, u: Partial<InsertUom>) { const [r] = await db.update(unitsOfMeasure).set(u).where(eq(unitsOfMeasure.id, id)).returning(); return r; }
+  async deleteUom(id: string) { await db.delete(unitsOfMeasure).where(eq(unitsOfMeasure.id, id)); }
+
+  // Tax Rates
+  async listTaxRates() { return db.select().from(taxRates).orderBy(taxRates.name); }
+  async createTaxRate(t: InsertTaxRate) { const [r] = await db.insert(taxRates).values({ ...t, id: randomUUID() }).returning(); return r; }
+  async updateTaxRate(id: string, t: Partial<InsertTaxRate>) { const [r] = await db.update(taxRates).set(t).where(eq(taxRates.id, id)).returning(); return r; }
+  async deleteTaxRate(id: string) { await db.delete(taxRates).where(eq(taxRates.id, id)); }
 
   async getDashboardStats() {
     const [allPurchases, allSales, allItems, allTasks] = await Promise.all([

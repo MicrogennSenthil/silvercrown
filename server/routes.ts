@@ -272,6 +272,91 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const list = await storage.listUsers();
     res.json(list.map(({ password: _, ...u }) => u));
   });
+  app.post("/api/users", requireAuth, async (req, res) => {
+    try {
+      const u = await storage.createUser(req.body);
+      const { password: _, ...safe } = u;
+      res.json(safe);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/users/:id", requireAuth, async (req, res) => {
+    try {
+      const u = await storage.updateUser(req.params.id, req.body);
+      const { password: _, ...safe } = u;
+      res.json(safe);
+    } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.delete("/api/users/:id", requireAuth, async (req, res) => {
+    await storage.deleteUser(req.params.id); res.json({ ok: true });
+  });
+
+  // Employees
+  app.get("/api/employees", requireAuth, async (_req, res) => res.json(await storage.listEmployees()));
+  app.post("/api/employees", requireAuth, async (req, res) => {
+    try { res.json(await storage.createEmployee(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/employees/:id", requireAuth, async (req, res) => {
+    res.json(await storage.updateEmployee(req.params.id, req.body));
+  });
+  app.delete("/api/employees/:id", requireAuth, async (req, res) => {
+    await storage.deleteEmployee(req.params.id); res.json({ ok: true });
+  });
+
+  // User Roles
+  app.get("/api/user-roles", requireAuth, async (_req, res) => res.json(await storage.listUserRoles()));
+  app.post("/api/user-roles", requireAuth, async (req, res) => {
+    try { res.json(await storage.createUserRole(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/user-roles/:id", requireAuth, async (req, res) => {
+    res.json(await storage.updateUserRole(req.params.id, req.body));
+  });
+  app.delete("/api/user-roles/:id", requireAuth, async (req, res) => {
+    await storage.deleteUserRole(req.params.id); res.json({ ok: true });
+  });
+
+  // Role Rights
+  app.get("/api/user-roles/:id/rights", requireAuth, async (req, res) => {
+    res.json(await storage.listRoleRights(req.params.id));
+  });
+  app.put("/api/user-roles/:id/rights", requireAuth, async (req, res) => {
+    res.json(await storage.upsertRoleRights(req.params.id, req.body.rights));
+  });
+
+  // Warehouses
+  app.get("/api/warehouses", requireAuth, async (_req, res) => res.json(await storage.listWarehouses()));
+  app.post("/api/warehouses", requireAuth, async (req, res) => {
+    try { res.json(await storage.createWarehouse(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/warehouses/:id", requireAuth, async (req, res) => {
+    res.json(await storage.updateWarehouse(req.params.id, req.body));
+  });
+  app.delete("/api/warehouses/:id", requireAuth, async (req, res) => {
+    await storage.deleteWarehouse(req.params.id); res.json({ ok: true });
+  });
+
+  // Units of Measure
+  app.get("/api/uom", requireAuth, async (_req, res) => res.json(await storage.listUom()));
+  app.post("/api/uom", requireAuth, async (req, res) => {
+    try { res.json(await storage.createUom(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/uom/:id", requireAuth, async (req, res) => {
+    res.json(await storage.updateUom(req.params.id, req.body));
+  });
+  app.delete("/api/uom/:id", requireAuth, async (req, res) => {
+    await storage.deleteUom(req.params.id); res.json({ ok: true });
+  });
+
+  // Tax Rates
+  app.get("/api/tax-rates", requireAuth, async (_req, res) => res.json(await storage.listTaxRates()));
+  app.post("/api/tax-rates", requireAuth, async (req, res) => {
+    try { res.json(await storage.createTaxRate(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/tax-rates/:id", requireAuth, async (req, res) => {
+    res.json(await storage.updateTaxRate(req.params.id, req.body));
+  });
+  app.delete("/api/tax-rates/:id", requireAuth, async (req, res) => {
+    await storage.deleteTaxRate(req.params.id); res.json({ ok: true });
+  });
 
   return httpServer;
 }

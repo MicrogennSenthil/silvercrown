@@ -22,6 +22,8 @@ export const users = pgTable("users", {
   name: text("name").notNull().default(""),
   email: text("email").default(""),
   role: userRoleEnum("role").notNull().default("user"),
+  employeeId: varchar("employee_id"),
+  userRoleId: varchar("user_role_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertUserSchema = createInsertSchema(users).pick({ username: true, password: true, name: true, email: true, role: true });
@@ -230,6 +232,96 @@ export const tasks = pgTable("tasks", {
 export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, createdAt: true });
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
+
+// Employees (Master linked to Users)
+export const employees = pgTable("employees", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeCode: text("employee_code").notNull().unique(),
+  name: text("name").notNull(),
+  userId: varchar("user_id").references(() => users.id),
+  department: text("department").default(""),
+  designation: text("designation").default(""),
+  email: text("email").default(""),
+  phone: text("phone").default(""),
+  dateOfJoining: text("date_of_joining").default(""),
+  dateOfBirth: text("date_of_birth").default(""),
+  address: text("address").default(""),
+  emergencyContact: text("emergency_contact").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertEmployeeSchema = createInsertSchema(employees).omit({ id: true, createdAt: true });
+export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
+export type Employee = typeof employees.$inferSelect;
+
+// User Roles (custom roles with permissions)
+export const userRoles = pgTable("user_roles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertUserRoleSchema = createInsertSchema(userRoles).omit({ id: true, createdAt: true });
+export type InsertUserRole = z.infer<typeof insertUserRoleSchema>;
+export type UserRole = typeof userRoles.$inferSelect;
+
+// Role Rights (module-level permissions per role)
+export const roleRights = pgTable("role_rights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  roleId: varchar("role_id").references(() => userRoles.id),
+  module: text("module").notNull(),
+  canView: boolean("can_view").default(false),
+  canCreate: boolean("can_create").default(false),
+  canEdit: boolean("can_edit").default(false),
+  canDelete: boolean("can_delete").default(false),
+  canApprove: boolean("can_approve").default(false),
+  canExport: boolean("can_export").default(false),
+});
+export const insertRoleRightSchema = createInsertSchema(roleRights).omit({ id: true });
+export type InsertRoleRight = z.infer<typeof insertRoleRightSchema>;
+export type RoleRight = typeof roleRights.$inferSelect;
+
+// Warehouses
+export const warehouses = pgTable("warehouses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  location: text("location").default(""),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertWarehouseSchema = createInsertSchema(warehouses).omit({ id: true, createdAt: true });
+export type InsertWarehouse = z.infer<typeof insertWarehouseSchema>;
+export type Warehouse = typeof warehouses.$inferSelect;
+
+// Units of Measure
+export const unitsOfMeasure = pgTable("units_of_measure", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertUomSchema = createInsertSchema(unitsOfMeasure).omit({ id: true, createdAt: true });
+export type InsertUom = z.infer<typeof insertUomSchema>;
+export type Uom = typeof unitsOfMeasure.$inferSelect;
+
+// Tax Rates
+export const taxRates = pgTable("tax_rates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  rate: decimal("rate", { precision: 5, scale: 2 }).notNull(),
+  description: text("description").default(""),
+  hsnCode: text("hsn_code").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertTaxRateSchema = createInsertSchema(taxRates).omit({ id: true, createdAt: true });
+export type InsertTaxRate = z.infer<typeof insertTaxRateSchema>;
+export type TaxRate = typeof taxRates.$inferSelect;
 
 // Tally Sync Logs
 export const tallySyncLogs = pgTable("tally_sync_logs", {

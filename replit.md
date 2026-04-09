@@ -37,6 +37,13 @@ client/
       Reports.tsx              — Business analytics & reports
       Suppliers.tsx            — Supplier directory
       Customers.tsx            — Customer directory
+      masters/
+        Employees.tsx          — Employee master with user account linking
+        MastersList.tsx        — Warehouses, UnitsOfMeasure, TaxRates (generic)
+      usermgmt/
+        Users.tsx              — User CRUD with employee & custom role linking
+        Roles.tsx              — Custom role management (card view)
+        RoleRights.tsx         — Module-level permission matrix editor
     components/
       Layout.tsx               — Responsive sidebar layout
     hooks/
@@ -56,11 +63,17 @@ client/public/
 ```
 
 ## Database Tables
-- `users` — ERP users with roles
+- `users` — ERP users (role, employeeId, userRoleId linking)
+- `employees` — Employee master with optional user account link
+- `user_roles` — Custom named roles (beyond system role enum)
+- `role_rights` — Per-module permissions (view/create/edit/delete/approve/export) per role
 - `suppliers` — Supplier directory
 - `customers` — Customer directory  
 - `inventory_categories` — Item categories
 - `inventory_items` — Stock items with HSN, pricing, levels
+- `warehouses` — Warehouse master
+- `units_of_measure` — UOM master
+- `tax_rates` — Tax rate master with HSN mapping
 - `purchase_invoices` + `purchase_invoice_items` — Purchase management
 - `sales_invoices` + `sales_invoice_items` — Sales management
 - `accounts` — Chart of accounts

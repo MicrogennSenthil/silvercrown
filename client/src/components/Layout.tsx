@@ -4,66 +4,93 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   LayoutDashboard, ShoppingCart, Package, TrendingUp, BookOpen,
   CheckSquare, RefreshCw, LogOut, Menu, X, ChevronDown, ChevronRight,
-  Bell, User, FileText, Users, Building2, BarChart3
+  Bell, User, Settings, Users, Database
 } from "lucide-react";
 
 const NAV = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   {
+    label: "Masters", icon: Database, children: [
+      { label: "Suppliers", href: "/masters/suppliers" },
+      { label: "Customers", href: "/masters/customers" },
+      { label: "Employees", href: "/masters/employees" },
+      { label: "Inventory Categories", href: "/masters/inventory-categories" },
+      { label: "Chart of Accounts", href: "/masters/accounts" },
+      { label: "Warehouses", href: "/masters/warehouses" },
+      { label: "Units of Measure", href: "/masters/uom" },
+      { label: "Tax Rates", href: "/masters/tax-rates" },
+    ]
+  },
+  {
     label: "Purchase", icon: ShoppingCart, children: [
       { label: "Invoices", href: "/purchase/invoices" },
-      { label: "Suppliers", href: "/suppliers" },
     ]
   },
   {
     label: "Inventory", icon: Package, children: [
-      { label: "Items", href: "/inventory/items" },
-      { label: "Categories", href: "/inventory/categories" },
+      { label: "Stock Items", href: "/inventory/items" },
     ]
   },
   {
     label: "Sales", icon: TrendingUp, children: [
       { label: "Invoices", href: "/sales/invoices" },
-      { label: "Customers", href: "/customers" },
     ]
   },
   {
     label: "Accounts", icon: BookOpen, children: [
-      { label: "Chart of Accounts", href: "/accounts" },
       { label: "Journal Entries", href: "/journal" },
       { label: "Reports", href: "/reports" },
     ]
   },
   { label: "Tasks & Reminders", icon: CheckSquare, href: "/tasks" },
   { label: "Tally Integration", icon: RefreshCw, href: "/tally" },
+  {
+    label: "User Management", icon: Users, children: [
+      { label: "Users", href: "/usermgmt/users" },
+      { label: "Roles", href: "/usermgmt/roles" },
+      { label: "Role Rights", href: "/usermgmt/role-rights" },
+    ]
+  },
 ];
 
 function NavItem({ item, collapsed, onClose }: { item: any; collapsed: boolean; onClose?: () => void }) {
   const [location] = useLocation();
-  const [open, setOpen] = useState(() => item.children?.some((c: any) => location.startsWith(c.href)));
+  const isAnyChildActive = item.children?.some((c: any) => location.startsWith(c.href));
+  const [open, setOpen] = useState(isAnyChildActive);
 
   if (item.children) {
     return (
       <div>
         <button
           onClick={() => setOpen((o: boolean) => !o)}
-          className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors rounded-lg mx-2 ${open ? "bg-white/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
-          style={{ width: "calc(100% - 16px)" }}
+          className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors rounded-lg ${open ? "bg-white/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
+          style={{ width: "calc(100% - 16px)", margin: "0 8px" }}
           data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}
         >
           <item.icon size={18} className="flex-shrink-0" />
-          {!collapsed && <><span className="flex-1 text-left">{item.label}</span>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</>}
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">{item.label}</span>
+              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </>
+          )}
         </button>
         {!collapsed && open && (
-          <div className="ml-9 mt-1 mb-1 space-y-1">
-            {item.children.map((c: any) => (
-              <Link key={c.href} href={c.href} onClick={onClose}>
-                <a className={`block px-3 py-2 text-sm rounded-lg transition-colors ${location === c.href ? "bg-[#d74700] text-white font-medium" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
-                  data-testid={`nav-sub-${c.label.toLowerCase().replace(/\s/g, "-")}`}>
+          <div className="ml-9 mt-0.5 mb-1 space-y-0.5">
+            {item.children.map((c: any) => {
+              const active = location === c.href;
+              return (
+                <Link
+                  key={c.href}
+                  href={c.href}
+                  onClick={onClose}
+                  className={`block px-3 py-2 text-sm rounded-lg transition-colors ${active ? "bg-[#d74700] text-white font-medium" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+                  data-testid={`nav-sub-${c.label.toLowerCase().replace(/\s/g, "-")}`}
+                >
                   {c.label}
-                </a>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>
@@ -72,44 +99,40 @@ function NavItem({ item, collapsed, onClose }: { item: any; collapsed: boolean; 
 
   const active = location === item.href;
   return (
-    <Link href={item.href} onClick={onClose}>
-      <a className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors rounded-lg mx-2 ${active ? "bg-[#d74700] text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
-        style={{ width: "calc(100% - 16px)" }}
-        data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}>
-        <item.icon size={18} className="flex-shrink-0" />
-        {!collapsed && <span>{item.label}</span>}
-      </a>
+    <Link
+      href={item.href}
+      onClick={onClose}
+      className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors rounded-lg ${active ? "bg-[#d74700] text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
+      style={{ width: "calc(100% - 16px)", margin: "0 8px" }}
+      data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+    >
+      <item.icon size={18} className="flex-shrink-0" />
+      {!collapsed && <span>{item.label}</span>}
     </Link>
   );
 }
 
-export function Layout({ children }: { children: React.ReactNode }) {
+function Sidebar({ collapsed, mobile, onClose }: { collapsed: boolean; mobile?: boolean; onClose?: () => void }) {
   const { user, logout } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-
-  const SidebarContent = ({ mobile = false }) => (
+  return (
     <div className="flex flex-col h-full" style={{ background: "linear-gradient(180deg, #027fa5 0%, #015f7a 100%)" }}>
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-white/20">
-        <img src="/figmaAssets/image-1.png" alt="Silver Crown Metals" className="h-10 w-auto object-contain flex-shrink-0 filter brightness-0 invert" />
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-white/20 flex-shrink-0">
+        <img src="/figmaAssets/image-1.png" alt="Silver Crown Metals" className="h-9 w-auto object-contain flex-shrink-0 filter brightness-0 invert" />
         {(!collapsed || mobile) && (
           <div>
             <div className="text-white font-bold text-sm leading-tight">Silver Crown</div>
-            <div className="text-white/70 text-xs">Metals • Element</div>
+            <div className="text-white/70 text-xs">Metals · Element ERP</div>
           </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto">
         {NAV.map(item => (
-          <NavItem key={item.label} item={item} collapsed={collapsed && !mobile} onClose={mobile ? () => setSidebarOpen(false) : undefined} />
+          <NavItem key={item.label} item={item} collapsed={collapsed && !mobile} onClose={onClose} />
         ))}
       </nav>
 
-      {/* User + Logout */}
-      <div className="border-t border-white/20 p-4">
+      <div className="border-t border-white/20 p-4 flex-shrink-0">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
             <User size={16} className="text-white" />
@@ -132,12 +155,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
+}
+
+export function Layout({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="flex h-screen bg-[#f5f0ed] font-['Source_Sans_Pro',sans-serif] overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col flex-shrink-0 transition-all duration-300 ${collapsed ? "w-16" : "w-64"}`}>
-        <SidebarContent />
+        <Sidebar collapsed={collapsed} />
       </aside>
 
       {/* Mobile Sidebar Overlay */}
@@ -145,14 +174,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
           <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col">
-            <SidebarContent mobile />
+            <Sidebar collapsed={false} mobile onClose={() => setSidebarOpen(false)} />
           </aside>
         </div>
       )}
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Header */}
         <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }}>
           <div className="flex items-center gap-3">
             <button className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors" onClick={() => setSidebarOpen(true)} data-testid="button-menu">
@@ -167,7 +195,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors relative" data-testid="button-notifications">
+            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors" data-testid="button-notifications">
               <Bell size={18} className="text-gray-600" />
             </button>
             <div className="h-8 w-px bg-gray-200" />
@@ -179,8 +207,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
-
-        {/* Page content */}
         <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
