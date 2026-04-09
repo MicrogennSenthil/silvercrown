@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css?family=Source+Sans+Pro:400");
+
 @tailwind components;
 @tailwind utilities;
 
@@ -6,8 +8,6 @@
     all: unset;
   }
 }
-
-@import url("https://fonts.googleapis.com/css?family=Source+Sans+Pro:400");
 
 :root {
   --app-background: rgba(245, 240, 237, 1);
