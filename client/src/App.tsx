@@ -19,8 +19,10 @@ import Customers from "@/pages/Customers";
 import NotFound from "@/pages/not-found";
 // Masters
 import Employees from "@/pages/masters/Employees";
-import { Warehouses, UnitsOfMeasure, TaxRates } from "@/pages/masters/MastersList";
+import { Warehouses, UnitsOfMeasure, TaxRates, Categories, VoucherTypes, PayModeTypes, LedgerCategories, TermTypes, Departments, StoreItemGroups } from "@/pages/masters/MastersList";
 import { Countries, States, Cities } from "@/pages/masters/Geography";
+import { SubCategories, Products } from "@/pages/masters/ProductMasters";
+import { MachineMaster, PurchaseStoreItems, PurchaseApprovals, Terms } from "@/pages/masters/OperationMasters";
 // User Management
 import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
@@ -69,6 +71,19 @@ function Router() {
       <Route path="/masters/countries"><ProtectedRoute component={Countries} /></Route>
       <Route path="/masters/states"><ProtectedRoute component={States} /></Route>
       <Route path="/masters/cities"><ProtectedRoute component={Cities} /></Route>
+      <Route path="/masters/categories"><ProtectedRoute component={Categories} /></Route>
+      <Route path="/masters/sub-categories"><ProtectedRoute component={SubCategories} /></Route>
+      <Route path="/masters/products"><ProtectedRoute component={Products} /></Route>
+      <Route path="/masters/machines"><ProtectedRoute component={MachineMaster} /></Route>
+      <Route path="/masters/store-item-groups"><ProtectedRoute component={StoreItemGroups} /></Route>
+      <Route path="/masters/purchase-store-items"><ProtectedRoute component={PurchaseStoreItems} /></Route>
+      <Route path="/masters/purchase-approvals"><ProtectedRoute component={PurchaseApprovals} /></Route>
+      <Route path="/masters/voucher-types"><ProtectedRoute component={VoucherTypes} /></Route>
+      <Route path="/masters/pay-mode-types"><ProtectedRoute component={PayModeTypes} /></Route>
+      <Route path="/masters/ledger-categories"><ProtectedRoute component={LedgerCategories} /></Route>
+      <Route path="/masters/term-types"><ProtectedRoute component={TermTypes} /></Route>
+      <Route path="/masters/terms"><ProtectedRoute component={Terms} /></Route>
+      <Route path="/masters/departments"><ProtectedRoute component={Departments} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>

@@ -186,3 +186,56 @@ export function TaxRates() {
     ]
   }} />;
 }
+
+const StatusBadge = (r: any) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.isActive ? "Active" : "Inactive"}</span>;
+const CodeCell = (r: any) => <span className="font-mono text-xs font-semibold" style={{ color: "#027fa5" }}>{r.code}</span>;
+const NameCell = (r: any) => <span className="font-medium">{r.name}</span>;
+const baseFields = (extra?: any[]) => [
+  { name: "code", label: "Code *" },
+  { name: "name", label: "Name *" },
+  { name: "description", label: "Description", type: "textarea" },
+  ...(extra || []),
+  { name: "isActive", label: "Status", type: "checkbox", checkLabel: "Active", default: true },
+];
+const baseCols = (extra?: any[]) => [
+  { label: "Code", key: "code", render: CodeCell },
+  { label: "Name", key: "name", render: NameCell },
+  ...(extra || []),
+  { label: "Description", key: "description" },
+  { label: "Status", key: "isActive", render: StatusBadge },
+];
+
+// --- Categories ---
+export function Categories() {
+  return <MasterPage config={{ title: "Categories", apiBase: "/api/categories", queryKey: "/api/categories", fields: baseFields(), columns: baseCols() }} />;
+}
+
+// --- Voucher Types ---
+export function VoucherTypes() {
+  return <MasterPage config={{ title: "Voucher Types", apiBase: "/api/voucher-types", queryKey: "/api/voucher-types", fields: baseFields(), columns: baseCols() }} />;
+}
+
+// --- Pay Mode Types ---
+export function PayModeTypes() {
+  return <MasterPage config={{ title: "Pay Mode Types", apiBase: "/api/pay-mode-types", queryKey: "/api/pay-mode-types", fields: baseFields(), columns: baseCols() }} />;
+}
+
+// --- Ledger Categories ---
+export function LedgerCategories() {
+  return <MasterPage config={{ title: "Ledger Categories", apiBase: "/api/ledger-categories", queryKey: "/api/ledger-categories", fields: baseFields(), columns: baseCols() }} />;
+}
+
+// --- Term Types ---
+export function TermTypes() {
+  return <MasterPage config={{ title: "Term Types", apiBase: "/api/term-types", queryKey: "/api/term-types", fields: baseFields(), columns: baseCols() }} />;
+}
+
+// --- Departments ---
+export function Departments() {
+  return <MasterPage config={{ title: "Departments", apiBase: "/api/departments", queryKey: "/api/departments", fields: baseFields(), columns: baseCols() }} />;
+}
+
+// --- Store Item Groups ---
+export function StoreItemGroups() {
+  return <MasterPage config={{ title: "Store Item Groups", apiBase: "/api/store-item-groups", queryKey: "/api/store-item-groups", fields: baseFields(), columns: baseCols() }} />;
+}

@@ -398,5 +398,115 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.deleteCity(req.params.id); res.json({ ok: true });
   });
 
+  // Categories
+  app.get("/api/categories", requireAuth, async (req, res) => { res.json(await storage.listCategories()); });
+  app.post("/api/categories", requireAuth, async (req, res) => {
+    try { res.json(await storage.createCategory(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/categories/:id", requireAuth, async (req, res) => { res.json(await storage.updateCategory(req.params.id, req.body)); });
+  app.delete("/api/categories/:id", requireAuth, async (req, res) => { await storage.deleteCategory(req.params.id); res.json({ ok: true }); });
+
+  // Sub Categories
+  app.get("/api/sub-categories", requireAuth, async (req, res) => {
+    res.json(await storage.listSubCategories(req.query.categoryId as string | undefined));
+  });
+  app.post("/api/sub-categories", requireAuth, async (req, res) => {
+    try { res.json(await storage.createSubCategory(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/sub-categories/:id", requireAuth, async (req, res) => { res.json(await storage.updateSubCategory(req.params.id, req.body)); });
+  app.delete("/api/sub-categories/:id", requireAuth, async (req, res) => { await storage.deleteSubCategory(req.params.id); res.json({ ok: true }); });
+
+  // Products
+  app.get("/api/products", requireAuth, async (req, res) => { res.json(await storage.listProducts()); });
+  app.post("/api/products", requireAuth, async (req, res) => {
+    try { res.json(await storage.createProduct(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/products/:id", requireAuth, async (req, res) => { res.json(await storage.updateProduct(req.params.id, req.body)); });
+  app.delete("/api/products/:id", requireAuth, async (req, res) => { await storage.deleteProduct(req.params.id); res.json({ ok: true }); });
+
+  // Machine Master
+  app.get("/api/machines", requireAuth, async (req, res) => { res.json(await storage.listMachines()); });
+  app.post("/api/machines", requireAuth, async (req, res) => {
+    try { res.json(await storage.createMachine(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/machines/:id", requireAuth, async (req, res) => { res.json(await storage.updateMachine(req.params.id, req.body)); });
+  app.delete("/api/machines/:id", requireAuth, async (req, res) => { await storage.deleteMachine(req.params.id); res.json({ ok: true }); });
+
+  // Store Item Groups
+  app.get("/api/store-item-groups", requireAuth, async (req, res) => { res.json(await storage.listStoreItemGroups()); });
+  app.post("/api/store-item-groups", requireAuth, async (req, res) => {
+    try { res.json(await storage.createStoreItemGroup(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/store-item-groups/:id", requireAuth, async (req, res) => { res.json(await storage.updateStoreItemGroup(req.params.id, req.body)); });
+  app.delete("/api/store-item-groups/:id", requireAuth, async (req, res) => { await storage.deleteStoreItemGroup(req.params.id); res.json({ ok: true }); });
+
+  // Purchase Store Items
+  app.get("/api/purchase-store-items", requireAuth, async (req, res) => {
+    res.json(await storage.listPurchaseStoreItems(req.query.groupId as string | undefined));
+  });
+  app.post("/api/purchase-store-items", requireAuth, async (req, res) => {
+    try { res.json(await storage.createPurchaseStoreItem(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/purchase-store-items/:id", requireAuth, async (req, res) => { res.json(await storage.updatePurchaseStoreItem(req.params.id, req.body)); });
+  app.delete("/api/purchase-store-items/:id", requireAuth, async (req, res) => { await storage.deletePurchaseStoreItem(req.params.id); res.json({ ok: true }); });
+
+  // Purchase Approval Levels
+  app.get("/api/purchase-approvals", requireAuth, async (req, res) => { res.json(await storage.listPurchaseApprovals()); });
+  app.post("/api/purchase-approvals", requireAuth, async (req, res) => {
+    try { res.json(await storage.createPurchaseApproval(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/purchase-approvals/:id", requireAuth, async (req, res) => { res.json(await storage.updatePurchaseApproval(req.params.id, req.body)); });
+  app.delete("/api/purchase-approvals/:id", requireAuth, async (req, res) => { await storage.deletePurchaseApproval(req.params.id); res.json({ ok: true }); });
+
+  // Voucher Types
+  app.get("/api/voucher-types", requireAuth, async (req, res) => { res.json(await storage.listVoucherTypes()); });
+  app.post("/api/voucher-types", requireAuth, async (req, res) => {
+    try { res.json(await storage.createVoucherType(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/voucher-types/:id", requireAuth, async (req, res) => { res.json(await storage.updateVoucherType(req.params.id, req.body)); });
+  app.delete("/api/voucher-types/:id", requireAuth, async (req, res) => { await storage.deleteVoucherType(req.params.id); res.json({ ok: true }); });
+
+  // Pay Mode Types
+  app.get("/api/pay-mode-types", requireAuth, async (req, res) => { res.json(await storage.listPayModeTypes()); });
+  app.post("/api/pay-mode-types", requireAuth, async (req, res) => {
+    try { res.json(await storage.createPayModeType(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/pay-mode-types/:id", requireAuth, async (req, res) => { res.json(await storage.updatePayModeType(req.params.id, req.body)); });
+  app.delete("/api/pay-mode-types/:id", requireAuth, async (req, res) => { await storage.deletePayModeType(req.params.id); res.json({ ok: true }); });
+
+  // Ledger Categories
+  app.get("/api/ledger-categories", requireAuth, async (req, res) => { res.json(await storage.listLedgerCategories()); });
+  app.post("/api/ledger-categories", requireAuth, async (req, res) => {
+    try { res.json(await storage.createLedgerCategory(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/ledger-categories/:id", requireAuth, async (req, res) => { res.json(await storage.updateLedgerCategory(req.params.id, req.body)); });
+  app.delete("/api/ledger-categories/:id", requireAuth, async (req, res) => { await storage.deleteLedgerCategory(req.params.id); res.json({ ok: true }); });
+
+  // Term Types
+  app.get("/api/term-types", requireAuth, async (req, res) => { res.json(await storage.listTermTypes()); });
+  app.post("/api/term-types", requireAuth, async (req, res) => {
+    try { res.json(await storage.createTermType(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/term-types/:id", requireAuth, async (req, res) => { res.json(await storage.updateTermType(req.params.id, req.body)); });
+  app.delete("/api/term-types/:id", requireAuth, async (req, res) => { await storage.deleteTermType(req.params.id); res.json({ ok: true }); });
+
+  // Terms
+  app.get("/api/terms", requireAuth, async (req, res) => {
+    res.json(await storage.listTerms(req.query.termTypeId as string | undefined));
+  });
+  app.post("/api/terms", requireAuth, async (req, res) => {
+    try { res.json(await storage.createTerm(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/terms/:id", requireAuth, async (req, res) => { res.json(await storage.updateTerm(req.params.id, req.body)); });
+  app.delete("/api/terms/:id", requireAuth, async (req, res) => { await storage.deleteTerm(req.params.id); res.json({ ok: true }); });
+
+  // Departments
+  app.get("/api/departments", requireAuth, async (req, res) => { res.json(await storage.listDepartments()); });
+  app.post("/api/departments", requireAuth, async (req, res) => {
+    try { res.json(await storage.createDepartment(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/departments/:id", requireAuth, async (req, res) => { res.json(await storage.updateDepartment(req.params.id, req.body)); });
+  app.delete("/api/departments/:id", requireAuth, async (req, res) => { await storage.deleteDepartment(req.params.id); res.json({ ok: true }); });
+
   return httpServer;
 }

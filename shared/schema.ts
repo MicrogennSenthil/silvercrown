@@ -323,6 +323,194 @@ export const insertTaxRateSchema = createInsertSchema(taxRates).omit({ id: true,
 export type InsertTaxRate = z.infer<typeof insertTaxRateSchema>;
 export type TaxRate = typeof taxRates.$inferSelect;
 
+// Categories
+export const categories = pgTable("categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, createdAt: true });
+export type InsertCategory = z.infer<typeof insertCategorySchema>;
+export type Category = typeof categories.$inferSelect;
+
+// Sub Categories
+export const subCategories = pgTable("sub_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  categoryId: varchar("category_id").references(() => categories.id),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertSubCategorySchema = createInsertSchema(subCategories).omit({ id: true, createdAt: true });
+export type InsertSubCategory = z.infer<typeof insertSubCategorySchema>;
+export type SubCategory = typeof subCategories.$inferSelect;
+
+// Products
+export const products = pgTable("products", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  categoryId: varchar("category_id").references(() => categories.id),
+  subCategoryId: varchar("sub_category_id").references(() => subCategories.id),
+  uom: text("uom").default(""),
+  hsnCode: text("hsn_code").default(""),
+  description: text("description").default(""),
+  purchasePrice: decimal("purchase_price", { precision: 15, scale: 2 }).default("0"),
+  sellingPrice: decimal("selling_price", { precision: 15, scale: 2 }).default("0"),
+  taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("0"),
+  minStockLevel: decimal("min_stock_level", { precision: 15, scale: 3 }).default("0"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertProductSchema = createInsertSchema(products).omit({ id: true, createdAt: true });
+export type InsertProduct = z.infer<typeof insertProductSchema>;
+export type Product = typeof products.$inferSelect;
+
+// Machine Master
+export const machineMaster = pgTable("machine_master", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  department: text("department").default(""),
+  description: text("description").default(""),
+  capacity: text("capacity").default(""),
+  location: text("location").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertMachineSchema = createInsertSchema(machineMaster).omit({ id: true, createdAt: true });
+export type InsertMachine = z.infer<typeof insertMachineSchema>;
+export type Machine = typeof machineMaster.$inferSelect;
+
+// Store Item Groups
+export const storeItemGroups = pgTable("store_item_groups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertStoreItemGroupSchema = createInsertSchema(storeItemGroups).omit({ id: true, createdAt: true });
+export type InsertStoreItemGroup = z.infer<typeof insertStoreItemGroupSchema>;
+export type StoreItemGroup = typeof storeItemGroups.$inferSelect;
+
+// Purchase Store Items
+export const purchaseStoreItems = pgTable("purchase_store_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  itemGroupId: varchar("item_group_id").references(() => storeItemGroups.id),
+  uom: text("uom").default(""),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertPurchaseStoreItemSchema = createInsertSchema(purchaseStoreItems).omit({ id: true, createdAt: true });
+export type InsertPurchaseStoreItem = z.infer<typeof insertPurchaseStoreItemSchema>;
+export type PurchaseStoreItem = typeof purchaseStoreItems.$inferSelect;
+
+// Purchase Approval Levels
+export const purchaseApprovalLevels = pgTable("purchase_approval_levels", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  approvalLevel: integer("approval_level").notNull().default(1),
+  minAmount: decimal("min_amount", { precision: 15, scale: 2 }).default("0"),
+  maxAmount: decimal("max_amount", { precision: 15, scale: 2 }).default("0"),
+  approverRole: text("approver_role").default(""),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertPurchaseApprovalSchema = createInsertSchema(purchaseApprovalLevels).omit({ id: true, createdAt: true });
+export type InsertPurchaseApproval = z.infer<typeof insertPurchaseApprovalSchema>;
+export type PurchaseApproval = typeof purchaseApprovalLevels.$inferSelect;
+
+// Voucher Types
+export const voucherTypes = pgTable("voucher_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertVoucherTypeSchema = createInsertSchema(voucherTypes).omit({ id: true, createdAt: true });
+export type InsertVoucherType = z.infer<typeof insertVoucherTypeSchema>;
+export type VoucherType = typeof voucherTypes.$inferSelect;
+
+// Pay Mode Types
+export const payModeTypes = pgTable("pay_mode_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertPayModeTypeSchema = createInsertSchema(payModeTypes).omit({ id: true, createdAt: true });
+export type InsertPayModeType = z.infer<typeof insertPayModeTypeSchema>;
+export type PayModeType = typeof payModeTypes.$inferSelect;
+
+// Ledger Categories
+export const ledgerCategories = pgTable("ledger_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertLedgerCategorySchema = createInsertSchema(ledgerCategories).omit({ id: true, createdAt: true });
+export type InsertLedgerCategory = z.infer<typeof insertLedgerCategorySchema>;
+export type LedgerCategory = typeof ledgerCategories.$inferSelect;
+
+// Term Types
+export const termTypes = pgTable("term_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertTermTypeSchema = createInsertSchema(termTypes).omit({ id: true, createdAt: true });
+export type InsertTermType = z.infer<typeof insertTermTypeSchema>;
+export type TermType = typeof termTypes.$inferSelect;
+
+// Terms
+export const terms = pgTable("terms", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  termTypeId: varchar("term_type_id").references(() => termTypes.id),
+  days: integer("days").default(0),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertTermSchema = createInsertSchema(terms).omit({ id: true, createdAt: true });
+export type InsertTerm = z.infer<typeof insertTermSchema>;
+export type Term = typeof terms.$inferSelect;
+
+// Departments
+export const departments = pgTable("departments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertDepartmentSchema = createInsertSchema(departments).omit({ id: true, createdAt: true });
+export type InsertDepartment = z.infer<typeof insertDepartmentSchema>;
+export type Department = typeof departments.$inferSelect;
+
 // Countries
 export const countries = pgTable("countries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

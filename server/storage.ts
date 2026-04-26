@@ -8,6 +8,10 @@ import {
   accounts, journalEntries, journalEntryLines, tasks, tallySyncLogs,
   employees, userRoles, roleRights, warehouses, unitsOfMeasure, taxRates,
   countries, states, cities,
+  categories, subCategories, products, machineMaster,
+  storeItemGroups, purchaseStoreItems, purchaseApprovalLevels,
+  voucherTypes, payModeTypes, ledgerCategories,
+  termTypes, terms, departments,
   type User, type InsertUser,
   type Supplier, type InsertSupplier,
   type Customer, type InsertCustomer,
@@ -31,6 +35,19 @@ import {
   type Country, type InsertCountry,
   type State, type InsertState,
   type City, type InsertCity,
+  type Category, type InsertCategory,
+  type SubCategory, type InsertSubCategory,
+  type Product, type InsertProduct,
+  type Machine, type InsertMachine,
+  type StoreItemGroup, type InsertStoreItemGroup,
+  type PurchaseStoreItem, type InsertPurchaseStoreItem,
+  type PurchaseApproval, type InsertPurchaseApproval,
+  type VoucherType, type InsertVoucherType,
+  type PayModeType, type InsertPayModeType,
+  type LedgerCategory, type InsertLedgerCategory,
+  type TermType, type InsertTermType,
+  type Term, type InsertTerm,
+  type Department, type InsertDepartment,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -157,6 +174,85 @@ export interface IStorage {
     pendingTasks: number; salesThisMonth: number; purchasesThisMonth: number;
     recentPurchases: PurchaseInvoice[]; recentSales: SalesInvoice[]; lowStockItems: InventoryItem[];
   }>;
+
+  // Categories
+  listCategories(): Promise<Category[]>;
+  createCategory(c: InsertCategory): Promise<Category>;
+  updateCategory(id: string, c: Partial<InsertCategory>): Promise<Category>;
+  deleteCategory(id: string): Promise<void>;
+
+  // Sub Categories
+  listSubCategories(categoryId?: string): Promise<SubCategory[]>;
+  createSubCategory(c: InsertSubCategory): Promise<SubCategory>;
+  updateSubCategory(id: string, c: Partial<InsertSubCategory>): Promise<SubCategory>;
+  deleteSubCategory(id: string): Promise<void>;
+
+  // Products
+  listProducts(): Promise<Product[]>;
+  getProduct(id: string): Promise<Product | undefined>;
+  createProduct(p: InsertProduct): Promise<Product>;
+  updateProduct(id: string, p: Partial<InsertProduct>): Promise<Product>;
+  deleteProduct(id: string): Promise<void>;
+
+  // Machine Master
+  listMachines(): Promise<Machine[]>;
+  createMachine(m: InsertMachine): Promise<Machine>;
+  updateMachine(id: string, m: Partial<InsertMachine>): Promise<Machine>;
+  deleteMachine(id: string): Promise<void>;
+
+  // Store Item Groups
+  listStoreItemGroups(): Promise<StoreItemGroup[]>;
+  createStoreItemGroup(g: InsertStoreItemGroup): Promise<StoreItemGroup>;
+  updateStoreItemGroup(id: string, g: Partial<InsertStoreItemGroup>): Promise<StoreItemGroup>;
+  deleteStoreItemGroup(id: string): Promise<void>;
+
+  // Purchase Store Items
+  listPurchaseStoreItems(groupId?: string): Promise<PurchaseStoreItem[]>;
+  createPurchaseStoreItem(i: InsertPurchaseStoreItem): Promise<PurchaseStoreItem>;
+  updatePurchaseStoreItem(id: string, i: Partial<InsertPurchaseStoreItem>): Promise<PurchaseStoreItem>;
+  deletePurchaseStoreItem(id: string): Promise<void>;
+
+  // Purchase Approval Levels
+  listPurchaseApprovals(): Promise<PurchaseApproval[]>;
+  createPurchaseApproval(a: InsertPurchaseApproval): Promise<PurchaseApproval>;
+  updatePurchaseApproval(id: string, a: Partial<InsertPurchaseApproval>): Promise<PurchaseApproval>;
+  deletePurchaseApproval(id: string): Promise<void>;
+
+  // Voucher Types
+  listVoucherTypes(): Promise<VoucherType[]>;
+  createVoucherType(v: InsertVoucherType): Promise<VoucherType>;
+  updateVoucherType(id: string, v: Partial<InsertVoucherType>): Promise<VoucherType>;
+  deleteVoucherType(id: string): Promise<void>;
+
+  // Pay Mode Types
+  listPayModeTypes(): Promise<PayModeType[]>;
+  createPayModeType(p: InsertPayModeType): Promise<PayModeType>;
+  updatePayModeType(id: string, p: Partial<InsertPayModeType>): Promise<PayModeType>;
+  deletePayModeType(id: string): Promise<void>;
+
+  // Ledger Categories
+  listLedgerCategories(): Promise<LedgerCategory[]>;
+  createLedgerCategory(l: InsertLedgerCategory): Promise<LedgerCategory>;
+  updateLedgerCategory(id: string, l: Partial<InsertLedgerCategory>): Promise<LedgerCategory>;
+  deleteLedgerCategory(id: string): Promise<void>;
+
+  // Term Types
+  listTermTypes(): Promise<TermType[]>;
+  createTermType(t: InsertTermType): Promise<TermType>;
+  updateTermType(id: string, t: Partial<InsertTermType>): Promise<TermType>;
+  deleteTermType(id: string): Promise<void>;
+
+  // Terms
+  listTerms(termTypeId?: string): Promise<Term[]>;
+  createTerm(t: InsertTerm): Promise<Term>;
+  updateTerm(id: string, t: Partial<InsertTerm>): Promise<Term>;
+  deleteTerm(id: string): Promise<void>;
+
+  // Departments
+  listDepartments(): Promise<Department[]>;
+  createDepartment(d: InsertDepartment): Promise<Department>;
+  updateDepartment(id: string, d: Partial<InsertDepartment>): Promise<Department>;
+  deleteDepartment(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -311,6 +407,94 @@ export class DatabaseStorage implements IStorage {
   async createCity(c: InsertCity) { const [r] = await db.insert(cities).values({ ...c, id: randomUUID() }).returning(); return r; }
   async updateCity(id: string, c: Partial<InsertCity>) { const [r] = await db.update(cities).set(c).where(eq(cities.id, id)).returning(); return r; }
   async deleteCity(id: string) { await db.delete(cities).where(eq(cities.id, id)); }
+
+  // Categories
+  async listCategories() { return db.select().from(categories).orderBy(categories.name); }
+  async createCategory(c: InsertCategory) { const [r] = await db.insert(categories).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async updateCategory(id: string, c: Partial<InsertCategory>) { const [r] = await db.update(categories).set(c).where(eq(categories.id, id)).returning(); return r; }
+  async deleteCategory(id: string) { await db.delete(categories).where(eq(categories.id, id)); }
+
+  // Sub Categories
+  async listSubCategories(categoryId?: string) {
+    if (categoryId) return db.select().from(subCategories).where(eq(subCategories.categoryId, categoryId)).orderBy(subCategories.name);
+    return db.select().from(subCategories).orderBy(subCategories.name);
+  }
+  async createSubCategory(c: InsertSubCategory) { const [r] = await db.insert(subCategories).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async updateSubCategory(id: string, c: Partial<InsertSubCategory>) { const [r] = await db.update(subCategories).set(c).where(eq(subCategories.id, id)).returning(); return r; }
+  async deleteSubCategory(id: string) { await db.delete(subCategories).where(eq(subCategories.id, id)); }
+
+  // Products
+  async listProducts() { return db.select().from(products).orderBy(products.name); }
+  async getProduct(id: string) { const [p] = await db.select().from(products).where(eq(products.id, id)); return p; }
+  async createProduct(p: InsertProduct) { const [r] = await db.insert(products).values({ ...p, id: randomUUID() }).returning(); return r; }
+  async updateProduct(id: string, p: Partial<InsertProduct>) { const [r] = await db.update(products).set(p).where(eq(products.id, id)).returning(); return r; }
+  async deleteProduct(id: string) { await db.delete(products).where(eq(products.id, id)); }
+
+  // Machine Master
+  async listMachines() { return db.select().from(machineMaster).orderBy(machineMaster.name); }
+  async createMachine(m: InsertMachine) { const [r] = await db.insert(machineMaster).values({ ...m, id: randomUUID() }).returning(); return r; }
+  async updateMachine(id: string, m: Partial<InsertMachine>) { const [r] = await db.update(machineMaster).set(m).where(eq(machineMaster.id, id)).returning(); return r; }
+  async deleteMachine(id: string) { await db.delete(machineMaster).where(eq(machineMaster.id, id)); }
+
+  // Store Item Groups
+  async listStoreItemGroups() { return db.select().from(storeItemGroups).orderBy(storeItemGroups.name); }
+  async createStoreItemGroup(g: InsertStoreItemGroup) { const [r] = await db.insert(storeItemGroups).values({ ...g, id: randomUUID() }).returning(); return r; }
+  async updateStoreItemGroup(id: string, g: Partial<InsertStoreItemGroup>) { const [r] = await db.update(storeItemGroups).set(g).where(eq(storeItemGroups.id, id)).returning(); return r; }
+  async deleteStoreItemGroup(id: string) { await db.delete(storeItemGroups).where(eq(storeItemGroups.id, id)); }
+
+  // Purchase Store Items
+  async listPurchaseStoreItems(groupId?: string) {
+    if (groupId) return db.select().from(purchaseStoreItems).where(eq(purchaseStoreItems.itemGroupId, groupId)).orderBy(purchaseStoreItems.name);
+    return db.select().from(purchaseStoreItems).orderBy(purchaseStoreItems.name);
+  }
+  async createPurchaseStoreItem(i: InsertPurchaseStoreItem) { const [r] = await db.insert(purchaseStoreItems).values({ ...i, id: randomUUID() }).returning(); return r; }
+  async updatePurchaseStoreItem(id: string, i: Partial<InsertPurchaseStoreItem>) { const [r] = await db.update(purchaseStoreItems).set(i).where(eq(purchaseStoreItems.id, id)).returning(); return r; }
+  async deletePurchaseStoreItem(id: string) { await db.delete(purchaseStoreItems).where(eq(purchaseStoreItems.id, id)); }
+
+  // Purchase Approval Levels
+  async listPurchaseApprovals() { return db.select().from(purchaseApprovalLevels).orderBy(purchaseApprovalLevels.approvalLevel); }
+  async createPurchaseApproval(a: InsertPurchaseApproval) { const [r] = await db.insert(purchaseApprovalLevels).values({ ...a, id: randomUUID() }).returning(); return r; }
+  async updatePurchaseApproval(id: string, a: Partial<InsertPurchaseApproval>) { const [r] = await db.update(purchaseApprovalLevels).set(a).where(eq(purchaseApprovalLevels.id, id)).returning(); return r; }
+  async deletePurchaseApproval(id: string) { await db.delete(purchaseApprovalLevels).where(eq(purchaseApprovalLevels.id, id)); }
+
+  // Voucher Types
+  async listVoucherTypes() { return db.select().from(voucherTypes).orderBy(voucherTypes.name); }
+  async createVoucherType(v: InsertVoucherType) { const [r] = await db.insert(voucherTypes).values({ ...v, id: randomUUID() }).returning(); return r; }
+  async updateVoucherType(id: string, v: Partial<InsertVoucherType>) { const [r] = await db.update(voucherTypes).set(v).where(eq(voucherTypes.id, id)).returning(); return r; }
+  async deleteVoucherType(id: string) { await db.delete(voucherTypes).where(eq(voucherTypes.id, id)); }
+
+  // Pay Mode Types
+  async listPayModeTypes() { return db.select().from(payModeTypes).orderBy(payModeTypes.name); }
+  async createPayModeType(p: InsertPayModeType) { const [r] = await db.insert(payModeTypes).values({ ...p, id: randomUUID() }).returning(); return r; }
+  async updatePayModeType(id: string, p: Partial<InsertPayModeType>) { const [r] = await db.update(payModeTypes).set(p).where(eq(payModeTypes.id, id)).returning(); return r; }
+  async deletePayModeType(id: string) { await db.delete(payModeTypes).where(eq(payModeTypes.id, id)); }
+
+  // Ledger Categories
+  async listLedgerCategories() { return db.select().from(ledgerCategories).orderBy(ledgerCategories.name); }
+  async createLedgerCategory(l: InsertLedgerCategory) { const [r] = await db.insert(ledgerCategories).values({ ...l, id: randomUUID() }).returning(); return r; }
+  async updateLedgerCategory(id: string, l: Partial<InsertLedgerCategory>) { const [r] = await db.update(ledgerCategories).set(l).where(eq(ledgerCategories.id, id)).returning(); return r; }
+  async deleteLedgerCategory(id: string) { await db.delete(ledgerCategories).where(eq(ledgerCategories.id, id)); }
+
+  // Term Types
+  async listTermTypes() { return db.select().from(termTypes).orderBy(termTypes.name); }
+  async createTermType(t: InsertTermType) { const [r] = await db.insert(termTypes).values({ ...t, id: randomUUID() }).returning(); return r; }
+  async updateTermType(id: string, t: Partial<InsertTermType>) { const [r] = await db.update(termTypes).set(t).where(eq(termTypes.id, id)).returning(); return r; }
+  async deleteTermType(id: string) { await db.delete(termTypes).where(eq(termTypes.id, id)); }
+
+  // Terms
+  async listTerms(termTypeId?: string) {
+    if (termTypeId) return db.select().from(terms).where(eq(terms.termTypeId, termTypeId)).orderBy(terms.name);
+    return db.select().from(terms).orderBy(terms.name);
+  }
+  async createTerm(t: InsertTerm) { const [r] = await db.insert(terms).values({ ...t, id: randomUUID() }).returning(); return r; }
+  async updateTerm(id: string, t: Partial<InsertTerm>) { const [r] = await db.update(terms).set(t).where(eq(terms.id, id)).returning(); return r; }
+  async deleteTerm(id: string) { await db.delete(terms).where(eq(terms.id, id)); }
+
+  // Departments
+  async listDepartments() { return db.select().from(departments).orderBy(departments.name); }
+  async createDepartment(d: InsertDepartment) { const [r] = await db.insert(departments).values({ ...d, id: randomUUID() }).returning(); return r; }
+  async updateDepartment(id: string, d: Partial<InsertDepartment>) { const [r] = await db.update(departments).set(d).where(eq(departments.id, id)).returning(); return r; }
+  async deleteDepartment(id: string) { await db.delete(departments).where(eq(departments.id, id)); }
 
   async getDashboardStats() {
     const [allPurchases, allSales, allItems, allTasks] = await Promise.all([
