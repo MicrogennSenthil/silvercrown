@@ -594,7 +594,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/categories", requireAuth, async (req, res) => {
     try { res.json(await storage.createCategory(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/categories/:id", requireAuth, async (req, res) => { res.json(await storage.updateCategory(req.params.id, req.body)); });
+  app.patch("/api/categories/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updateCategory(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/categories/:id", requireAuth, async (req, res) => { await storage.deleteCategory(req.params.id); res.json({ ok: true }); });
 
   // Sub Categories
@@ -604,7 +604,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/sub-categories", requireAuth, async (req, res) => {
     try { res.json(await storage.createSubCategory(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/sub-categories/:id", requireAuth, async (req, res) => { res.json(await storage.updateSubCategory(req.params.id, req.body)); });
+  app.patch("/api/sub-categories/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updateSubCategory(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/sub-categories/:id", requireAuth, async (req, res) => { await storage.deleteSubCategory(req.params.id); res.json({ ok: true }); });
 
   // Products
@@ -612,7 +612,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/products", requireAuth, async (req, res) => {
     try { res.json(await storage.createProduct(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/products/:id", requireAuth, async (req, res) => { res.json(await storage.updateProduct(req.params.id, req.body)); });
+  app.patch("/api/products/:id", requireAuth, async (req, res) => {
+    try {
+      const { id: _id, createdAt: _ca, updatedAt: _ua, ...data } = req.body;
+      res.json(await storage.updateProduct(req.params.id, data));
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
   app.delete("/api/products/:id", requireAuth, async (req, res) => { await storage.deleteProduct(req.params.id); res.json({ ok: true }); });
 
   // Machine Master
@@ -620,7 +625,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/machines", requireAuth, async (req, res) => {
     try { res.json(await storage.createMachine(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/machines/:id", requireAuth, async (req, res) => { res.json(await storage.updateMachine(req.params.id, req.body)); });
+  app.patch("/api/machines/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updateMachine(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/machines/:id", requireAuth, async (req, res) => { await storage.deleteMachine(req.params.id); res.json({ ok: true }); });
 
   // Store Item Groups
@@ -628,7 +633,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/store-item-groups", requireAuth, async (req, res) => {
     try { res.json(await storage.createStoreItemGroup(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/store-item-groups/:id", requireAuth, async (req, res) => { res.json(await storage.updateStoreItemGroup(req.params.id, req.body)); });
+  app.patch("/api/store-item-groups/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updateStoreItemGroup(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/store-item-groups/:id", requireAuth, async (req, res) => { await storage.deleteStoreItemGroup(req.params.id); res.json({ ok: true }); });
 
   // Store Item Sub Groups
@@ -636,7 +641,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/store-item-sub-groups", requireAuth, async (req, res) => {
     try { res.json(await storage.createStoreItemSubGroup(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/store-item-sub-groups/:id", requireAuth, async (req, res) => { res.json(await storage.updateStoreItemSubGroup(req.params.id, req.body)); });
+  app.patch("/api/store-item-sub-groups/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updateStoreItemSubGroup(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/store-item-sub-groups/:id", requireAuth, async (req, res) => { await storage.deleteStoreItemSubGroup(req.params.id); res.json({ ok: true }); });
 
   // Purchase Store Items
@@ -646,7 +651,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/purchase-store-items", requireAuth, async (req, res) => {
     try { res.json(await storage.createPurchaseStoreItem(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/purchase-store-items/:id", requireAuth, async (req, res) => { res.json(await storage.updatePurchaseStoreItem(req.params.id, req.body)); });
+  app.patch("/api/purchase-store-items/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updatePurchaseStoreItem(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/purchase-store-items/:id", requireAuth, async (req, res) => { await storage.deletePurchaseStoreItem(req.params.id); res.json({ ok: true }); });
 
   // Purchase Approval Levels
@@ -654,7 +659,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/purchase-approvals", requireAuth, async (req, res) => {
     try { res.json(await storage.createPurchaseApproval(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/purchase-approvals/:id", requireAuth, async (req, res) => { res.json(await storage.updatePurchaseApproval(req.params.id, req.body)); });
+  app.patch("/api/purchase-approvals/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updatePurchaseApproval(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/purchase-approvals/:id", requireAuth, async (req, res) => { await storage.deletePurchaseApproval(req.params.id); res.json({ ok: true }); });
 
   // Voucher Types
@@ -662,7 +667,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/voucher-types", requireAuth, async (req, res) => {
     try { res.json(await storage.createVoucherType(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/voucher-types/:id", requireAuth, async (req, res) => { res.json(await storage.updateVoucherType(req.params.id, req.body)); });
+  app.patch("/api/voucher-types/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updateVoucherType(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/voucher-types/:id", requireAuth, async (req, res) => { await storage.deleteVoucherType(req.params.id); res.json({ ok: true }); });
 
   // Pay Mode Types
@@ -670,7 +675,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/pay-mode-types", requireAuth, async (req, res) => {
     try { res.json(await storage.createPayModeType(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/pay-mode-types/:id", requireAuth, async (req, res) => { res.json(await storage.updatePayModeType(req.params.id, req.body)); });
+  app.patch("/api/pay-mode-types/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updatePayModeType(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/pay-mode-types/:id", requireAuth, async (req, res) => { await storage.deletePayModeType(req.params.id); res.json({ ok: true }); });
 
   // Sub Ledgers
