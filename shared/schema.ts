@@ -114,6 +114,8 @@ export const customers = pgTable("customers", {
   sameAsCompany: boolean("same_as_company").default(false),
   notes: text("notes").default(""),
   contactPerson: text("contact_person").default(""),
+  termOfPayment: text("term_of_payment").default(""),
+  freight: text("freight").default("to_pay"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
