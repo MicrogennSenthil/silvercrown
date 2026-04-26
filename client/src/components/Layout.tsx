@@ -37,6 +37,7 @@ const NAV: any[] = [
           { label: "Purchase approval", href: "/masters/purchase-approvals" },
           { label: "Approval Authority", href: "/masters/approval-authority" },
           { label: "Purchase Store Item", href: "/masters/purchase-store-items" },
+          { label: "Store Master", href: "/masters/stores" },
           { label: "Store Item Group", href: "/masters/store-item-groups" },
           { label: "Store Item Sub Group", href: "/masters/store-item-sub-groups" },
           { label: "UOM", href: "/masters/uom" },

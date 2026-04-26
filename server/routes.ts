@@ -682,6 +682,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/sub-categories/:id", requireAuth, async (req, res) => { const { id: _i, createdAt: _c, ...d } = req.body; try { res.json(await storage.updateSubCategory(req.params.id, d)); } catch (e: any) { res.status(400).json({ message: e.message }); } });
   app.delete("/api/sub-categories/:id", requireAuth, async (req, res) => { await storage.deleteSubCategory(req.params.id); res.json({ ok: true }); });
 
+  // ── Stores ─────────────────────────────────────────────────────────────────
+  app.get("/api/stores", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`SELECT * FROM stores ORDER BY store_type, name`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/stores", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const r = await pool.query(`
+        INSERT INTO stores (code, name, store_type, parent_id, location, description, is_active)
+        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
+      `, [b.code, b.name, b.store_type||"Main Store", b.parent_id||null,
+          b.location||"", b.description||"", b.is_active ?? true]);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  app.patch("/api/stores/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const r = await pool.query(`
+        UPDATE stores SET code=$1, name=$2, store_type=$3, parent_id=$4,
+          location=$5, description=$6, is_active=$7
+        WHERE id=$8 RETURNING *
+      `, [b.code, b.name, b.store_type||"Main Store", b.parent_id||null,
+          b.location||"", b.description||"", b.is_active ?? true, req.params.id]);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  app.delete("/api/stores/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      // Unlink any sub-stores that reference this store
+      await pool.query(`UPDATE stores SET parent_id=NULL WHERE parent_id=$1`, [req.params.id]);
+      await pool.query(`DELETE FROM stores WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   // Products
   app.get("/api/products", requireAuth, async (req, res) => {
     try {
