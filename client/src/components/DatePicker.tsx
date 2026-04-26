@@ -119,7 +119,7 @@ export default function DatePicker({ value, onChange, label, min, max, placehold
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className={`w-full flex items-center justify-between border rounded px-3 py-2.5 text-sm text-left transition-all outline-none ${open ? "border-[#027fa5] shadow-sm ring-1 ring-[#027fa5]/20" : "border-gray-300 hover:border-[#027fa5]/60"}`}
+        className={`w-full flex items-center justify-between border rounded px-3 py-1.5 text-sm text-left transition-all outline-none ${open ? "border-[#027fa5] shadow-sm ring-1 ring-[#027fa5]/20" : "border-gray-300 hover:border-[#027fa5]/60"}`}
         data-testid={testId}
       >
         <span className={value ? "text-gray-800 font-medium" : "text-gray-400 text-sm"}>
