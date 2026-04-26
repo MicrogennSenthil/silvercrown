@@ -46,108 +46,140 @@ function DropPlus({ label, value, onChange, options, onPlus, className = "" }: a
 }
 
 // ─── Sub Categories ───────────────────────────────────────────────────────────
-function SubCategoryForm({ initial, categories, onClose }: any) {
-  const [form, setForm] = useState({ categoryId: "", code: "", name: "", description: "", isActive: true, ...initial });
+
+function SubCatModal({ initial, categories, onClose }: any) {
+  const [name, setName]         = useState(initial?.name || "");
+  const [categoryId, setCatId]  = useState(initial?.categoryId || "");
   const qc = useQueryClient();
-  const save = useMutation({
-    mutationFn: (data: any) => apiReq(initial?.id ? `/api/sub-categories/${initial.id}` : "/api/sub-categories", initial?.id ? "PATCH" : "POST", data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sub-categories"] }); onClose(); }
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const code = initial?.code || name.trim().toUpperCase().replace(/\s+/g, "_") || `SUB-${Date.now()}`;
+      const payload = { code, name: name.trim(), categoryId, description: "", isActive: true };
+      const url    = initial?.id ? `/api/sub-categories/${initial.id}` : "/api/sub-categories";
+      const method = initial?.id ? "PATCH" : "POST";
+      const res = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sub-categories"] }); onClose(); },
   });
+
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#b8d2da" }}>
-          <h2 className="text-lg font-bold" style={{ color: SC.primary }}>{initial?.id ? "Edit" : "New"} Sub Category</h2>
-          <button onClick={onClose} className="p-2 rounded hover:bg-gray-100"><X size={18} /></button>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-800">{initial?.id ? "Edit Sub Category" : "Create Sub category"}</h2>
         </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-600">Category *</label>
-            <select value={form.categoryId || ""} onChange={e => setForm((s: any) => ({ ...s, categoryId: e.target.value }))}
-              className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000030" }}>
-              <option value="">— Select Category —</option>
+        <div className="px-6 py-6 space-y-5">
+          {/* Sub Category name */}
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Sub Category</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Type Sub Category"
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
+              data-testid="input-sub-category" autoFocus />
+          </div>
+          {/* Category dropdown */}
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category</label>
+            <select value={categoryId} onChange={e => setCatId(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none appearance-none bg-white"
+              data-testid="select-category">
+              <option value="">Select</option>
               {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-          {[["Code *", "code"], ["Name *", "name"], ["Description", "description"]].map(([label, name]) => (
-            <div key={name}>
-              <label className="block text-sm font-medium mb-1 text-gray-600">{label}</label>
-              <input value={form[name] ?? ""} onChange={e => setForm((s: any) => ({ ...s, [name]: e.target.value }))}
-                className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000030" }} />
-            </div>
-          ))}
-          <div className="flex items-center gap-2">
-            <input type="checkbox" checked={!!form.isActive} onChange={e => setForm((s: any) => ({ ...s, isActive: e.target.checked }))} className="w-4 h-4" />
-            <span className="text-sm text-gray-600">Active</span>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
         </div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-          <button onClick={onClose} className="px-5 py-2 rounded border text-sm" style={{ borderColor: "#00000030" }}>Cancel</button>
-          <button onClick={() => save.mutate(form)} disabled={save.isPending}
-            className="px-5 py-2 rounded text-white text-sm font-medium flex items-center gap-2" style={{ background: SC.orange }}>
-            {save.isPending && <Loader2 size={14} className="animate-spin" />} Save
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
+          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()}
+            className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="button-add">
+            {saveMut.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}Add
           </button>
         </div>
+        {saveMut.isError && <p className="px-6 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>}
       </div>
     </div>
   );
 }
 
 export function SubCategories() {
-  const [search, setSearch] = useState(""); const [filterCat, setFilterCat] = useState("");
-  const [showForm, setShowForm] = useState(false); const [editing, setEditing] = useState<any>(null);
+  const [search, setSearch]    = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing]  = useState<any>(null);
   const qc = useQueryClient();
-  const { data: cats = [] } = useQuery<any[]>({ queryKey: ["/api/categories"] });
+
+  const { data: cats = [] }           = useQuery<any[]>({ queryKey: ["/api/categories"] });
   const { data: rows = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/sub-categories"] });
-  const del = useMutation({
-    mutationFn: (id: string) => apiReq(`/api/sub-categories/${id}`, "DELETE"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/sub-categories"] })
-  });
-  const catMap = Object.fromEntries(cats.map((c: any) => [c.id, c.name]));
+
+  const catMap   = Object.fromEntries(cats.map((c: any) => [c.id, c.name]));
   const filtered = rows.filter((r: any) =>
-    (!filterCat || r.categoryId === filterCat) &&
-    (!search || [r.code, r.name].some(v => String(v || "").toLowerCase().includes(search.toLowerCase())))
+    !search || [r.name, r.code].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))
   );
+
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-800">Sub Categories</h1>
-        <button onClick={() => { setEditing(null); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded text-white text-sm font-medium" style={{ background: SC.orange }}>
-          <Plus size={16} /> New Sub Category
-        </button>
-      </div>
-      <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 2px 2px rgba(0,0,0,0.1)" }}>
-        <div className="px-5 py-3 border-b border-gray-100 flex flex-wrap gap-3">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="border rounded px-3 py-2 text-sm focus:outline-none w-52" style={{ borderColor: "#00000030" }} />
-          <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="border rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000030" }}>
-            <option value="">All Categories</option>
-            {cats.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <table className="w-full text-sm">
-          <thead><tr style={{ background: SC.tonal }}>
-            {["Code", "Name", "Category", "Description", "Status", ""].map(h => <th key={h} className="text-left px-5 py-3 font-semibold text-gray-600">{h}</th>)}
-          </tr></thead>
-          <tbody className="divide-y divide-gray-50">
-            {isLoading ? <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400">Loading…</td></tr> :
-              filtered.length ? filtered.map((r: any) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-3 font-mono text-xs font-semibold" style={{ color: SC.primary }}>{r.code}</td>
-                  <td className="px-5 py-3 font-medium">{r.name}</td>
-                  <td className="px-5 py-3 text-gray-600">{catMap[r.categoryId] || "—"}</td>
-                  <td className="px-5 py-3 text-gray-500">{r.description || "—"}</td>
-                  <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.isActive ? "Active" : "Inactive"}</span></td>
-                  <td className="px-5 py-3"><div className="flex gap-2 justify-end">
-                    <button onClick={() => { setEditing(r); setShowForm(true); }} className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}><Edit size={14} /></button>
-                    <button onClick={() => { if (confirm("Delete?")) del.mutate(r.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 size={14} /></button>
-                  </div></td>
+    <div className="flex justify-center">
+      <div className="w-full max-w-lg">
+        <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
+            <span className="font-semibold text-gray-800 text-base whitespace-nowrap">Sub Category</span>
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search Sub Category...."
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
+                data-testid="input-search" />
+            </div>
+          </div>
+
+          {/* Table */}
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: SC.tonal }}>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Sub Category</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Category</th>
+                <th className="w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {isLoading ? (
+                <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400">No sub categories yet.</td></tr>
+              ) : filtered.map((r: any, i: number) => (
+                <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-subcat-${r.id}`}>
+                  <td className="px-5 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="px-5 py-2.5 font-medium text-gray-800 uppercase tracking-wide">{r.name}</td>
+                  <td className="px-5 py-2.5 text-gray-600 uppercase tracking-wide">{catMap[r.categoryId] || "—"}</td>
+                  <td className="px-3 py-2.5">
+                    <button onClick={() => setEditing(r)}
+                      className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
+                      data-testid={`button-edit-${r.id}`}>
+                      <PencilLine size={14} />
+                    </button>
+                  </td>
                 </tr>
-              )) : <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400">No sub categories found</td></tr>}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
+            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+              style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
+            <button onClick={() => { setEditing(null); setShowForm(true); }}
+              className="px-8 py-2 rounded text-sm font-semibold text-white"
+              style={{ background: SC.orange }} data-testid="button-add">Add</button>
+          </div>
+        </div>
       </div>
-      {showForm && <SubCategoryForm initial={editing} categories={cats} onClose={() => setShowForm(false)} />}
+
+      {showForm && <SubCatModal initial={editing} categories={cats} onClose={() => { setShowForm(false); setEditing(null); }} />}
+      {editing && !showForm && <SubCatModal initial={editing} categories={cats} onClose={() => setEditing(null)} />}
     </div>
   );
 }
