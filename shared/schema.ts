@@ -323,6 +323,45 @@ export const insertTaxRateSchema = createInsertSchema(taxRates).omit({ id: true,
 export type InsertTaxRate = z.infer<typeof insertTaxRateSchema>;
 export type TaxRate = typeof taxRates.$inferSelect;
 
+// Countries
+export const countries = pgTable("countries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertCountrySchema = createInsertSchema(countries).omit({ id: true, createdAt: true });
+export type InsertCountry = z.infer<typeof insertCountrySchema>;
+export type Country = typeof countries.$inferSelect;
+
+// States
+export const states = pgTable("states", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  countryId: varchar("country_id").references(() => countries.id),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertStateSchema = createInsertSchema(states).omit({ id: true, createdAt: true });
+export type InsertState = z.infer<typeof insertStateSchema>;
+export type State = typeof states.$inferSelect;
+
+// Cities
+export const cities = pgTable("cities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  stateId: varchar("state_id").references(() => states.id),
+  countryId: varchar("country_id").references(() => countries.id),
+  name: text("name").notNull(),
+  pinCode: text("pin_code").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertCitySchema = createInsertSchema(cities).omit({ id: true, createdAt: true });
+export type InsertCity = z.infer<typeof insertCitySchema>;
+export type City = typeof cities.$inferSelect;
+
 // Tally Sync Logs
 export const tallySyncLogs = pgTable("tally_sync_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
