@@ -712,101 +712,135 @@ export default function JobWorkInvoice() {
 
         {/* ── TAB: Charges ── */}
         {activeTab === "charges" && (
-          <div className="flex gap-5 mb-4">
+          <div className="flex gap-5 mb-4" style={{ alignItems: "flex-start" }}>
+
             {/* Left: Other charges grid */}
-            <div className="flex-none" style={{ width: 320 }}>
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
+            <div style={{ width: 380, flexShrink: 0 }}>
+              <div className="border rounded-lg overflow-hidden shadow-sm">
+                <table className="w-full text-sm border-collapse">
                   <thead>
                     <tr style={{ background: SC.primary, color: "#fff" }}>
-                      <th className="px-2 py-2 text-left w-10">S.No</th>
-                      <th className="px-2 py-2 text-left">Other Charges</th>
-                      <th className="px-2 py-2 text-right w-28">Amount ₹</th>
-                      <th className="w-8"></th>
+                      <th className="px-3 py-2.5 text-left font-medium" style={{ width: 48 }}>S.no</th>
+                      <th className="px-3 py-2.5 text-left font-medium">Other Charges</th>
+                      <th className="px-3 py-2.5 text-right font-medium" style={{ width: 110 }}>Amount ₹</th>
+                      <th style={{ width: 32 }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {charges.map((ch, idx) => (
-                      <tr key={idx} className="border-b hover:bg-blue-50">
-                        <td className="px-2 py-1.5 text-gray-500">{idx + 1}</td>
-                        <td className="px-1 py-1">
+                      <tr key={idx} className="border-b border-gray-200 hover:bg-blue-50 transition-colors">
+                        <td className="px-3 py-2 text-gray-500 text-center">{idx + 1}</td>
+                        <td className="px-2 py-1.5">
                           <input
                             data-testid={`input-charge-name-${idx}`}
-                            className="border rounded px-2 py-1 text-sm w-full"
-                            placeholder="Charge name"
+                            className="w-full px-2 py-1 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400 bg-transparent"
+                            placeholder="Enter charge name..."
                             value={ch.charge_name}
                             onChange={e => updateCharge(idx, "charge_name", e.target.value)} />
                         </td>
-                        <td className="px-1 py-1">
+                        <td className="px-2 py-1.5">
                           <input type="number"
                             data-testid={`input-charge-amount-${idx}`}
-                            className="border rounded px-2 py-1 text-sm w-full text-right"
+                            className="w-full px-2 py-1 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400 text-right bg-transparent"
                             placeholder="0.00"
                             value={ch.amount}
                             onChange={e => updateCharge(idx, "amount", e.target.value)} />
                         </td>
-                        <td className="px-1 py-1">
+                        <td className="px-1 py-1 text-center">
                           <button onClick={() => removeCharge(idx)}
-                            className="text-red-400 hover:text-red-600 p-0.5">
+                            className="text-red-300 hover:text-red-600 transition-colors p-1">
                             <Trash2 size={13} />
                           </button>
                         </td>
                       </tr>
                     ))}
+                    {/* Empty placeholder rows for visual grid feel */}
+                    {Array.from({ length: Math.max(0, 5 - charges.length) }).map((_, i) => (
+                      <tr key={`empty-${i}`} className="border-b border-gray-100">
+                        <td className="px-3 py-3 text-gray-300 text-center text-xs">{charges.length + i + 1}</td>
+                        <td className="px-3 py-3"></td>
+                        <td className="px-3 py-3"></td>
+                        <td></td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
+                {/* Total row */}
+                {charges.some(c => parseFloat(c.amount) > 0) && (
+                  <div className="flex justify-between items-center px-3 py-2 bg-gray-50 border-t border-gray-200">
+                    <span className="text-xs font-semibold text-gray-600">Total Other Charges</span>
+                    <span className="text-sm font-bold" style={{ color: SC.primary }}>
+                      ₹{charges.reduce((s, c) => s + (parseFloat(c.amount) || 0), 0)
+                          .toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
                 <button
                   data-testid="btn-add-charge"
                   onClick={addCharge}
-                  className="flex items-center gap-1 w-full px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50 border-t">
+                  className="flex items-center gap-1.5 w-full px-3 py-2 text-xs hover:bg-gray-50 border-t border-gray-200 transition-colors"
+                  style={{ color: SC.primary }}>
                   <Plus size={13} /> Add row
                 </button>
               </div>
             </div>
 
             {/* Right: Delivery section */}
-            <div className="flex-1 border rounded-lg p-4">
-              <h3 className="text-sm font-semibold mb-3" style={{ color: SC.primary }}>Delivery</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Term of Delivery</label>
-                  <input data-testid="input-term-of-delivery"
-                    className="border rounded px-3 py-1.5 text-sm w-full"
-                    value={termOfDel} onChange={e => setTermOfDel(e.target.value)} />
-                </div>
-                <div className="row-span-2">
-                  <label className="text-xs text-gray-500 mb-1 block">Delivery Address</label>
-                  <textarea data-testid="input-delivery-address"
-                    className="border rounded px-3 py-1.5 text-sm w-full resize-none"
-                    rows={4}
-                    value={deliveryAddr} onChange={e => setDeliveryAddr(e.target.value)} />
-                  <label className="flex items-center gap-2 mt-1 cursor-pointer text-sm">
-                    <input type="checkbox" data-testid="chk-same-as-company"
-                      className="accent-blue-600"
-                      checked={sameAsCompany} onChange={e => setSameAsCompany(e.target.checked)} />
-                    Same as Company
-                  </label>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Transport</label>
-                  <input data-testid="input-transport"
-                    className="border rounded px-3 py-1.5 text-sm w-full"
-                    value={transport} onChange={e => setTransport(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Freight:</label>
-                  <div className="flex gap-4">
-                    {(["to_pay", "paid"] as const).map(f => (
-                      <label key={f} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                        <input type="radio" name="freight" value={f}
-                          checked={freight === f}
-                          onChange={() => setFreight(f)}
-                        />
-                        <span style={freight === f ? { color: SC.orange, fontWeight: 600 } : {}}>
-                          {f === "to_pay" ? "To Pay" : "Paid"}
-                        </span>
-                      </label>
-                    ))}
+            <div className="flex-1 border rounded-lg overflow-hidden shadow-sm">
+              <div className="px-4 py-2.5 border-b" style={{ background: SC.primary }}>
+                <h3 className="text-sm font-semibold text-white">Delivery</h3>
+              </div>
+              <div className="p-4">
+                <div className="flex gap-4">
+                  {/* Left column: Term of Delivery + Transport + Freight */}
+                  <div className="flex-1 flex flex-col gap-4">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block font-medium">Term of Delivery</label>
+                      <input data-testid="input-term-of-delivery"
+                        className="border rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-1"
+                        style={{ focusRingColor: SC.primary } as any}
+                        placeholder="e.g. Ex Works"
+                        value={termOfDel} onChange={e => setTermOfDel(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block font-medium">Transport</label>
+                      <input data-testid="input-transport"
+                        className="border rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:ring-1"
+                        placeholder="Transporter name"
+                        value={transport} onChange={e => setTransport(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-2 block font-medium">Freight</label>
+                      <div className="flex gap-5">
+                        {(["to_pay", "paid"] as const).map(f => (
+                          <label key={f} className="flex items-center gap-2 cursor-pointer text-sm">
+                            <input type="radio" name="freight" value={f}
+                              className="accent-orange-600"
+                              checked={freight === f}
+                              onChange={() => setFreight(f)} />
+                            <span style={freight === f ? { color: SC.orange, fontWeight: 700 } : { color: "#555" }}>
+                              {f === "to_pay" ? "To Pay" : "Paid"}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right column: Delivery Address */}
+                  <div className="flex-1 flex flex-col">
+                    <label className="text-xs text-gray-500 mb-1 block font-medium">Delivery Address</label>
+                    <textarea data-testid="input-delivery-address"
+                      className="border rounded-lg px-3 py-2 text-sm w-full resize-none flex-1 focus:outline-none focus:ring-1"
+                      rows={6}
+                      placeholder="Enter delivery address..."
+                      value={deliveryAddr} onChange={e => setDeliveryAddr(e.target.value)} />
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer text-sm text-gray-600">
+                      <input type="checkbox" data-testid="chk-same-as-company"
+                        className="accent-blue-600 w-4 h-4"
+                        checked={sameAsCompany} onChange={e => setSameAsCompany(e.target.checked)} />
+                      Same as Company
+                    </label>
                   </div>
                 </div>
               </div>
