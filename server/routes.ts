@@ -1769,6 +1769,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      const { generateVoucherNo } = await import("./voucher");
       const b = req.body;
       // Auto voucher number
       const voucher_no = await generateVoucherNo("returnable_inward", client);
