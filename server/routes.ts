@@ -1554,11 +1554,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       }
       let cseq = 1;
       for (const ch of charges) {
-        if (!ch.charge_name?.trim()) continue;
+        if (!ch.charge_name?.trim() && !ch.subledger_id) continue;
         await client.query(`
-          INSERT INTO job_work_invoice_charges (id, invoice_id, seq_no, charge_name, amount)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4)
-        `, [invoiceId, cseq++, ch.charge_name, parseFloat(ch.amount || 0)]);
+          INSERT INTO job_work_invoice_charges (id, invoice_id, seq_no, charge_name, subledger_id, amount)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5)
+        `, [invoiceId, cseq++, ch.charge_name || "", ch.subledger_id || null, parseFloat(ch.amount || 0)]);
       }
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
@@ -1621,11 +1621,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       }
       let cseq = 1;
       for (const ch of charges) {
-        if (!ch.charge_name?.trim()) continue;
+        if (!ch.charge_name?.trim() && !ch.subledger_id) continue;
         await client.query(`
-          INSERT INTO job_work_invoice_charges (id, invoice_id, seq_no, charge_name, amount)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4)
-        `, [req.params.id, cseq++, ch.charge_name, parseFloat(ch.amount || 0)]);
+          INSERT INTO job_work_invoice_charges (id, invoice_id, seq_no, charge_name, subledger_id, amount)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5)
+        `, [req.params.id, cseq++, ch.charge_name || "", ch.subledger_id || null, parseFloat(ch.amount || 0)]);
       }
       const hRes = await client.query(`
         SELECT inv.*, COALESCE(c.name, inv.party_name_manual,'') as party_name_db

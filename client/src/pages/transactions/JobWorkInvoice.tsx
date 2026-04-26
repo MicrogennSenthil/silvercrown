@@ -32,6 +32,7 @@ export default function JobWorkInvoice() {
   const { data: inwardList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
   const { data: invoiceList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-invoice"] });
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
 
   // ── Search bar ────────────────────────────────────────────────────────────────
   const [searchText, setSearchText] = useState("");
@@ -83,7 +84,7 @@ export default function JobWorkInvoice() {
   const [gridSearch,   setGridSearch]   = useState("");
 
   // Charges tab
-  const [charges,      setCharges]      = useState<any[]>([{ charge_name: "", amount: "" }]);
+  const [charges,      setCharges]      = useState<any[]>([{ subledger_id: "", charge_name: "", amount: "" }]);
   const [termOfDel,    setTermOfDel]    = useState("");
   const [transport,    setTransport]    = useState("");
   const [freight,      setFreight]      = useState<"to_pay" | "paid">("to_pay");
@@ -242,7 +243,9 @@ export default function JobWorkInvoice() {
       setCheckedInwardIds(inwardIds);
       setItems((data.items || []).map((it: any) => ({ ...it })));
       const loadedCharges = (data.charges || []);
-      setCharges(loadedCharges.length > 0 ? loadedCharges : [{ charge_name: "", amount: "" }]);
+      setCharges(loadedCharges.length > 0
+        ? loadedCharges.map((c: any) => ({ subledger_id: c.subledger_id || "", charge_name: c.charge_name || "", amount: c.amount || "" }))
+        : [{ subledger_id: "", charge_name: "", amount: "" }]);
       setShowSearchDrop(false);
       setSaveError("");
       setSaveOk(false);
@@ -264,7 +267,7 @@ export default function JobWorkInvoice() {
     setPartySearch("");
     setCheckedInwardIds(new Set());
     setItems([]);
-    setCharges([{ charge_name: "", amount: "" }]);
+    setCharges([{ subledger_id: "", charge_name: "", amount: "" }]);
     setTermOfDel("");
     setTransport("");
     setFreight("to_pay");
@@ -290,7 +293,7 @@ export default function JobWorkInvoice() {
 
   // ── Charges helpers ───────────────────────────────────────────────────────────
   function addCharge() {
-    setCharges(prev => [...prev, { charge_name: "", amount: "" }]);
+    setCharges(prev => [...prev, { subledger_id: "", charge_name: "", amount: "" }]);
   }
   function updateCharge(idx: number, field: string, value: string) {
     setCharges(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
@@ -758,14 +761,25 @@ export default function JobWorkInvoice() {
                   <tbody>
                     {charges.map((ch, idx) => (
                       <tr key={idx} className="border-b border-gray-200 hover:bg-blue-50 transition-colors">
-                        <td className="px-3 py-2 text-gray-500 text-center">{idx + 1}</td>
+                        <td className="px-3 py-2 text-gray-500 text-center text-sm">{idx + 1}</td>
                         <td className="px-2 py-1.5">
-                          <input
-                            data-testid={`input-charge-name-${idx}`}
-                            className="w-full px-2 py-1 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400 bg-transparent"
-                            placeholder="Enter charge name..."
-                            value={ch.charge_name}
-                            onChange={e => updateCharge(idx, "charge_name", e.target.value)} />
+                          <select
+                            data-testid={`select-charge-subledger-${idx}`}
+                            className="w-full px-2 py-1.5 text-sm rounded border border-gray-200 focus:outline-none focus:border-blue-400 bg-white cursor-pointer"
+                            value={ch.subledger_id}
+                            onChange={e => {
+                              const sl = (subledgerList as any[]).find((s: any) => s.id === e.target.value);
+                              setCharges(prev => prev.map((c, i) => i === idx ? {
+                                ...c,
+                                subledger_id: e.target.value,
+                                charge_name: sl ? sl.name : "",
+                              } : c));
+                            }}>
+                            <option value="">— Select subledger —</option>
+                            {(subledgerList as any[]).map((sl: any) => (
+                              <option key={sl.id} value={sl.id}>{sl.name}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number"
