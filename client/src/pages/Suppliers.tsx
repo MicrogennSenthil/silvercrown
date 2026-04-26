@@ -1,108 +1,410 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Trash2, Edit, X, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash2, Search, List, Info, ChevronDown, X } from "lucide-react";
+import type { Supplier } from "@shared/schema";
 
-const SC = { primary: "#027fa5", orange: "#d74700" };
-const EMPTY = { name: "", email: "", phone: "", address: "", gstin: "", contactPerson: "" };
+const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
-function SupplierForm({ initial, onClose }: any) {
-  const [form, setForm] = useState({ ...EMPTY, ...initial });
+const EMPTY_FORM = {
+  name: "", shortName: "",
+  // Address
+  address1: "", address2: "", city: "", state: "", gstStateCode: "",
+  contactName: "", contactRole: "", email: "", telephone: "", websiteUrl: "",
+  // Account Info
+  creditLimit: "", creditDays: "",
+  accountNo: "", accountHolderName: "", accountType: "", bankName: "", branchName: "", ifscCode: "",
+  // Other Info
+  gstRegisteredType: "", gstin: "", gstinDate: "", gstState: "",
+  category: "", deliveryAddress: "", termOfDelivery: "", transport: "", sameAsCompany: false,
+  notes: "",
+};
+
+// ─── Field component ──────────────────────────────────────────────────────────
+function Field({ label, value, onChange, type = "text", className = "", readOnly = false }: any) {
+  return (
+    <div className={`relative ${className}`}>
+      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        readOnly={readOnly}
+        className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white"
+        style={{ borderColor: "#d1d5db" }}
+        data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      />
+    </div>
+  );
+}
+
+function TextArea({ label, value, onChange, className = "" }: any) {
+  return (
+    <div className={`relative ${className}`}>
+      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
+      <textarea
+        value={value}
+        onChange={onChange}
+        rows={3}
+        className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white resize-none"
+        data-testid={`textarea-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      />
+    </div>
+  );
+}
+
+function SelectField({ label, value, onChange, options, className = "" }: any) {
+  return (
+    <div className={`relative ${className}`}>
+      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
+      <select
+        value={value}
+        onChange={onChange}
+        className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white appearance-none"
+        data-testid={`select-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      >
+        <option value="">Select</option>
+        {options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+    </div>
+  );
+}
+
+// ─── Drop-select with + button ────────────────────────────────────────────────
+function DropPlus({ label, value, onChange, options, onPlus, className = "" }: any) {
+  return (
+    <div className={`flex items-start gap-2 ${className}`}>
+      <SelectField label={label} value={value} onChange={onChange} options={options} className="flex-1" />
+      <button onClick={onPlus} className="flex-shrink-0 w-7 h-7 rounded mt-3 flex items-center justify-center text-white text-base font-bold"
+        style={{ background: SC.primary }} data-testid={`button-add-${label.toLowerCase()}`}>
+        +
+      </button>
+    </div>
+  );
+}
+
+const GST_TYPES = [
+  { value: "registered_regular", label: "Registered Regular" },
+  { value: "registered_composition", label: "Registered Composition" },
+  { value: "unregistered", label: "Unregistered" },
+  { value: "consumer", label: "Consumer" },
+  { value: "overseas", label: "Overseas" },
+];
+
+// ─── Supplier Form (3 tabs) ───────────────────────────────────────────────────
+function SupplierForm({ initial, cities, states, onClose }: any) {
+  const [form, setForm] = useState<any>({ ...EMPTY_FORM, ...initial });
+  const [tab, setTab] = useState<"address" | "account" | "other">("address");
   const qc = useQueryClient();
+
+  const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
       const url = initial?.id ? `/api/suppliers/${initial.id}` : "/api/suppliers";
-      const res = await fetch(url, { method: initial?.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" });
-      if (!res.ok) throw new Error((await res.json()).message);
+      const method = initial?.id ? "PATCH" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" });
+      if (!res.ok) throw new Error((await res.json()).message || "Save failed");
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/suppliers"] }); onClose(); }
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/suppliers"] }); onClose(); },
   });
 
+  const TABS = [
+    { key: "address", label: "Address" },
+    { key: "account", label: "Account Info" },
+    { key: "other",   label: "Other Info" },
+  ] as const;
+
+  const cityOptions = (cities || []).map((c: any) => ({ value: c.name, label: c.name }));
+  const stateOptions = (states || []).map((s: any) => ({ value: s.name, label: s.name }));
+
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg" style={{ boxShadow: "2px 2px 4px 2px rgba(0,0,0,0.3)" }}>
-        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#b8d2da" }}>
-          <h2 className="text-lg font-bold" style={{ color: SC.primary }}>{initial?.id ? "Edit" : "New"} Supplier</h2>
-          <button onClick={onClose} className="p-2 rounded hover:bg-gray-100"><X size={18} /></button>
-        </div>
-        <div className="p-6 grid grid-cols-2 gap-4">
-          {[["Supplier Name *", "name", "col-span-2"], ["Contact Person", "contactPerson", "col-span-1"], ["Phone", "phone", "col-span-1"], ["Email", "email", "col-span-2"], ["GSTIN", "gstin", "col-span-1"], ["", "", ""], ["Address", "address", "col-span-2"]].filter(([, k]) => k).map(([label, key, span = "col-span-1"]) => (
-            <div key={key} className={span}>
-              <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>{label}</label>
-              {key === "address" ?
-                <textarea value={form[key] || ""} onChange={e => setForm((f: any) => ({ ...f, [key]: e.target.value }))}
-                  className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} rows={2} data-testid={`input-${key}`} /> :
-                <input value={form[key] || ""} onChange={e => setForm((f: any) => ({ ...f, [key]: e.target.value }))}
-                  className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid={`input-${key}`} />}
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-          <button onClick={onClose} className="px-5 py-2 rounded border text-sm" style={{ borderColor: "#00000030" }}>Cancel</button>
-          <button onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending}
-            className="px-5 py-2 rounded text-white text-sm font-medium flex items-center gap-2" style={{ background: SC.orange }} data-testid="button-save">
-            {saveMut.isPending && <Loader2 size={14} className="animate-spin" />} Save
+    <div className="bg-white rounded-xl" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
+      {/* Header row */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <h2 className="text-lg font-bold text-gray-800">Supplier</h2>
+        <div className="flex items-center gap-2">
+          <button onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm font-medium text-gray-600 hover:bg-gray-50"
+            style={{ borderColor: SC.primary, color: SC.primary }} data-testid="button-list-view">
+            <List size={14} /> List
           </button>
+          <button className="p-1.5 rounded border hover:bg-gray-50" style={{ borderColor: "#d1d5db" }} data-testid="button-info">
+            <Info size={16} className="text-gray-500" />
+          </button>
+        </div>
+      </div>
+
+      <div className="px-5 py-4">
+        {/* Company Name + Short Name */}
+        <div className="flex gap-4 mb-5">
+          <Field label="Company Name" value={form.name} onChange={f("name")} className="flex-1" />
+          <Field label="Short Name" value={form.shortName} onChange={f("shortName")} className="w-56" />
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200 mb-4">
+          <div className="flex">
+            {TABS.map(t => (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === t.key ? "border-blue-500 text-white" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+                style={tab === t.key ? { borderColor: SC.primary, background: SC.primary, borderRadius: "4px 4px 0 0" } : {}}
+                data-testid={`tab-${t.key}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── ADDRESS TAB ── */}
+        {tab === "address" && (
+          <div className="flex gap-4">
+            {/* Company Address panel */}
+            <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
+              <div className="font-semibold text-gray-700 mb-4">Company Address</div>
+              <div className="space-y-4">
+                <Field label="Address 1" value={form.address1} onChange={f("address1")} />
+                <Field label="Address 2" value={form.address2} onChange={f("address2")} />
+                <div className="flex gap-3">
+                  <DropPlus label="City" value={form.city} onChange={f("city")} options={cityOptions} onPlus={() => {}} className="flex-1" />
+                  <DropPlus label="State" value={form.state} onChange={f("state")} options={stateOptions} onPlus={() => {}} className="flex-1" />
+                </div>
+                <Field label="GST State Code" value={form.gstStateCode} onChange={f("gstStateCode")} className="w-40" />
+              </div>
+            </div>
+            {/* Contact Details panel */}
+            <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
+              <div className="font-semibold text-gray-700 mb-4">Contact Details</div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Name"      value={form.contactName} onChange={f("contactName")} />
+                <Field label="Role"      value={form.contactRole} onChange={f("contactRole")} />
+                <Field label="Email"     value={form.email}       onChange={f("email")} />
+                <Field label="Telephone" value={form.telephone}   onChange={f("telephone")} />
+                <Field label="Website URL" value={form.websiteUrl} onChange={f("websiteUrl")} className="col-span-2" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── ACCOUNT INFO TAB ── */}
+        {tab === "account" && (
+          <div className="flex gap-4">
+            {/* Credits panel */}
+            <div className="w-56 flex-shrink-0 rounded-lg p-4" style={{ background: SC.bg }}>
+              <div className="font-semibold text-gray-700 mb-4">Credits</div>
+              <div className="space-y-4">
+                <Field label="Credit limit" value={form.creditLimit} onChange={f("creditLimit")} type="number" />
+                <Field label="Credit Days"  value={form.creditDays}  onChange={f("creditDays")}  type="number" />
+              </div>
+            </div>
+            {/* Bank Details panel */}
+            <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
+              <div className="font-semibold text-gray-700 mb-4">Bank Details</div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Account No"          value={form.accountNo}          onChange={f("accountNo")} />
+                <Field label="Account Holder Name" value={form.accountHolderName} onChange={f("accountHolderName")} />
+                <Field label="Account Type"        value={form.accountType}        onChange={f("accountType")} />
+                <Field label="Bank Name"           value={form.bankName}           onChange={f("bankName")} />
+                <Field label="Branch Name"         value={form.branchName}         onChange={f("branchName")} />
+                <Field label="IFSC Code"           value={form.ifscCode}           onChange={f("ifscCode")} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── OTHER INFO TAB ── */}
+        {tab === "other" && (
+          <div className="flex gap-4">
+            {/* Tax Type panel */}
+            <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
+              <div className="font-semibold text-gray-700 mb-4">Tax Type</div>
+              <div className="space-y-4">
+                <SelectField label="GST Registered Type" value={form.gstRegisteredType} onChange={f("gstRegisteredType")} options={GST_TYPES} />
+                <Field label="GSTIN" value={form.gstin} onChange={f("gstin")} />
+                <div className="flex gap-3">
+                  <Field label="GSTIN Date" value={form.gstinDate} onChange={f("gstinDate")} type="date" className="flex-1" />
+                  <Field label="State"      value={form.gstState}  onChange={f("gstState")} className="flex-1" />
+                </div>
+              </div>
+            </div>
+            {/* Delivery panel */}
+            <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
+              <div className="font-semibold text-gray-700 mb-4">Delivery</div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Category"        value={form.category}       onChange={f("category")} />
+                <div className="row-span-3 relative">
+                  <label className="absolute -top-2 left-3 bg-transparent px-1 text-xs text-gray-500 z-10 leading-none">Delivery Address</label>
+                  <textarea value={form.deliveryAddress} onChange={f("deliveryAddress")} rows={6}
+                    className="w-full h-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none bg-white resize-none"
+                    style={{ minHeight: "130px" }} data-testid="textarea-delivery-address" />
+                </div>
+                <Field label="Term of Delivery" value={form.termOfDelivery} onChange={f("termOfDelivery")} />
+                <Field label="Transport"        value={form.transport}      onChange={f("transport")} />
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={form.sameAsCompany} onChange={f("sameAsCompany")}
+                    className="w-4 h-4 rounded" data-testid="checkbox-same-as-company" />
+                  Same as Company
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        <div className="mt-4">
+          <TextArea label="Notes" value={form.notes} onChange={f("notes")} />
+        </div>
+
+        {/* Cancel / Save */}
+        <div className="flex justify-end gap-3 mt-4">
+          <button onClick={onClose}
+            className="px-8 py-2 rounded border text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">
+            Cancel
+          </button>
+          <button
+            onClick={() => saveMut.mutate(form)}
+            disabled={saveMut.isPending || !form.name.trim()}
+            className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="button-save">
+            {saveMut.isPending ? "Saving…" : "Save"}
+          </button>
+        </div>
+        {saveMut.isError && <p className="text-red-500 text-xs mt-2 text-right">{(saveMut.error as Error).message}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── List View ────────────────────────────────────────────────────────────────
+function SupplierList({ suppliers, onEdit, onDelete, onNew }: any) {
+  const [search, setSearch] = useState("");
+  const filtered = (suppliers || []).filter((s: Supplier) =>
+    s.name.toLowerCase().includes(search.toLowerCase()) ||
+    (s.gstin || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <h2 className="text-lg font-bold text-gray-800">Suppliers</h2>
+        <button onClick={onNew}
+          className="flex items-center gap-2 px-4 py-2 rounded text-sm font-semibold text-white"
+          style={{ background: SC.orange }} data-testid="button-new-supplier">
+          <Plus size={14} /> New Supplier
+        </button>
+      </div>
+      {/* Search */}
+      <div className="px-5 py-3 border-b border-gray-100">
+        <div className="relative w-72">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search suppliers…"
+            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded text-sm focus:outline-none focus:border-blue-400"
+            data-testid="input-search-suppliers" />
+        </div>
+      </div>
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: SC.tonal }}>
+              {["S.No", "Company Name", "Short Name", "City", "State", "GSTIN", "Phone", "Email", "Actions"].map(h =>
+                <th key={h} className="text-left px-4 py-2.5 font-semibold text-gray-600 whitespace-nowrap">{h}</th>
+              )}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {filtered.length === 0
+              ? <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No suppliers found</td></tr>
+              : filtered.map((s: Supplier, i: number) => (
+                <tr key={s.id} className="hover:bg-gray-50" data-testid={`row-supplier-${s.id}`}>
+                  <td className="px-4 py-2.5 text-gray-500">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-medium" style={{ color: SC.primary }}>{s.name}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{s.shortName || "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{s.city || "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{s.state || "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{s.gstin || "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{s.telephone || s.phone || "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{s.email || "—"}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex gap-2">
+                      <button onClick={() => onEdit(s)} className="p-1.5 rounded hover:bg-blue-50"
+                        style={{ color: SC.primary }} data-testid={`button-edit-${s.id}`}>
+                        <Edit size={14} />
+                      </button>
+                      <button onClick={() => onDelete(s.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"
+                        data-testid={`button-delete-${s.id}`}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Delete confirm modal ────────────────────────────────────────────────────
+function DeleteModal({ onConfirm, onCancel }: any) {
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+      <div className="bg-white rounded-xl p-6 w-80 text-center" style={{ boxShadow: "2px 2px 8px rgba(0,0,0,0.3)" }}>
+        <div className="text-gray-800 font-semibold mb-2">Delete Supplier?</div>
+        <div className="text-sm text-gray-500 mb-5">This action cannot be undone.</div>
+        <div className="flex gap-3 justify-center">
+          <button onClick={onCancel} className="px-6 py-2 rounded border text-sm font-medium text-gray-600 hover:bg-gray-50"
+            data-testid="button-cancel-delete">Cancel</button>
+          <button onClick={onConfirm} className="px-6 py-2 rounded text-sm font-semibold text-white"
+            style={{ background: SC.orange }} data-testid="button-confirm-delete">Delete</button>
         </div>
       </div>
     </div>
   );
 }
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Suppliers() {
-  const [search, setSearch] = useState(""); const [showForm, setShowForm] = useState(false); const [editing, setEditing] = useState<any>(null);
+  const [view, setView] = useState<"list" | "form">("list");
+  const [editing, setEditing] = useState<Supplier | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const qc = useQueryClient();
-  const { data: suppliers = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
-  const del = useMutation({ mutationFn: (id: string) => fetch(`/api/suppliers/${id}`, { method: "DELETE", credentials: "include" }).then(r => r.json()), onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/suppliers"] }) });
-  const filtered = suppliers.filter((s: any) => s.name?.toLowerCase().includes(search.toLowerCase()) || s.phone?.includes(search) || s.email?.toLowerCase().includes(search.toLowerCase()));
+
+  const { data: suppliers = [], isLoading } = useQuery<Supplier[]>({ queryKey: ["/api/suppliers"] });
+  const { data: cities  = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
+  const { data: states  = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/suppliers/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error("Delete failed");
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/suppliers"] }); setDeleteId(null); },
+  });
+
+  const openNew  = () => { setEditing(null); setView("form"); };
+  const openEdit = (s: Supplier) => { setEditing(s); setView("form"); };
+  const closeForm = () => { setEditing(null); setView("list"); };
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-40">
+      <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: SC.primary, borderTopColor: "transparent" }} />
+    </div>
+  );
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-bold text-gray-800">Suppliers</h1><p className="text-sm text-gray-500 mt-0.5">Manage your supplier directory</p></div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded text-white text-sm font-medium" style={{ background: SC.orange }} data-testid="button-new-supplier">
-          <Plus size={16} /> New Supplier
-        </button>
-      </div>
-      <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 2px 2px rgba(0,0,0,0.1)" }}>
-        <div className="px-5 py-3 border-b border-gray-100">
-          <div className="relative max-w-xs">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search suppliers..."
-              className="w-full pl-9 pr-3 py-2 border rounded text-sm focus:outline-none" style={{ borderColor: "#00000030" }} data-testid="input-search" />
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr style={{ background: "#d2f1fa" }}>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Name</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Contact</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Phone</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Email</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">GSTIN</th>
-              <th className="px-5 py-3"></th>
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {isLoading ? [...Array(3)].map((_, i) => <tr key={i}><td colSpan={6} className="px-5 py-4"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td></tr>) :
-                filtered.length ? filtered.map((s: any) => (
-                  <tr key={s.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3 font-medium text-gray-800">{s.name}</td>
-                    <td className="px-5 py-3 text-gray-500">{s.contactPerson || "—"}</td>
-                    <td className="px-5 py-3 text-gray-600">{s.phone || "—"}</td>
-                    <td className="px-5 py-3 text-gray-600">{s.email || "—"}</td>
-                    <td className="px-5 py-3 font-mono text-xs text-gray-500">{s.gstin || "—"}</td>
-                    <td className="px-5 py-3"><div className="flex gap-2 justify-end">
-                      <button onClick={() => { setEditing(s); setShowForm(true); }} className="p-1.5 rounded hover:bg-blue-50 text-blue-500" data-testid={`button-edit-${s.id}`}><Edit size={15} /></button>
-                      <button onClick={() => { if (confirm("Delete supplier?")) del.mutate(s.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-400" data-testid={`button-delete-${s.id}`}><Trash2 size={15} /></button>
-                    </div></td>
-                  </tr>
-                )) : <tr><td colSpan={6} className="px-5 py-12 text-center text-gray-400">No suppliers found</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      {showForm && <SupplierForm initial={editing} onClose={() => setShowForm(false)} />}
-    </div>
+    <>
+      {deleteId && <DeleteModal onConfirm={() => deleteMut.mutate(deleteId)} onCancel={() => setDeleteId(null)} />}
+
+      {view === "list"
+        ? <SupplierList suppliers={suppliers} onNew={openNew} onEdit={openEdit} onDelete={setDeleteId} />
+        : <SupplierForm initial={editing} cities={cities} states={states} onClose={closeForm} />
+      }
+    </>
   );
 }
