@@ -316,8 +316,7 @@ export function Cities() {
               <th className="text-left px-5 py-2.5 font-semibold text-gray-700 w-20">S.no</th>
               <th className="text-left px-5 py-2.5 font-semibold text-gray-700">City</th>
               <th className="text-left px-5 py-2.5 font-semibold text-gray-700">State</th>
-              <th className="text-left px-5 py-2.5 font-semibold text-gray-700">Country</th>
-              <th className="px-4 py-2.5 w-20"></th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700 w-20">State</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -325,9 +324,9 @@ export function Cities() {
               <EditRow fields={FIELDS} onSave={(v: any) => saveMut.mutate({ ...v, isActive: true })} onCancel={() => setAddRow(false)} />
             )}
             {isLoading ? (
-              <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+              <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-400 text-sm">No cities found</td></tr>
+              <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400 text-sm">No cities found</td></tr>
             ) : filtered.map((r: any, i: number) => (
               editId === r.id ? (
                 <EditRow key={r.id} fields={FIELDS} initial={r}
@@ -337,9 +336,8 @@ export function Cities() {
                   <td className="px-5 py-3 text-gray-600">{String(i + 1).padStart(2, "0")}</td>
                   <td className="px-5 py-3 font-medium text-gray-800">{r.name}</td>
                   <td className="px-5 py-3 text-gray-600">{getStateName(r.stateId)}</td>
-                  <td className="px-5 py-3 text-gray-600">{getCountryName(r.countryId)}</td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-1 justify-end">
+                    <div className="flex gap-1">
                       <button onClick={() => { setEditId(r.id); setAddRow(false); }}
                         className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
                         data-testid={`button-edit-${r.id}`}>
