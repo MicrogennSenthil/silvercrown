@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   pgTable, text, varchar, integer, decimal, boolean,
-  timestamp, pgEnum
+  timestamp, pgEnum, json
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -623,6 +623,19 @@ export const cities = pgTable("cities", {
 export const insertCitySchema = createInsertSchema(cities).omit({ id: true, createdAt: true });
 export type InsertCity = z.infer<typeof insertCitySchema>;
 export type City = typeof cities.$inferSelect;
+
+// Approval Authority
+export const approvalAuthority = pgTable("approval_authority", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  transactionType: text("transaction_type").notNull().default(""),
+  typeCode: text("type_code").notNull().default(""),
+  approvalLevel: text("approval_level").notNull().default(""),
+  approvers: json("approvers").$type<{ username: string; department: string }[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertApprovalAuthoritySchema = createInsertSchema(approvalAuthority).omit({ id: true, createdAt: true });
+export type InsertApprovalAuthority = z.infer<typeof insertApprovalAuthoritySchema>;
+export type ApprovalAuthority = typeof approvalAuthority.$inferSelect;
 
 // Tally Sync Logs
 export const tallySyncLogs = pgTable("tally_sync_logs", {

@@ -508,5 +508,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/departments/:id", requireAuth, async (req, res) => { res.json(await storage.updateDepartment(req.params.id, req.body)); });
   app.delete("/api/departments/:id", requireAuth, async (req, res) => { await storage.deleteDepartment(req.params.id); res.json({ ok: true }); });
 
+  // Approval Authority
+  app.get("/api/approval-authority", requireAuth, async (req, res) => { res.json(await storage.listApprovalAuthority()); });
+  app.post("/api/approval-authority", requireAuth, async (req, res) => {
+    try { res.json(await storage.createApprovalAuthority(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/approval-authority/:id", requireAuth, async (req, res) => { res.json(await storage.updateApprovalAuthority(req.params.id, req.body)); });
+  app.delete("/api/approval-authority/:id", requireAuth, async (req, res) => { await storage.deleteApprovalAuthority(req.params.id); res.json({ ok: true }); });
+
   return httpServer;
 }

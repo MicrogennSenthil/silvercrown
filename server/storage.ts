@@ -11,7 +11,7 @@ import {
   categories, subCategories, products, machineMaster,
   storeItemGroups, purchaseStoreItems, purchaseApprovalLevels,
   voucherTypes, payModeTypes, ledgerCategories,
-  termTypes, terms, departments,
+  termTypes, terms, departments, approvalAuthority,
   type User, type InsertUser,
   type Supplier, type InsertSupplier,
   type Customer, type InsertCustomer,
@@ -48,6 +48,7 @@ import {
   type TermType, type InsertTermType,
   type Term, type InsertTerm,
   type Department, type InsertDepartment,
+  type ApprovalAuthority, type InsertApprovalAuthority,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -253,6 +254,12 @@ export interface IStorage {
   createDepartment(d: InsertDepartment): Promise<Department>;
   updateDepartment(id: string, d: Partial<InsertDepartment>): Promise<Department>;
   deleteDepartment(id: string): Promise<void>;
+
+  // Approval Authority
+  listApprovalAuthority(): Promise<ApprovalAuthority[]>;
+  createApprovalAuthority(a: InsertApprovalAuthority): Promise<ApprovalAuthority>;
+  updateApprovalAuthority(id: string, a: Partial<InsertApprovalAuthority>): Promise<ApprovalAuthority>;
+  deleteApprovalAuthority(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -515,6 +522,12 @@ export class DatabaseStorage implements IStorage {
     const lowStockItems = allItems.filter(i => Number(i.stockQuantity) <= Number(i.minStockLevel)).slice(0, 5);
     return { totalSales, totalPurchases, stockValue, pendingTasks: allTasks.length, salesThisMonth, purchasesThisMonth, recentPurchases: allPurchases, recentSales: allSales, lowStockItems };
   }
+
+  // Approval Authority
+  async listApprovalAuthority() { return db.select().from(approvalAuthority).orderBy(approvalAuthority.transactionType); }
+  async createApprovalAuthority(a: InsertApprovalAuthority) { const [r] = await db.insert(approvalAuthority).values({ ...a, id: randomUUID() }).returning(); return r; }
+  async updateApprovalAuthority(id: string, a: Partial<InsertApprovalAuthority>) { const [r] = await db.update(approvalAuthority).set(a).where(eq(approvalAuthority.id, id)).returning(); return r; }
+  async deleteApprovalAuthority(id: string) { await db.delete(approvalAuthority).where(eq(approvalAuthority.id, id)); }
 }
 
 export const storage = new DatabaseStorage();
