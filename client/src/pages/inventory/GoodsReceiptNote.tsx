@@ -502,7 +502,11 @@ export default function GoodsReceiptNote() {
                 {[{val:"PO",label:"Purchase Order"},{val:"Direct",label:"Direct Purchase"}].map(pt => (
                   <label key={pt.val} className="flex items-center gap-1.5 text-sm cursor-pointer">
                     <input type="radio" checked={form.purchase_type===pt.val}
-                      onChange={() => setForm(f=>({...f,purchase_type:pt.val,po_id:"",po_no:""}))}
+                      onChange={() => {
+                        if (form.purchase_type !== pt.val) {
+                          setForm({ ...blankForm(), purchase_type: pt.val });
+                        }
+                      }}
                       className="accent-[#d74700]" data-testid={`radio-type-${pt.val}`}/>
                     <span className={`font-medium ${form.purchase_type===pt.val?"":"text-gray-500"}`}>{pt.label}</span>
                   </label>
