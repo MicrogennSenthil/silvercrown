@@ -1422,7 +1422,32 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
 
   // ─── Job Work Invoice ────────────────────────────────────────────────────────
 
-  // GET inward despatch items for invoice (Despatch Notes mode)
+  // GET despatch items for invoice by despatch ID (Despatch Notes panel)
+  app.get("/api/job-work-despatch/:id/items-for-invoice", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT di.id, di.despatch_id, di.inward_id, di.inward_item_id, di.item_id,
+               di.item_code, di.item_name, di.unit, di.process, di.hsn,
+               di.qty_despatched, di.rate,
+               (di.qty_despatched * di.rate) AS amount,
+               d.voucher_no AS despatch_voucher_no,
+               iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no AS inward_voucher_no,
+               COALESCE(prod.cgst_rate,0) AS cgst_rate,
+               COALESCE(prod.sgst_rate,0) AS sgst_rate,
+               COALESCE(prod.igst_rate,0) AS igst_rate
+        FROM job_work_despatch_items di
+        JOIN job_work_despatch d ON d.id = di.despatch_id
+        JOIN job_work_inward iw ON iw.id = di.inward_id
+        LEFT JOIN products prod ON prod.id = di.item_id
+        WHERE di.despatch_id = $1
+        ORDER BY di.seq_no
+      `, [req.params.id]);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET inward despatch items for invoice (Despatch Notes mode — legacy by inward id)
   app.get("/api/job-work-inward/:id/despatch-items-for-invoice", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");

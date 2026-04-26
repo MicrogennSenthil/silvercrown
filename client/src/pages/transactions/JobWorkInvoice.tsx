@@ -29,7 +29,8 @@ function parseVehicle(s: string) {
 function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editId?: string | null }) {
   const qc = useQueryClient();
 
-  const { data: inwardList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
+  const { data: inwardList = [] }   = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
+  const { data: despatchList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-despatch"] });
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
@@ -56,9 +57,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [partyDropOpen, setPartyDropOpen] = useState(false);
   const partyRef = useRef<HTMLDivElement>(null);
 
-  // Inward panel
-  const [checkedInwardIds, setCheckedInwardIds] = useState<Set<string>>(new Set());
-  const [loadingInwardId,  setLoadingInwardId]  = useState<string | null>(null);
+  // Panel selection — despatch IDs (despatch_notes mode) or inward IDs (direct_invoice mode)
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [loadingId,  setLoadingId]  = useState<string | null>(null);
 
   // Items grid (Invoice tab)
   const [items,        setItems]        = useState<any[]>([]);
@@ -98,8 +99,12 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     !partySearch || c.name?.toLowerCase().includes(partySearch.toLowerCase())
   );
 
-  // Inwards for selected party
-  const partyInwards = inwardList.filter((r: any) => r.party_id === partyId);
+  // Despatch Notes mode: despatches for selected party (inward→despatch→invoice)
+  const partyDespatches = (despatchList as any[]).filter((d: any) => d.party_id === partyId);
+  // Direct Invoice mode: inwards for party with NO despatch done (despatch_status = 'Pending')
+  const partyDirectInwards = (inwardList as any[]).filter((r: any) =>
+    r.party_id === partyId && (!r.despatch_status || r.despatch_status === "Pending")
+  );
 
   // Filtered items in grid
   const filteredItems = gridSearch.trim()
@@ -132,56 +137,65 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const totalIgst    = items.reduce((s, it) => s + parseFloat(it.igst_amt || 0), 0);
   const grandTotal   = totalTaxable + (isInterState ? totalIgst : totalCgst + totalSgst);
 
-  // ── Toggle inward ─────────────────────────────────────────────────────────────
-  async function toggleInward(inward: any, checked: boolean) {
-    const newSet = new Set(checkedInwardIds);
+  // ── Toggle despatch (Despatch Notes mode) or inward (Direct Invoice mode) ────
+  async function toggleRecord(record: any, checked: boolean) {
+    const newSet = new Set(checkedIds);
+    const isDespatchMode = invoiceType === "despatch_notes";
+
     if (checked) {
-      newSet.add(inward.id);
-      setCheckedInwardIds(newSet);
-      setLoadingInwardId(inward.id);
+      newSet.add(record.id);
+      setCheckedIds(newSet);
+      setLoadingId(record.id);
       try {
-        const endpoint = invoiceType === "despatch_notes"
-          ? `/api/job-work-inward/${inward.id}/despatch-items-for-invoice`
-          : `/api/job-work-inward/${inward.id}/direct-items-for-invoice`;
+        const endpoint = isDespatchMode
+          ? `/api/job-work-despatch/${record.id}/items-for-invoice`
+          : `/api/job-work-inward/${record.id}/direct-items-for-invoice`;
         const res = await fetch(endpoint, { credentials: "include" });
         const rows: any[] = await res.json();
         const newItems = rows.map(r => {
-          const qty    = parseFloat(r.qty_despatched || 0);
-          const rate   = parseFloat(r.rate || 0);
+          const qty     = parseFloat(r.qty_despatched || 0);
+          const rate    = parseFloat(r.rate || 0);
           const taxable = qty * rate;
-          const cgstR  = parseFloat(r.cgst_rate || 0);
-          const sgstR  = parseFloat(r.sgst_rate || 0);
-          const igstR  = parseFloat(r.igst_rate || 0);
+          const cgstR   = parseFloat(r.cgst_rate || 0);
+          const sgstR   = parseFloat(r.sgst_rate || 0);
+          const igstR   = parseFloat(r.igst_rate || 0);
           return {
-            despatch_id:        r.despatch_id || null,
-            inward_id:          inward.id,
-            inward_item_id:     r.inward_item_id || r.id || null,
-            item_id:            r.item_id || null,
-            item_code:          r.item_code || "",
-            item_name:          r.item_name || "",
-            unit:               r.unit || "",
-            process:            r.process || "",
-            hsn:                r.hsn || "",
-            qty_despatched:     qty,
-            rate:               rate,
-            amount:             taxable,
-            po_no:              r.party_po_no || "",
-            party_dc:           r.party_dc_no || "",
-            work_order_no:      r.work_order_no || "",
-            despatch_voucher_no:r.despatch_voucher_no || "",
-            inward_voucher_no:  r.inward_voucher_no || "",
-            no_of_cover:        0,
-            packages:           0,
-            cgst_rate:          cgstR,
-            sgst_rate:          sgstR,
-            igst_rate:          igstR,
-            cgst_amt:           taxable * cgstR / 100,
-            sgst_amt:           taxable * sgstR / 100,
-            igst_amt:           taxable * igstR / 100,
+            despatch_id:         isDespatchMode ? record.id : null,
+            inward_id:           r.inward_id || null,
+            inward_item_id:      r.inward_item_id || r.id || null,
+            item_id:             r.item_id || null,
+            item_code:           r.item_code || "",
+            item_name:           r.item_name || "",
+            unit:                r.unit || "",
+            process:             r.process || "",
+            hsn:                 r.hsn || "",
+            qty_despatched:      qty,
+            rate,
+            amount:              taxable,
+            po_no:               r.party_po_no || "",
+            party_dc:            r.party_dc_no || "",
+            work_order_no:       r.work_order_no || "",
+            despatch_voucher_no: r.despatch_voucher_no || "",
+            inward_voucher_no:   r.inward_voucher_no || "",
+            no_of_cover:         0,
+            packages:            0,
+            cgst_rate:           cgstR,
+            sgst_rate:           sgstR,
+            igst_rate:           igstR,
+            cgst_amt:            isInterState ? 0 : taxable * cgstR / 100,
+            sgst_amt:            isInterState ? 0 : taxable * sgstR / 100,
+            igst_amt:            isInterState ? taxable * igstR / 100 : 0,
           };
         });
-        setItems(prev => [...prev.filter(it => it.inward_id !== inward.id), ...newItems]);
-        const veh = (inward.vehicle_no || "").trim();
+        // Remove previous items for this record then add new ones
+        setItems(prev => [
+          ...prev.filter(it => isDespatchMode
+            ? it.despatch_id !== record.id
+            : it.inward_id !== record.id),
+          ...newItems,
+        ]);
+        // Auto-fill vehicle from despatch record
+        const veh = (record.vehicle_no || "").trim();
         if (veh) {
           const parts = parseVehicle(veh);
           setVehP1(p => p || parts.p1);
@@ -190,11 +204,13 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           setVehP4(p => p || parts.p4);
         }
       } catch {}
-      setLoadingInwardId(null);
+      setLoadingId(null);
     } else {
-      newSet.delete(inward.id);
-      setCheckedInwardIds(newSet);
-      setItems(prev => prev.filter(it => it.inward_id !== inward.id));
+      newSet.delete(record.id);
+      setCheckedIds(newSet);
+      setItems(prev => prev.filter(it => isDespatchMode
+        ? it.despatch_id !== record.id
+        : it.inward_id !== record.id));
     }
   }
 
@@ -220,8 +236,13 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       setPartyId(pId);
       const cust = customerList.find((c: any) => c.id === pId);
       setPartySearch(cust?.name || data.party_name_db || data.party_name_manual || "");
-      const inwardIds = new Set<string>((data.items || []).map((it: any) => it.inward_id).filter(Boolean));
-      setCheckedInwardIds(inwardIds);
+      const invType = data.invoice_type || "despatch_notes";
+      const restoredIds = new Set<string>(
+        invType === "despatch_notes"
+          ? (data.items || []).map((it: any) => it.despatch_id).filter(Boolean)
+          : (data.items || []).map((it: any) => it.inward_id).filter(Boolean)
+      );
+      setCheckedIds(restoredIds);
       setItems((data.items || []).map((it: any) => ({ ...it })));
       const loadedCharges = (data.charges || []);
       setCharges(loadedCharges.length > 0
@@ -403,7 +424,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
               <div className="absolute left-0 top-full mt-1 bg-white border rounded-lg shadow-xl z-50 w-full max-h-48 overflow-y-auto">
                 {filteredParties.map((c: any) => (
                   <div key={c.id} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm"
-                    onClick={() => { setPartyId(c.id); setPartySearch(c.name); setPartyDropOpen(false); setItems([]); setCheckedInwardIds(new Set()); }}>
+                    onClick={() => { setPartyId(c.id); setPartySearch(c.name); setPartyDropOpen(false); setItems([]); setCheckedIds(new Set()); }}>
                     {c.name}
                   </div>
                 ))}
@@ -432,15 +453,15 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             })()}
           </div>
 
-          {/* Right: Inward selection panel */}
-          <div className="border rounded-lg overflow-hidden" style={{ minWidth: 420 }}>
-            {/* Invoice type radio */}
+          {/* Right: selection panel — Despatch Notes or Direct Invoice */}
+          <div className="border rounded-lg overflow-hidden" style={{ minWidth: 440 }}>
+            {/* Mode radio */}
             <div className="flex items-center gap-4 px-3 py-2 border-b bg-gray-50">
               {(["despatch_notes", "direct_invoice"] as const).map(t => (
                 <label key={t} className="flex items-center gap-1.5 cursor-pointer text-sm">
                   <input type="radio" name="invoiceType" value={t}
                     checked={invoiceType === t}
-                    onChange={() => { setInvoiceType(t); setItems([]); setCheckedInwardIds(new Set()); }}
+                    onChange={() => { setInvoiceType(t); setItems([]); setCheckedIds(new Set()); }}
                   />
                   <span style={invoiceType === t ? { color: SC.orange, fontWeight: 600 } : {}}>
                     {t === "despatch_notes" ? "Despatch Notes" : "Direct Invoice"}
@@ -448,71 +469,90 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                 </label>
               ))}
             </div>
-            {/* Inward table header — columns vary by mode */}
-            {invoiceType === "despatch_notes" ? (
-              <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
-                style={{ gridTemplateColumns: "1fr 120px 52px" }}>
-                <div className="px-2 py-1.5">Party Dc Date</div>
-                <div className="px-2 py-1.5">Party Dc no</div>
-                <div className="px-2 py-1.5 text-center">Select</div>
-              </div>
-            ) : (
-              <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
-                style={{ gridTemplateColumns: "90px 1fr 110px 52px" }}>
-                <div className="px-2 py-1.5">Inw no</div>
-                <div className="px-2 py-1.5">Party Dc Date</div>
-                <div className="px-2 py-1.5">Party Dc no</div>
-                <div className="px-2 py-1.5 text-center">Select</div>
-              </div>
-            )}
-            {/* Inward rows */}
-            <div className="max-h-24 overflow-y-auto">
-              {partyInwards.length === 0 && (
-                <div className="px-3 py-3 text-xs text-gray-400 text-center">
-                  {partyId ? "No inwards found" : "Select a party"}
+
+            {/* ── Despatch Notes panel ── */}
+            {invoiceType === "despatch_notes" && (
+              <>
+                <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
+                  style={{ gridTemplateColumns: "100px 90px 1fr 90px 44px" }}>
+                  <div className="px-2 py-1.5">Desp No</div>
+                  <div className="px-2 py-1.5">Date</div>
+                  <div className="px-2 py-1.5">Inward Ref</div>
+                  <div className="px-2 py-1.5">Vehicle</div>
+                  <div className="px-2 py-1.5 text-center">✓</div>
                 </div>
-              )}
-              {partyInwards.map((inw: any) => (
-                invoiceType === "despatch_notes" ? (
-                  <div key={inw.id}
-                    className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
-                    style={{ gridTemplateColumns: "1fr 120px 52px" }}>
-                    <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.party_dc_date)}</div>
-                    <div className="px-2 py-1.5 text-xs text-gray-600">{inw.party_dc_no}</div>
-                    <div className="px-2 py-1.5 flex justify-center">
-                      {loadingInwardId === inw.id
-                        ? <Loader2 size={14} className="animate-spin" style={{ color: SC.primary }} />
-                        : <input type="checkbox"
-                            data-testid={`chk-inward-${inw.id}`}
-                            className="accent-orange-600 cursor-pointer w-4 h-4"
-                            checked={checkedInwardIds.has(inw.id)}
-                            onChange={e => toggleInward(inw, e.target.checked)}
-                          />
-                      }
+                <div className="max-h-28 overflow-y-auto">
+                  {!partyId && (
+                    <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party</div>
+                  )}
+                  {partyId && partyDespatches.length === 0 && (
+                    <div className="px-3 py-3 text-xs text-gray-400 text-center">No despatch records found</div>
+                  )}
+                  {partyDespatches.map((d: any) => (
+                    <div key={d.id}
+                      className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
+                      style={{ gridTemplateColumns: "100px 90px 1fr 90px 44px" }}>
+                      <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{d.voucher_no}</div>
+                      <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(d.despatch_date)}</div>
+                      <div className="px-2 py-1.5 text-xs text-gray-500">{d.inward_voucher_no || "—"}</div>
+                      <div className="px-2 py-1.5 text-xs font-mono text-gray-600">{d.vehicle_no || "—"}</div>
+                      <div className="px-2 py-1.5 flex justify-center">
+                        {loadingId === d.id
+                          ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
+                          : <input type="checkbox"
+                              data-testid={`chk-despatch-${d.id}`}
+                              className="accent-orange-600 cursor-pointer w-4 h-4"
+                              checked={checkedIds.has(d.id)}
+                              onChange={e => toggleRecord(d, e.target.checked)}
+                            />
+                        }
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div key={inw.id}
-                    className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
-                    style={{ gridTemplateColumns: "90px 1fr 110px 52px" }}>
-                    <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{inw.voucher_no}</div>
-                    <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.party_dc_date)}</div>
-                    <div className="px-2 py-1.5 text-xs text-gray-600">{inw.party_dc_no}</div>
-                    <div className="px-2 py-1.5 flex justify-center">
-                      {loadingInwardId === inw.id
-                        ? <Loader2 size={14} className="animate-spin" style={{ color: SC.primary }} />
-                        : <input type="checkbox"
-                            data-testid={`chk-inward-${inw.id}`}
-                            className="accent-orange-600 cursor-pointer w-4 h-4"
-                            checked={checkedInwardIds.has(inw.id)}
-                            onChange={e => toggleInward(inw, e.target.checked)}
-                          />
-                      }
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* ── Direct Invoice panel ── */}
+            {invoiceType === "direct_invoice" && (
+              <>
+                <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
+                  style={{ gridTemplateColumns: "100px 90px 1fr 44px" }}>
+                  <div className="px-2 py-1.5">Inward No</div>
+                  <div className="px-2 py-1.5">Date</div>
+                  <div className="px-2 py-1.5">DC No</div>
+                  <div className="px-2 py-1.5 text-center">✓</div>
+                </div>
+                <div className="max-h-28 overflow-y-auto">
+                  {!partyId && (
+                    <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party</div>
+                  )}
+                  {partyId && partyDirectInwards.length === 0 && (
+                    <div className="px-3 py-3 text-xs text-gray-400 text-center">No pending inwards (not yet despatched)</div>
+                  )}
+                  {partyDirectInwards.map((inw: any) => (
+                    <div key={inw.id}
+                      className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
+                      style={{ gridTemplateColumns: "100px 90px 1fr 44px" }}>
+                      <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{inw.voucher_no}</div>
+                      <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.inward_date)}</div>
+                      <div className="px-2 py-1.5 text-xs text-gray-500">{inw.party_dc_no || "—"}</div>
+                      <div className="px-2 py-1.5 flex justify-center">
+                        {loadingId === inw.id
+                          ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
+                          : <input type="checkbox"
+                              data-testid={`chk-inward-${inw.id}`}
+                              className="accent-orange-600 cursor-pointer w-4 h-4"
+                              checked={checkedIds.has(inw.id)}
+                              onChange={e => toggleRecord(inw, e.target.checked)}
+                            />
+                        }
+                      </div>
                     </div>
-                  </div>
-                )
-              ))}
-            </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
