@@ -22,10 +22,9 @@ const NAV: any[] = [
         label: "Parties", icon: Handshake, subChildren: [
           { label: "Suppliers", href: "/masters/suppliers" },
           { label: "Customers", href: "/masters/customers" },
-          { label: "Employees", href: "/masters/employees" },
-          { label: "Countries", href: "/masters/countries" },
-          { label: "States", href: "/masters/states" },
-          { label: "Cities", href: "/masters/cities" },
+          { label: "City", href: "/masters/cities" },
+          { label: "State", href: "/masters/states" },
+          { label: "Country", href: "/masters/countries" },
         ]
       },
       {
