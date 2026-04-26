@@ -1266,14 +1266,18 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const rows = (await pool.query(`
         SELECT
           i.id AS inward_item_id,
-          i.item_id, i.item_code, i.item_name, i.unit, i.process, i.hsn, i.remark,
+          i.item_id, i.item_code, i.item_name, i.unit,
+          i.process, i.process_id, i.hsn, i.remark,
+          COALESCE(p.price, 0) AS process_price,
           i.qty AS qty_inward,
           COALESCE(SUM(di.qty_despatched),0) AS qty_prev_despatched,
           i.qty - COALESCE(SUM(di.qty_despatched),0) AS qty_balance
         FROM job_work_inward_items i
+        LEFT JOIN processes p ON p.id = i.process_id
         LEFT JOIN job_work_despatch_items di ON di.inward_item_id = i.id
         WHERE i.inward_id = $1
-        GROUP BY i.id, i.item_id, i.item_code, i.item_name, i.unit, i.process, i.hsn, i.remark, i.qty
+        GROUP BY i.id, i.item_id, i.item_code, i.item_name, i.unit,
+                 i.process, i.process_id, i.hsn, i.remark, p.price, i.qty
         ORDER BY i.seq_no
       `, [req.params.id])).rows;
       res.json(rows);

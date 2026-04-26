@@ -143,12 +143,22 @@ export default function JobWorkDespatch() {
             hsn:             r.hsn || "",
             qty:             r.qty_balance,
             unit:            r.unit || "",
-            rate:            "",
+            rate:            r.process_price != null ? String(r.process_price) : "",
             process:         r.process || "",
             qty_inward:      r.qty_inward,
             qty_prev_despatched: r.qty_prev_despatched,
           }));
         setItems(prev => [...prev.filter(it => it.inward_id !== inward.id), ...newItems]);
+
+        // Auto-fill vehicle no from inward if not already set
+        const inwardVeh = (inward.vehicle_no || "").trim();
+        if (inwardVeh) {
+          const [s, di, sr, n] = parseVehicleNo(inwardVeh);
+          setVehState(prev => prev || s);
+          setVehDist(prev => prev || di);
+          setVehSeries(prev => prev || sr);
+          setVehNum(prev => prev || n);
+        }
       } catch {}
       setLoadingInwardId(null);
     } else {
