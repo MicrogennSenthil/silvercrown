@@ -2005,6 +2005,143 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     finally { client.release(); }
   });
 
+  // ── Purchase Orders ─────────────────────────────────────────────────────────
+
+  app.get("/api/purchase-orders", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT po.*, c.name AS supplier_name_db
+        FROM purchase_orders po
+        LEFT JOIN customers c ON c.id = po.supplier_id
+        ORDER BY po.created_at DESC
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/purchase-orders/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hdr] = (await pool.query(`
+        SELECT po.*, c.name AS supplier_name_db
+        FROM purchase_orders po
+        LEFT JOIN customers c ON c.id = po.supplier_id
+        WHERE po.id=$1
+      `, [req.params.id])).rows;
+      if (!hdr) return res.status(404).json({ message: "Not found" });
+      const [items, terms, charges] = await Promise.all([
+        pool.query(`SELECT * FROM purchase_order_items WHERE po_id=$1 ORDER BY seq_no`, [req.params.id]),
+        pool.query(`SELECT * FROM purchase_order_terms WHERE po_id=$1 ORDER BY seq_no`, [req.params.id]),
+        pool.query(`SELECT * FROM purchase_order_charges WHERE po_id=$1 ORDER BY seq_no`, [req.params.id]),
+      ]);
+      res.json({ ...hdr, items: items.rows, terms: terms.rows, charges: charges.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/purchase-orders", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucher_no = await generateVoucherNo("purchase_order", client);
+      const hRes = await client.query(`
+        INSERT INTO purchase_orders
+          (voucher_no, po_date, supplier_id, supplier_name_manual, po_type,
+           schedule_date, priority, payment_mode, our_ref_no, your_ref_no,
+           delivery_location, remark, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
+      `, [voucher_no, b.po_date||new Date().toISOString().split("T")[0],
+          b.supplier_id||null, b.supplier_name_manual||"", b.po_type||"Purchase Order",
+          b.schedule_date||null, b.priority||"Medium", b.payment_mode||"Cash",
+          b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
+          b.remark||"", b.status||"Draft"]);
+      const hdr = hRes.rows[0];
+      for (let i=0; i<(b.items||[]).length; i++) {
+        const it = b.items[i];
+        await client.query(`
+          INSERT INTO purchase_order_items
+            (po_id,seq_no,item_id,item_code,item_name,qty,unit,rate,taxable_amt,
+             tax_code,cgst_pct,sgst_pct,igst_pct,cgst_amt,sgst_amt,igst_amt,total)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        `, [hdr.id,i+1,it.item_id||null,it.item_code||"",it.item_name||"",
+            +it.qty||0,it.unit||"",+it.rate||0,+it.taxable_amt||0,
+            it.tax_code||"",+it.cgst_pct||0,+it.sgst_pct||0,+it.igst_pct||0,
+            +it.cgst_amt||0,+it.sgst_amt||0,+it.igst_amt||0,+it.total||0]);
+      }
+      for (let i=0; i<(b.terms||[]).length; i++) {
+        const t = b.terms[i];
+        await client.query(`INSERT INTO purchase_order_terms (po_id,seq_no,term_type,terms) VALUES ($1,$2,$3,$4)`,
+          [hdr.id,i+1,t.term_type||"",t.terms||""]);
+      }
+      for (let i=0; i<(b.charges||[]).length; i++) {
+        const c = b.charges[i];
+        await client.query(`INSERT INTO purchase_order_charges (po_id,seq_no,charge_type,amount) VALUES ($1,$2,$3,$4)`,
+          [hdr.id,i+1,c.charge_type||"",+c.amount||0]);
+      }
+      await client.query("COMMIT");
+      res.json({ ...hdr, voucher_no });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.patch("/api/purchase-orders/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      const hRes = await client.query(`
+        UPDATE purchase_orders SET
+          po_date=$1, supplier_id=$2, supplier_name_manual=$3, po_type=$4,
+          schedule_date=$5, priority=$6, payment_mode=$7, our_ref_no=$8,
+          your_ref_no=$9, delivery_location=$10, remark=$11, status=$12
+        WHERE id=$13 RETURNING *
+      `, [b.po_date, b.supplier_id||null, b.supplier_name_manual||"", b.po_type||"Purchase Order",
+          b.schedule_date||null, b.priority||"Medium", b.payment_mode||"Cash",
+          b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
+          b.remark||"", b.status||"Draft", req.params.id]);
+      await client.query(`DELETE FROM purchase_order_items WHERE po_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM purchase_order_terms WHERE po_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM purchase_order_charges WHERE po_id=$1`, [req.params.id]);
+      for (let i=0; i<(b.items||[]).length; i++) {
+        const it = b.items[i];
+        await client.query(`
+          INSERT INTO purchase_order_items
+            (po_id,seq_no,item_id,item_code,item_name,qty,unit,rate,taxable_amt,
+             tax_code,cgst_pct,sgst_pct,igst_pct,cgst_amt,sgst_amt,igst_amt,total)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        `, [req.params.id,i+1,it.item_id||null,it.item_code||"",it.item_name||"",
+            +it.qty||0,it.unit||"",+it.rate||0,+it.taxable_amt||0,
+            it.tax_code||"",+it.cgst_pct||0,+it.sgst_pct||0,+it.igst_pct||0,
+            +it.cgst_amt||0,+it.sgst_amt||0,+it.igst_amt||0,+it.total||0]);
+      }
+      for (let i=0; i<(b.terms||[]).length; i++) {
+        const t = b.terms[i];
+        await client.query(`INSERT INTO purchase_order_terms (po_id,seq_no,term_type,terms) VALUES ($1,$2,$3,$4)`,
+          [req.params.id,i+1,t.term_type||"",t.terms||""]);
+      }
+      for (let i=0; i<(b.charges||[]).length; i++) {
+        const c = b.charges[i];
+        await client.query(`INSERT INTO purchase_order_charges (po_id,seq_no,charge_type,amount) VALUES ($1,$2,$3,$4)`,
+          [req.params.id,i+1,c.charge_type||"",+c.amount||0]);
+      }
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.delete("/api/purchase-orders/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM purchase_orders WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Gate Pass ───────────────────────────────────────────────────────────────
 
   // Returns which source IDs are already linked to a gate pass

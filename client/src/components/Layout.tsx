@@ -75,6 +75,7 @@ const NAV: any[] = [
   },
   {
     label: "Inventory", icon: Warehouse, children: [
+      { label: "Purchase Order", href: "/inventory/purchase-order" },
       { label: "Stock Items", href: "/inventory/items" },
       { label: "Stock Transfer", href: "/inventory/transfer" },
       { label: "Stock Adjustment", href: "/inventory/adjustment" },

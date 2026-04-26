@@ -33,6 +33,7 @@ import JobWorkInvoice from "@/pages/transactions/JobWorkInvoice";
 import ReturnableInward from "@/pages/transactions/ReturnableInward";
 import ReturnableOutward from "@/pages/transactions/ReturnableOutward";
 import GatePass from "@/pages/transactions/GatePass";
+import PurchaseOrder from "@/pages/inventory/PurchaseOrder";
 import FinancialYears from "@/pages/masters/FinancialYears";
 import VoucherSeries from "@/pages/masters/VoucherSeries";
 // User Management
@@ -63,6 +64,7 @@ function Router() {
       </Route>
       <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
       <Route path="/purchase/invoices"><ProtectedRoute component={PurchaseInvoices} /></Route>
+      <Route path="/inventory/purchase-order"><ProtectedRoute component={PurchaseOrder} /></Route>
       <Route path="/inventory/items"><ProtectedRoute component={Inventory} /></Route>
       <Route path="/inventory/categories"><ProtectedRoute component={Inventory} /></Route>
       <Route path="/sales/invoices"><ProtectedRoute component={Sales} /></Route>
