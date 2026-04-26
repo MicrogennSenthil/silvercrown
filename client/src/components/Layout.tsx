@@ -50,8 +50,6 @@ const NAV: any[] = [
           { label: "Ledger Categories", href: "/masters/ledger-categories" },
           { label: "Voucher Types", href: "/masters/voucher-types" },
           { label: "Pay Mode Types", href: "/masters/pay-mode-types" },
-          { label: "Term Types", href: "/masters/term-types" },
-          { label: "Terms", href: "/masters/terms" },
         ]
       },
     ]
