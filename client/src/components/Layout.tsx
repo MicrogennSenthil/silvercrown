@@ -51,6 +51,7 @@ const NAV: any[] = [
           { label: "Pay Mode Types", href: "/masters/pay-mode-types" },
           { label: "Ledger Categories", href: "/masters/ledger-categories" },
           { label: "General Ledger", href: "/masters/general-ledgers" },
+          { label: "Ledger", href: "/masters/ledger" },
         ]
       },
     ]

@@ -47,7 +47,9 @@ import {
   type PayModeType, type InsertPayModeType,
   type LedgerCategory, type InsertLedgerCategory,
   type GeneralLedger, type InsertGeneralLedger,
-  generalLedgers,
+  type SubLedger, type InsertSubLedger,
+  type SubLedgerBill, type InsertSubLedgerBill,
+  generalLedgers, subLedgers, subLedgerBills,
   type TermType, type InsertTermType,
   type Term, type InsertTerm,
   type Department, type InsertDepartment,
@@ -250,6 +252,14 @@ export interface IStorage {
   createGeneralLedger(g: InsertGeneralLedger): Promise<GeneralLedger>;
   updateGeneralLedger(id: string, g: Partial<InsertGeneralLedger>): Promise<GeneralLedger>;
   deleteGeneralLedger(id: string): Promise<void>;
+
+  listSubLedgers(): Promise<SubLedger[]>;
+  getSubLedger(id: string): Promise<SubLedger | undefined>;
+  createSubLedger(s: InsertSubLedger): Promise<SubLedger>;
+  updateSubLedger(id: string, s: Partial<InsertSubLedger>): Promise<SubLedger>;
+  deleteSubLedger(id: string): Promise<void>;
+  listSubLedgerBills(subLedgerId: string): Promise<SubLedgerBill[]>;
+  replaceSubLedgerBills(subLedgerId: string, bills: Omit<InsertSubLedgerBill, 'subLedgerId'>[]): Promise<SubLedgerBill[]>;
 
   // Term Types
   listTermTypes(): Promise<TermType[]>;
@@ -511,6 +521,18 @@ export class DatabaseStorage implements IStorage {
   async createGeneralLedger(g: InsertGeneralLedger) { const [r] = await db.insert(generalLedgers).values({ ...g, id: randomUUID() }).returning(); return r; }
   async updateGeneralLedger(id: string, g: Partial<InsertGeneralLedger>) { const [r] = await db.update(generalLedgers).set(g).where(eq(generalLedgers.id, id)).returning(); return r; }
   async deleteGeneralLedger(id: string) { await db.delete(generalLedgers).where(eq(generalLedgers.id, id)); }
+
+  async listSubLedgers() { return db.select().from(subLedgers).orderBy(subLedgers.name); }
+  async getSubLedger(id: string) { const [r] = await db.select().from(subLedgers).where(eq(subLedgers.id, id)); return r; }
+  async createSubLedger(s: InsertSubLedger) { const [r] = await db.insert(subLedgers).values({ ...s, id: randomUUID() }).returning(); return r; }
+  async updateSubLedger(id: string, s: Partial<InsertSubLedger>) { const [r] = await db.update(subLedgers).set(s).where(eq(subLedgers.id, id)).returning(); return r; }
+  async deleteSubLedger(id: string) { await db.delete(subLedgers).where(eq(subLedgers.id, id)); }
+  async listSubLedgerBills(subLedgerId: string) { return db.select().from(subLedgerBills).where(eq(subLedgerBills.subLedgerId, subLedgerId)).orderBy(subLedgerBills.createdAt); }
+  async replaceSubLedgerBills(subLedgerId: string, bills: Omit<InsertSubLedgerBill, 'subLedgerId'>[]) {
+    await db.delete(subLedgerBills).where(eq(subLedgerBills.subLedgerId, subLedgerId));
+    if (!bills.length) return [];
+    return db.insert(subLedgerBills).values(bills.map(b => ({ ...b, subLedgerId, id: randomUUID() }))).returning();
+  }
 
   // Term Types
   async listTermTypes() { return db.select().from(termTypes).orderBy(termTypes.name); }

@@ -24,6 +24,7 @@ import { Countries, States, Cities } from "@/pages/masters/Geography";
 import { SubCategories, Products } from "@/pages/masters/ProductMasters";
 import { MachineMaster, PurchaseStoreItems, PurchaseApprovals, Terms } from "@/pages/masters/OperationMasters";
 import ApprovalAuthority from "@/pages/masters/ApprovalAuthority";
+import SubLedgerMaster from "@/pages/masters/SubLedger";
 // User Management
 import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
@@ -88,6 +89,7 @@ function Router() {
       <Route path="/masters/approval-authority"><ProtectedRoute component={ApprovalAuthority} /></Route>
       <Route path="/masters/store-item-sub-groups"><ProtectedRoute component={StoreItemSubGroups} /></Route>
       <Route path="/masters/general-ledgers"><ProtectedRoute component={GeneralLedgers} /></Route>
+      <Route path="/masters/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>

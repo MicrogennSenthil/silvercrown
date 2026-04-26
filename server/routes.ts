@@ -482,6 +482,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/pay-mode-types/:id", requireAuth, async (req, res) => { res.json(await storage.updatePayModeType(req.params.id, req.body)); });
   app.delete("/api/pay-mode-types/:id", requireAuth, async (req, res) => { await storage.deletePayModeType(req.params.id); res.json({ ok: true }); });
 
+  // Sub Ledgers
+  app.get("/api/sub-ledgers", requireAuth, async (req, res) => { res.json(await storage.listSubLedgers()); });
+  app.get("/api/sub-ledgers/:id", requireAuth, async (req, res) => {
+    const s = await storage.getSubLedger(req.params.id);
+    if (!s) return res.status(404).json({ message: "Not found" });
+    const bills = await storage.listSubLedgerBills(s.id);
+    res.json({ ...s, bills });
+  });
+  app.post("/api/sub-ledgers", requireAuth, async (req, res) => {
+    try {
+      const { bills = [], ...data } = req.body;
+      const ledger = await storage.createSubLedger(data);
+      const savedBills = await storage.replaceSubLedgerBills(ledger.id, bills);
+      res.json({ ...ledger, bills: savedBills });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/sub-ledgers/:id", requireAuth, async (req, res) => {
+    try {
+      const { bills = [], ...data } = req.body;
+      const ledger = await storage.updateSubLedger(req.params.id, data);
+      const savedBills = await storage.replaceSubLedgerBills(req.params.id, bills);
+      res.json({ ...ledger, bills: savedBills });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.delete("/api/sub-ledgers/:id", requireAuth, async (req, res) => { await storage.deleteSubLedger(req.params.id); res.json({ ok: true }); });
+
   // General Ledgers
   app.get("/api/general-ledgers", requireAuth, async (req, res) => { res.json(await storage.listGeneralLedgers()); });
   app.post("/api/general-ledgers", requireAuth, async (req, res) => {

@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   pgTable, text, varchar, integer, decimal, boolean,
-  timestamp, pgEnum, json
+  timestamp, date, pgEnum, json
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -590,6 +590,44 @@ export const generalLedgers = pgTable("general_ledgers", {
 export const insertGeneralLedgerSchema = createInsertSchema(generalLedgers).omit({ id: true, createdAt: true });
 export type InsertGeneralLedger = z.infer<typeof insertGeneralLedgerSchema>;
 export type GeneralLedger = typeof generalLedgers.$inferSelect;
+
+// Sub Ledgers
+export const subLedgers = pgTable("sub_ledgers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  generalLedgerId: varchar("general_ledger_id").references(() => generalLedgers.id),
+  categoryId: varchar("category_id").references(() => ledgerCategories.id),
+  levelType: text("level_type").notNull().default("Same"),
+  paymentType: text("payment_type").notNull().default("OnAccount"),
+  openingBalanceEntry: boolean("opening_balance_entry").default(false),
+  openingBalance: decimal("opening_balance", { precision: 15, scale: 2 }).notNull().default("0"),
+  openingBalanceType: text("opening_balance_type").notNull().default("Credit"),
+  closingBalance: decimal("closing_balance", { precision: 15, scale: 2 }).notNull().default("0"),
+  closingBalanceType: text("closing_balance_type").notNull().default("Credit"),
+  notes: text("notes").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertSubLedgerSchema = createInsertSchema(subLedgers).omit({ id: true, createdAt: true });
+export type InsertSubLedger = z.infer<typeof insertSubLedgerSchema>;
+export type SubLedger = typeof subLedgers.$inferSelect;
+
+// Sub Ledger Bills (opening balance bill detail lines)
+export const subLedgerBills = pgTable("sub_ledger_bills", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  subLedgerId: varchar("sub_ledger_id").notNull().references(() => subLedgers.id),
+  refNo: text("ref_no").default(""),
+  refDate: date("ref_date"),
+  voucherNo: text("voucher_no").default(""),
+  voucherDate: date("voucher_date"),
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull().default("0"),
+  crDr: text("cr_dr").notNull().default("Cr"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertSubLedgerBillSchema = createInsertSchema(subLedgerBills).omit({ id: true, createdAt: true });
+export type InsertSubLedgerBill = z.infer<typeof insertSubLedgerBillSchema>;
+export type SubLedgerBill = typeof subLedgerBills.$inferSelect;
 
 // Term Types
 export const termTypes = pgTable("term_types", {
