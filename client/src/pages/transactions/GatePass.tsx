@@ -74,6 +74,7 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
 
   const { data: customers = [] }    = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: products = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: categories = [] }   = useQuery<any[]>({ queryKey: ["/api/categories"] });
   const { data: rInwards = [] }     = useQuery<any[]>({ queryKey: ["/api/returnable-inward"] });
   const { data: rOutwards = [] }    = useQuery<any[]>({ queryKey: ["/api/returnable-outward"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
@@ -266,7 +267,7 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   );
 
   // Item type options (for non-returnable)
-  const itemTypeOptions = ["Store item", "Component", "Assemblies", "Finished Product", "Raw Material"];
+  const itemTypeOptions = (categories as any[]).map((c: any) => c.name).sort();
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -502,9 +503,11 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                   </div>
                   {items.map((row, idx) => {
                     const searchVal = itemSearch[row._key] ?? row.item_name;
-                    const filteredProds = (products as any[]).filter((p: any) =>
-                      !searchVal || p.name?.toLowerCase().includes(searchVal.toLowerCase()) || p.code?.toLowerCase().includes(searchVal.toLowerCase())
-                    );
+                    const filteredProds = (products as any[]).filter((p: any) => {
+                      if (row.item_type && p.category_name !== row.item_type) return false;
+                      if (!searchVal) return true;
+                      return p.name?.toLowerCase().includes(searchVal.toLowerCase()) || p.code?.toLowerCase().includes(searchVal.toLowerCase());
+                    });
                     return (
                       <div key={row._key}
                         className="grid items-center border-b last:border-0 hover:bg-gray-50"
