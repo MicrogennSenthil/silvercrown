@@ -3,38 +3,61 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import {
   LayoutDashboard, ShoppingCart, Package, TrendingUp, BookOpen,
-  CheckSquare, RefreshCw, LogOut, Menu, X, ChevronDown, ChevronRight,
-  Bell, User, Settings, Users, Database
+  CheckSquare, RefreshCw, LogOut, Menu, Bell, User, Settings,
+  Users, Database, ChevronDown, ChevronRight, Cpu, Printer,
+  BarChart2, Handshake, IndianRupee, Warehouse, Wrench
 } from "lucide-react";
 
-const NAV = [
+// ─── Navigation Structure ─────────────────────────────────────────────────────
+// Each item can be:
+//   { label, icon, href }                        — leaf link
+//   { label, icon, children: [...] }             — 2-level group
+//   { label, icon, children: [{ label, icon, subChildren: [...] }] }  — 3-level group
+
+const NAV: any[] = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   {
     label: "Masters", icon: Database, children: [
-      { label: "Suppliers", href: "/masters/suppliers" },
-      { label: "Customers", href: "/masters/customers" },
-      { label: "Employees", href: "/masters/employees" },
-      { label: "Departments", href: "/masters/departments" },
-      { label: "Categories", href: "/masters/categories" },
-      { label: "Sub Categories", href: "/masters/sub-categories" },
-      { label: "Products", href: "/masters/products" },
+      {
+        label: "Parties", icon: Handshake, subChildren: [
+          { label: "Suppliers", href: "/masters/suppliers" },
+          { label: "Customers", href: "/masters/customers" },
+          { label: "Employees", href: "/masters/employees" },
+          { label: "Countries", href: "/masters/countries" },
+          { label: "States", href: "/masters/states" },
+          { label: "Cities", href: "/masters/cities" },
+        ]
+      },
+      {
+        label: "Items", icon: Package, subChildren: [
+          { label: "Categories", href: "/masters/categories" },
+          { label: "Sub Categories", href: "/masters/sub-categories" },
+          { label: "Products", href: "/masters/products" },
+          { label: "Store Item Groups", href: "/masters/store-item-groups" },
+          { label: "Purchase Store Items", href: "/masters/purchase-store-items" },
+          { label: "Units of Measure", href: "/masters/uom" },
+          { label: "Tax Rates", href: "/masters/tax-rates" },
+          { label: "Warehouses", href: "/masters/warehouses" },
+          { label: "Inventory Categories", href: "/masters/inventory-categories" },
+        ]
+      },
+      {
+        label: "Accounts", icon: IndianRupee, subChildren: [
+          { label: "Chart of Accounts", href: "/masters/accounts" },
+          { label: "Ledger Categories", href: "/masters/ledger-categories" },
+          { label: "Voucher Types", href: "/masters/voucher-types" },
+          { label: "Pay Mode Types", href: "/masters/pay-mode-types" },
+          { label: "Term Types", href: "/masters/term-types" },
+          { label: "Terms", href: "/masters/terms" },
+        ]
+      },
+    ]
+  },
+  {
+    label: "Engineering", icon: Cpu, children: [
       { label: "Machine Master", href: "/masters/machines" },
-      { label: "Store Item Groups", href: "/masters/store-item-groups" },
-      { label: "Purchase Store Items", href: "/masters/purchase-store-items" },
+      { label: "Departments", href: "/masters/departments" },
       { label: "Purchase Approval", href: "/masters/purchase-approvals" },
-      { label: "Voucher Types", href: "/masters/voucher-types" },
-      { label: "Pay Mode Types", href: "/masters/pay-mode-types" },
-      { label: "Ledger Categories", href: "/masters/ledger-categories" },
-      { label: "Term Types", href: "/masters/term-types" },
-      { label: "Terms", href: "/masters/terms" },
-      { label: "Inventory Categories", href: "/masters/inventory-categories" },
-      { label: "Chart of Accounts", href: "/masters/accounts" },
-      { label: "Warehouses", href: "/masters/warehouses" },
-      { label: "Units of Measure", href: "/masters/uom" },
-      { label: "Tax Rates", href: "/masters/tax-rates" },
-      { label: "Countries", href: "/masters/countries" },
-      { label: "States", href: "/masters/states" },
-      { label: "Cities", href: "/masters/cities" },
     ]
   },
   {
@@ -43,7 +66,7 @@ const NAV = [
     ]
   },
   {
-    label: "Inventory", icon: Package, children: [
+    label: "Inventory", icon: Warehouse, children: [
       { label: "Stock Items", href: "/inventory/items" },
     ]
   },
@@ -60,6 +83,8 @@ const NAV = [
   },
   { label: "Tasks & Reminders", icon: CheckSquare, href: "/tasks" },
   { label: "Tally Integration", icon: RefreshCw, href: "/tally" },
+  { label: "Report", icon: BarChart2, href: "/reports" },
+  { label: "Reprint", icon: Printer, href: "/reprint" },
   {
     label: "User Management", icon: Users, children: [
       { label: "Users", href: "/usermgmt/users" },
@@ -69,69 +94,125 @@ const NAV = [
   },
 ];
 
-function NavItem({ item, collapsed, onClose }: { item: any; collapsed: boolean; onClose?: () => void }) {
+// ─── Sub-item leaf link (level 3) ─────────────────────────────────────────────
+function SubLink({ item, onClose }: { item: any; onClose?: () => void }) {
   const [location] = useLocation();
-  const isAnyChildActive = item.children?.some((c: any) => location.startsWith(c.href));
-  const [open, setOpen] = useState(isAnyChildActive);
-
-  if (item.children) {
-    return (
-      <div>
-        <button
-          onClick={() => setOpen((o: boolean) => !o)}
-          className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors rounded-lg ${open ? "bg-white/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
-          style={{ width: "calc(100% - 16px)", margin: "0 8px" }}
-          data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}
-        >
-          <item.icon size={18} className="flex-shrink-0" />
-          {!collapsed && (
-            <>
-              <span className="flex-1 text-left">{item.label}</span>
-              {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </>
-          )}
-        </button>
-        {!collapsed && open && (
-          <div className="ml-9 mt-0.5 mb-1 space-y-0.5">
-            {item.children.map((c: any) => {
-              const active = location === c.href;
-              return (
-                <Link
-                  key={c.href}
-                  href={c.href}
-                  onClick={onClose}
-                  className={`block px-3 py-2 text-sm rounded-lg transition-colors ${active ? "bg-[#d74700] text-white font-medium" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
-                  data-testid={`nav-sub-${c.label.toLowerCase().replace(/\s/g, "-")}`}
-                >
-                  {c.label}
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const active = location === item.href;
+  const active = location === item.href || location.startsWith(item.href + "/");
   return (
     <Link
       href={item.href}
       onClick={onClose}
-      className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors rounded-lg ${active ? "bg-[#d74700] text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
-      style={{ width: "calc(100% - 16px)", margin: "0 8px" }}
-      data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+      className={`block px-3 py-1.5 text-xs rounded transition-colors ${active ? "bg-[#d74700] text-white font-semibold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+      data-testid={`nav-leaf-${item.label.toLowerCase().replace(/\s/g, "-")}`}
     >
-      <item.icon size={18} className="flex-shrink-0" />
-      {!collapsed && <span>{item.label}</span>}
+      {item.label}
     </Link>
   );
 }
 
+// ─── Sub-group (level 2 inside Masters) ───────────────────────────────────────
+function SubGroup({ group, onClose }: { group: any; onClose?: () => void }) {
+  const [location] = useLocation();
+  const anyActive = group.subChildren?.some((c: any) => location === c.href || location.startsWith(c.href + "/"));
+  const [open, setOpen] = useState(anyActive);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o: boolean) => !o)}
+        className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded transition-colors ${open || anyActive ? "text-white bg-white/10" : "text-white/60 hover:text-white hover:bg-white/5"}`}
+        data-testid={`nav-subgroup-${group.label.toLowerCase().replace(/\s/g, "-")}`}
+      >
+        {group.icon && <group.icon size={14} className="flex-shrink-0" />}
+        <span className="flex-1 text-left uppercase tracking-wider">{group.label}</span>
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </button>
+      {open && (
+        <div className="ml-3 mt-0.5 space-y-0.5 border-l border-white/15 pl-2">
+          {group.subChildren.map((c: any) => <SubLink key={c.href} item={c} onClose={onClose} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Top-level nav item ────────────────────────────────────────────────────────
+function NavItem({ item, collapsed, onClose }: { item: any; collapsed: boolean; onClose?: () => void }) {
+  const [location] = useLocation();
+  // Check if any child/grandchild is active
+  const isAnyChildActive = item.children?.some((c: any) => {
+    if (c.subChildren) return c.subChildren.some((sc: any) => location === sc.href || location.startsWith(sc.href + "/"));
+    return location === c.href || location.startsWith(c.href + "/");
+  });
+  const [open, setOpen] = useState(isAnyChildActive);
+
+  // Leaf link
+  if (!item.children) {
+    const active = location === item.href || location.startsWith(item.href + "/");
+    return (
+      <Link
+        href={item.href}
+        onClick={onClose}
+        className={`flex items-center gap-3 py-2.5 text-sm font-medium transition-colors rounded-lg ${active ? "bg-[#d74700] text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
+        style={{ width: "calc(100% - 16px)", margin: "0 8px" }}
+        data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+      >
+        <item.icon size={18} className={`flex-shrink-0 ${collapsed ? "mx-auto" : "ml-1"}`} />
+        {!collapsed && <span>{item.label}</span>}
+      </Link>
+    );
+  }
+
+  // Group with children
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o: boolean) => !o)}
+        className={`flex items-center gap-3 py-2.5 text-sm font-medium transition-colors rounded-lg ${open || isAnyChildActive ? "bg-white/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
+        style={{ width: "calc(100% - 16px)", margin: "0 8px" }}
+        data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+      >
+        <item.icon size={18} className={`flex-shrink-0 ${collapsed ? "mx-auto" : "ml-1"}`} />
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left">{item.label}</span>
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </>
+        )}
+      </button>
+
+      {!collapsed && open && (
+        <div className="ml-8 mt-0.5 mb-1 space-y-0.5">
+          {item.children.map((c: any) => {
+            // Sub-group (has subChildren — level 3)
+            if (c.subChildren) {
+              return <SubGroup key={c.label} group={c} onClose={onClose} />;
+            }
+            // Regular child link
+            const active = location === c.href || location.startsWith(c.href + "/");
+            return (
+              <Link
+                key={c.href}
+                href={c.href}
+                onClick={onClose}
+                className={`block px-3 py-2 text-sm rounded-lg transition-colors ${active ? "bg-[#d74700] text-white font-medium" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+                data-testid={`nav-sub-${c.label.toLowerCase().replace(/\s/g, "-")}`}
+              >
+                {c.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ collapsed, mobile, onClose }: { collapsed: boolean; mobile?: boolean; onClose?: () => void }) {
   const { user, logout } = useAuth();
   return (
     <div className="flex flex-col h-full" style={{ background: "linear-gradient(180deg, #027fa5 0%, #015f7a 100%)" }}>
+      {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-white/20 flex-shrink-0">
         <img src="/figmaAssets/image-1.png" alt="Silver Crown Metals" className="h-9 w-auto object-contain flex-shrink-0 filter brightness-0 invert" />
         {(!collapsed || mobile) && (
@@ -142,24 +223,28 @@ function Sidebar({ collapsed, mobile, onClose }: { collapsed: boolean; mobile?: 
         )}
       </div>
 
-      <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto">
+      {/* User profile */}
+      {(!collapsed || mobile) && (
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
+          <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+            <User size={18} className="text-white" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-white text-sm font-semibold truncate">{user?.name || user?.username}</div>
+            <div className="text-white/60 text-xs capitalize">{user?.role}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Nav */}
+      <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
         {NAV.map(item => (
           <NavItem key={item.label} item={item} collapsed={collapsed && !mobile} onClose={onClose} />
         ))}
       </nav>
 
-      <div className="border-t border-white/20 p-4 flex-shrink-0">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-            <User size={16} className="text-white" />
-          </div>
-          {(!collapsed || mobile) && (
-            <div className="min-w-0">
-              <div className="text-white text-sm font-medium truncate">{user?.name || user?.username}</div>
-              <div className="text-white/60 text-xs capitalize">{user?.role}</div>
-            </div>
-          )}
-        </div>
+      {/* Logout */}
+      <div className="border-t border-white/20 p-3 flex-shrink-0">
         <button
           onClick={() => logout.mutate()}
           className="w-full flex items-center gap-3 px-3 py-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg text-sm transition-colors"
@@ -173,6 +258,7 @@ function Sidebar({ collapsed, mobile, onClose }: { collapsed: boolean; mobile?: 
   );
 }
 
+// ─── Layout ───────────────────────────────────────────────────────────────────
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
