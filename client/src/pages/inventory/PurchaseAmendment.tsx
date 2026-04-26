@@ -413,8 +413,8 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             <>
               <div className="border border-gray-200 rounded-lg overflow-visible">
                 <div className="grid text-xs font-semibold text-gray-600 bg-gray-50 border-b"
-                  style={{ gridTemplateColumns: "36px 90px 1fr 60px 55px 70px 90px 80px 90px 90px 80px 90px 36px" }}>
-                  {["S.No","Item Code","Item Name","Qty","Unit","Rate ₹","Taxable ₹","Tax Code","CGST ₹","SGST ₹","IGST ₹","Total ₹",""].map(h => (
+                  style={{ gridTemplateColumns: "36px 90px 1fr 60px 55px 70px 90px 90px 90px 80px 90px 36px" }}>
+                  {["S.No","Item Code","Item Name","Qty","Unit","Rate ₹","Taxable ₹","CGST ₹","SGST ₹","IGST ₹","Total ₹",""].map(h => (
                     <div key={h} className="px-1.5 py-2">{h}</div>
                   ))}
                 </div>
@@ -426,7 +426,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                   );
                   return (
                     <div key={row._key} className="grid items-center border-b last:border-0 hover:bg-gray-50"
-                      style={{ gridTemplateColumns: "36px 90px 1fr 60px 55px 70px 90px 80px 90px 90px 80px 90px 36px" }}>
+                      style={{ gridTemplateColumns: "36px 90px 1fr 60px 55px 70px 90px 90px 90px 80px 90px 36px" }}>
                       <div className="px-1.5 py-1.5 text-xs text-gray-500 text-center">{String(idx+1).padStart(2,"0")}</div>
                       <div className="px-1 py-1">
                         <input value={row.item_code} readOnly
@@ -471,15 +471,6 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                       </div>
                       <div className="px-1.5 py-1.5 text-xs text-right text-gray-700">
                         {parseFloat(row.taxable_amt) > 0 ? n2(parseFloat(row.taxable_amt)) : "—"}
-                      </div>
-                      <div className="px-1 py-1">
-                        <select value={row.tax_code}
-                          onChange={e => updateItemField(row._key,"tax_code",e.target.value)}
-                          className="w-full border border-gray-200 rounded px-1 py-1 text-xs outline-none focus:border-[#027fa5] bg-white"
-                          data-testid={`sel-tax-${idx}`}>
-                          <option value="">None</option>
-                          {Object.keys(TAX_CODES).map(k => <option key={k} value={k}>{k}</option>)}
-                        </select>
                       </div>
                       <div className="px-1.5 py-1.5 text-xs text-right text-gray-600">
                         {parseFloat(row.cgst_amt) > 0 ? `${n2(parseFloat(row.cgst_amt))}(${row.cgst_pct}%)` : "—"}
