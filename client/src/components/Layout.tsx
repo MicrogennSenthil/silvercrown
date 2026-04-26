@@ -102,6 +102,7 @@ const NAV: any[] = [
       { label: "Role Rights", href: "/usermgmt/role-rights" },
     ]
   },
+  { label: "Software Setup", icon: Settings, href: "/setup" },
 ];
 
 // ─── Sub-item leaf link (level 3) ─────────────────────────────────────────────
@@ -310,6 +311,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors" data-testid="button-notifications">
               <Bell size={18} className="text-gray-600" />
             </button>
+            <Link href="/setup">
+              <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Software Setup" data-testid="button-setup">
+                <Settings size={18} className="text-gray-600" />
+              </button>
+            </Link>
             <div className="h-8 w-px bg-gray-200" />
             <div className="flex items-center gap-2 pl-1">
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium" style={{ background: "#027fa5" }}>

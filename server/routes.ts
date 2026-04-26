@@ -557,6 +557,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/purchase-approval-config/:id", requireAuth, async (req, res) => { res.json(await storage.updatePurchaseApprovalConfig(req.params.id, req.body)); });
   app.delete("/api/purchase-approval-config/:id", requireAuth, async (req, res) => { await storage.deletePurchaseApprovalConfig(req.params.id); res.json({ ok: true }); });
 
+  // App Settings
+  app.get("/api/settings", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const rows = await db.execute(sql`SELECT * FROM app_settings ORDER BY category, key`);
+      res.json(rows.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.patch("/api/settings/:key", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const { value } = req.body;
+      await db.execute(sql`UPDATE app_settings SET value=${value}, updated_at=now() WHERE key=${req.params.key}`);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/settings/bulk", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const entries: { key: string; value: string }[] = req.body;
+      for (const { key, value } of entries) {
+        await db.execute(sql`UPDATE app_settings SET value=${value}, updated_at=now() WHERE key=${key}`);
+      }
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Approval Authority
   app.get("/api/approval-authority", requireAuth, async (req, res) => { res.json(await storage.listApprovalAuthority()); });
   app.post("/api/approval-authority", requireAuth, async (req, res) => {
