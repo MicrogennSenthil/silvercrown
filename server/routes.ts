@@ -1407,6 +1407,211 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } finally { client.release(); }
   });
 
+  // ─── Job Work Invoice ────────────────────────────────────────────────────────
+
+  // GET inward despatch items for invoice (Despatch Notes mode)
+  app.get("/api/job-work-inward/:id/despatch-items-for-invoice", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT di.id, di.despatch_id, di.inward_id, di.inward_item_id, di.item_id,
+               di.item_code, di.item_name, di.unit, di.process, di.hsn,
+               di.qty_despatched, di.rate,
+               (di.qty_despatched * di.rate) as amount,
+               d.voucher_no as despatch_voucher_no,
+               iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no as inward_voucher_no
+        FROM job_work_despatch_items di
+        JOIN job_work_despatch d ON d.id = di.despatch_id
+        JOIN job_work_inward iw ON iw.id = di.inward_id
+        WHERE di.inward_id = $1
+        ORDER BY d.voucher_no, di.seq_no
+      `, [req.params.id]);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET inward items directly for invoice (Direct Invoice mode)
+  app.get("/api/job-work-inward/:id/direct-items-for-invoice", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT i.id as inward_item_id, i.inward_id, i.item_id, i.item_code, i.item_name,
+               i.qty as qty_despatched, i.unit, i.hsn, i.remark,
+               COALESCE(p.name,'') as process, COALESCE(p.price,0) as rate,
+               iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no as inward_voucher_no
+        FROM job_work_inward_items i
+        JOIN job_work_inward iw ON iw.id = i.inward_id
+        LEFT JOIN processes p ON p.id = i.process_id
+        WHERE i.inward_id = $1
+        ORDER BY i.seq_no
+      `, [req.params.id]);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/job-work-invoice — list all
+  app.get("/api/job-work-invoice", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT inv.*,
+               COALESCE(c.name, inv.party_name_manual, '') as party_name_db
+        FROM job_work_invoices inv
+        LEFT JOIN customers c ON c.id = inv.party_id
+        ORDER BY inv.created_at DESC
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/job-work-invoice/:id — single with items and charges
+  app.get("/api/job-work-invoice/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const h = (await pool.query(`
+        SELECT inv.*, COALESCE(c.name, inv.party_name_manual, '') as party_name_db
+        FROM job_work_invoices inv LEFT JOIN customers c ON c.id = inv.party_id
+        WHERE inv.id = $1
+      `, [req.params.id])).rows[0];
+      if (!h) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(`SELECT * FROM job_work_invoice_items WHERE invoice_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+      const charges = (await pool.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+      res.json({ ...h, items, charges });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/job-work-invoice — create
+  app.post("/api/job-work-invoice", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { items = [], charges = [], ...data } = req.body;
+      const { generateVoucherNo } = await import("./voucher");
+      const voucherNo = data.voucher_no || await generateVoucherNo("job_work_invoice", client);
+      const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
+      const hRes = await client.query(`
+        INSERT INTO job_work_invoices
+          (id, voucher_no, invoice_date, party_id, party_name_manual, vehicle_no, invoice_type,
+           term_of_delivery, transport, freight, delivery_address, same_as_company, remark, status)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Saved') RETURNING *
+      `, [voucherNo, data.invoice_date || new Date().toISOString().split("T")[0],
+          resolvedPartyId, data.party_name_manual || "",
+          (data.vehicle_no || "").toUpperCase(), data.invoice_type || "despatch_notes",
+          data.term_of_delivery || "", data.transport || "",
+          data.freight || "to_pay", data.delivery_address || "",
+          data.same_as_company || false, data.remark || ""]);
+      const invoiceId = hRes.rows[0].id;
+      let seq = 1;
+      for (const it of items) {
+        if (!it.item_name?.trim()) continue;
+        await client.query(`
+          INSERT INTO job_work_invoice_items
+            (id, invoice_id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code,
+             item_name, unit, process, hsn, qty_despatched, rate, amount, po_no, party_dc,
+             work_order_no, despatch_voucher_no, inward_voucher_no, no_of_cover, packages)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        `, [invoiceId, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
+            it.item_id || null, it.item_code || "", it.item_name,
+            (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
+            parseFloat(it.qty_despatched || 0), parseFloat(it.rate || 0),
+            parseFloat(it.amount || it.qty_despatched || 0) * parseFloat(it.rate || 0),
+            it.po_no || "", it.party_dc || "", it.work_order_no || "",
+            it.despatch_voucher_no || "", it.inward_voucher_no || "",
+            parseInt(it.no_of_cover || 0), parseInt(it.packages || 0)]);
+      }
+      let cseq = 1;
+      for (const ch of charges) {
+        if (!ch.charge_name?.trim()) continue;
+        await client.query(`
+          INSERT INTO job_work_invoice_charges (id, invoice_id, seq_no, charge_name, amount)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4)
+        `, [invoiceId, cseq++, ch.charge_name, parseFloat(ch.amount || 0)]);
+      }
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Invoice save error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
+  });
+
+  // PATCH /api/job-work-invoice/:id — update
+  app.patch("/api/job-work-invoice/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { items = [], charges = [], ...data } = req.body;
+      const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
+      await client.query(`
+        UPDATE job_work_invoices SET
+          invoice_date=$1, party_id=$2, party_name_manual=$3, vehicle_no=$4, invoice_type=$5,
+          term_of_delivery=$6, transport=$7, freight=$8, delivery_address=$9, same_as_company=$10, remark=$11
+        WHERE id=$12
+      `, [data.invoice_date, resolvedPartyId, data.party_name_manual || "",
+          (data.vehicle_no || "").toUpperCase(), data.invoice_type || "despatch_notes",
+          data.term_of_delivery || "", data.transport || "",
+          data.freight || "to_pay", data.delivery_address || "",
+          data.same_as_company || false, data.remark || "", req.params.id]);
+      await client.query(`DELETE FROM job_work_invoice_items WHERE invoice_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM job_work_invoice_charges WHERE invoice_id=$1`, [req.params.id]);
+      let seq = 1;
+      for (const it of items) {
+        if (!it.item_name?.trim()) continue;
+        await client.query(`
+          INSERT INTO job_work_invoice_items
+            (id, invoice_id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code,
+             item_name, unit, process, hsn, qty_despatched, rate, amount, po_no, party_dc,
+             work_order_no, despatch_voucher_no, inward_voucher_no, no_of_cover, packages)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        `, [req.params.id, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
+            it.item_id || null, it.item_code || "", it.item_name,
+            (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
+            parseFloat(it.qty_despatched || 0), parseFloat(it.rate || 0),
+            parseFloat(it.qty_despatched || 0) * parseFloat(it.rate || 0),
+            it.po_no || "", it.party_dc || "", it.work_order_no || "",
+            it.despatch_voucher_no || "", it.inward_voucher_no || "",
+            parseInt(it.no_of_cover || 0), parseInt(it.packages || 0)]);
+      }
+      let cseq = 1;
+      for (const ch of charges) {
+        if (!ch.charge_name?.trim()) continue;
+        await client.query(`
+          INSERT INTO job_work_invoice_charges (id, invoice_id, seq_no, charge_name, amount)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4)
+        `, [req.params.id, cseq++, ch.charge_name, parseFloat(ch.amount || 0)]);
+      }
+      const hRes = await client.query(`
+        SELECT inv.*, COALESCE(c.name, inv.party_name_manual,'') as party_name_db
+        FROM job_work_invoices inv LEFT JOIN customers c ON c.id=inv.party_id WHERE inv.id=$1
+      `, [req.params.id]);
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
+  });
+
+  // DELETE /api/job-work-invoice/:id
+  app.delete("/api/job-work-invoice/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM job_work_invoice_items WHERE invoice_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM job_work_invoice_charges WHERE invoice_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM job_work_invoices WHERE id=$1`, [req.params.id]);
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
+  });
+
   // Approval Authority
   app.get("/api/approval-authority", requireAuth, async (req, res) => { res.json(await storage.listApprovalAuthority()); });
   app.post("/api/approval-authority", requireAuth, async (req, res) => {

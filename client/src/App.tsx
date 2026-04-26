@@ -29,6 +29,7 @@ import SubLedgerMaster from "@/pages/masters/SubLedger";
 import SoftwareSetup from "@/pages/SoftwareSetup";
 import JobWorkInward from "@/pages/transactions/JobWorkInward";
 import JobWorkDespatch from "@/pages/transactions/JobWorkDespatch";
+import JobWorkInvoice from "@/pages/transactions/JobWorkInvoice";
 import FinancialYears from "@/pages/masters/FinancialYears";
 import VoucherSeries from "@/pages/masters/VoucherSeries";
 // User Management
@@ -100,6 +101,7 @@ function Router() {
       <Route path="/setup"><ProtectedRoute component={SoftwareSetup} /></Route>
       <Route path="/engineering/job-work-inward"><ProtectedRoute component={JobWorkInward} /></Route>
       <Route path="/engineering/job-work-despatch"><ProtectedRoute component={JobWorkDespatch} /></Route>
+      <Route path="/engineering/job-work-invoice"><ProtectedRoute component={JobWorkInvoice} /></Route>
       <Route path="/masters/financial-years"><ProtectedRoute component={FinancialYears} /></Route>
       <Route path="/masters/voucher-series"><ProtectedRoute component={VoucherSeries} /></Route>
       {/* Keep old routes for backwards compatibility */}
