@@ -1011,14 +1011,6 @@ export default function JobWorkInvoice() {
           </tbody>
         </table>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-          <button onClick={() => { setEditId(null); setView("form"); }}
-            className="px-8 py-2 rounded text-sm font-semibold text-white"
-            style={{ background: SC.orange }} data-testid="btn-new">
-            + New Invoice
-          </button>
-        </div>
       </div>
     </div>
   );
