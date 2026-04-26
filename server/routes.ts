@@ -42,14 +42,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(stats);
   });
 
+  const SD_GL = "29379a58-5e96-4c71-9074-8193877bcfb5"; // Sundry Debtors
+  const SC_GL_PARTY = "20845da1-6847-43ce-98d5-7e3e3e44b86b"; // Sundry Creditors
+
+  async function ensureSubLedger(pool: any, glId: string, name: string, existingSlId?: string | null): Promise<string> {
+    if (existingSlId) return existingSlId;
+    const existing = await pool.query(
+      `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND LOWER(name)=LOWER($2) LIMIT 1`, [glId, name]);
+    if (existing.rows.length > 0) return existing.rows[0].id;
+    const res = await pool.query(
+      `INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
+       VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
+      [`SL-${Date.now()}`, name, glId]);
+    return res.rows[0].id;
+  }
+
   // Suppliers
-  app.get("/api/suppliers", requireAuth, async (_req, res) => res.json(await storage.listSuppliers()));
+  app.get("/api/suppliers", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT s.*, sl.name AS sub_ledger_name, sl.code AS sub_ledger_code
+        FROM suppliers s
+        LEFT JOIN sub_ledgers sl ON sl.id = s.sub_ledger_id
+        ORDER BY s.name
+      `);
+      res.json(r.rows);
+    } catch { res.json(await storage.listSuppliers()); }
+  });
   app.post("/api/suppliers", requireAuth, async (req, res) => {
-    const data = insertSupplierSchema.parse(req.body);
-    res.json(await storage.createSupplier(data));
+    try {
+      const { createLedger, ...rest } = req.body;
+      const data = insertSupplierSchema.parse(rest);
+      const supplier = await storage.createSupplier(data);
+      if (createLedger || data.subLedgerId === "__create__") {
+        const { pool } = await import("./db");
+        const slId = await ensureSubLedger(pool, SC_GL_PARTY, supplier.name, null);
+        const updated = await storage.updateSupplier(supplier.id, { subLedgerId: slId } as any);
+        return res.json({ ...updated, subLedgerId: slId });
+      }
+      res.json(supplier);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.patch("/api/suppliers/:id", requireAuth, async (req, res) => {
-    res.json(await storage.updateSupplier(req.params.id, req.body));
+    try {
+      const { createLedger, ...rest } = req.body;
+      let subLedgerId = rest.subLedgerId;
+      if (createLedger && !subLedgerId) {
+        const current = await storage.listSuppliers().then(l => l.find((s: any) => s.id === req.params.id));
+        const { pool } = await import("./db");
+        subLedgerId = await ensureSubLedger(pool, SC_GL_PARTY, current?.name || rest.name || "", null);
+      }
+      res.json(await storage.updateSupplier(req.params.id, { ...rest, subLedgerId }));
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.delete("/api/suppliers/:id", requireAuth, async (req, res) => {
     await storage.deleteSupplier(req.params.id);
@@ -57,13 +102,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Customers
-  app.get("/api/customers", requireAuth, async (_req, res) => res.json(await storage.listCustomers()));
+  app.get("/api/customers", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT c.*, sl.name AS sub_ledger_name, sl.code AS sub_ledger_code
+        FROM customers c
+        LEFT JOIN sub_ledgers sl ON sl.id = c.sub_ledger_id
+        ORDER BY c.name
+      `);
+      res.json(r.rows);
+    } catch { res.json(await storage.listCustomers()); }
+  });
   app.post("/api/customers", requireAuth, async (req, res) => {
-    const data = insertCustomerSchema.parse(req.body);
-    res.json(await storage.createCustomer(data));
+    try {
+      const { createLedger, ...rest } = req.body;
+      const data = insertCustomerSchema.parse(rest);
+      const customer = await storage.createCustomer(data);
+      if (createLedger || data.subLedgerId === "__create__") {
+        const { pool } = await import("./db");
+        const slId = await ensureSubLedger(pool, SD_GL, customer.name, null);
+        const updated = await storage.updateCustomer(customer.id, { subLedgerId: slId } as any);
+        return res.json({ ...updated, subLedgerId: slId });
+      }
+      res.json(customer);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.patch("/api/customers/:id", requireAuth, async (req, res) => {
-    res.json(await storage.updateCustomer(req.params.id, req.body));
+    try {
+      const { createLedger, ...rest } = req.body;
+      let subLedgerId = rest.subLedgerId;
+      if (createLedger && !subLedgerId) {
+        const current = await storage.listCustomers().then(l => l.find((c: any) => c.id === req.params.id));
+        const { pool } = await import("./db");
+        subLedgerId = await ensureSubLedger(pool, SD_GL, current?.name || rest.name || "", null);
+      }
+      res.json(await storage.updateCustomer(req.params.id, { ...rest, subLedgerId }));
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.delete("/api/customers/:id", requireAuth, async (req, res) => {
     await storage.deleteCustomer(req.params.id);
@@ -2003,6 +2078,21 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       res.json({ ok: true });
     } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
     finally { client.release(); }
+  });
+
+  // ── Debtor sub-ledgers (for Customer ledger mapping) ────────────────────────
+  app.get("/api/sub-ledgers/debtors", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name
+        FROM sub_ledgers sl
+        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+        WHERE gl.name ILIKE '%debtor%' AND sl.is_active = true
+        ORDER BY sl.name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ── Creditor sub-ledgers (for Purchase supplier dropdowns) ──────────────────

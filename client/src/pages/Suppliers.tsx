@@ -1,50 +1,35 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DatePicker from "@/components/DatePicker";
-import { Plus, Edit, Trash2, Search, List, Info, ChevronDown, X } from "lucide-react";
+import { Plus, Edit, Trash2, Search, List, Info, ChevronDown, Link2, CheckCircle2 } from "lucide-react";
 import type { Supplier } from "@shared/schema";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
 const EMPTY_FORM = {
   name: "", shortName: "",
-  // Address
   address1: "", address2: "", city: "", state: "", gstStateCode: "",
   contactName: "", contactRole: "", email: "", telephone: "", websiteUrl: "",
-  // Account Info
   creditLimit: "", creditDays: "",
   accountNo: "", accountHolderName: "", accountType: "", bankName: "", branchName: "", ifscCode: "",
-  // Other Info
   gstRegisteredType: "", gstin: "", gstinDate: "", gstState: "",
   category: "", deliveryAddress: "", termOfDelivery: "", transport: "", sameAsCompany: false,
   notes: "",
+  subLedgerId: "",
 };
 
-// ─── Field component ──────────────────────────────────────────────────────────
 function Field({ label, value, onChange, type = "text", className = "", readOnly = false }: any) {
   if (type === "date") {
-    return (
-      <DatePicker
-        label={label}
-        value={value}
-        onChange={onChange}
-        className={className}
-        data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`}
-      />
-    );
+    return <DatePicker label={label} value={value} onChange={onChange} className={className}
+      data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />;
   }
   return (
     <div className={`relative ${className}`}>
       <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        readOnly={readOnly}
+      <input type={type} value={value} onChange={onChange} readOnly={readOnly}
         className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white"
         style={{ borderColor: "#d1d5db" }}
-        data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`}
-      />
+        data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />
     </div>
   );
 }
@@ -53,13 +38,9 @@ function TextArea({ label, value, onChange, className = "" }: any) {
   return (
     <div className={`relative ${className}`}>
       <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
-      <textarea
-        value={value}
-        onChange={onChange}
-        rows={3}
+      <textarea value={value} onChange={onChange} rows={3}
         className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white resize-none"
-        data-testid={`textarea-${label.toLowerCase().replace(/\s+/g, "-")}`}
-      />
+        data-testid={`textarea-${label.toLowerCase().replace(/\s+/g, "-")}`} />
     </div>
   );
 }
@@ -68,12 +49,9 @@ function SelectField({ label, value, onChange, options, className = "" }: any) {
   return (
     <div className={`relative ${className}`}>
       <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
-      <select
-        value={value}
-        onChange={onChange}
+      <select value={value} onChange={onChange}
         className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white appearance-none"
-        data-testid={`select-${label.toLowerCase().replace(/\s+/g, "-")}`}
-      >
+        data-testid={`select-${label.toLowerCase().replace(/\s+/g, "-")}`}>
         <option value="">Select</option>
         {options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -82,32 +60,113 @@ function SelectField({ label, value, onChange, options, className = "" }: any) {
   );
 }
 
-// ─── Drop-select with + button ────────────────────────────────────────────────
 function DropPlus({ label, value, onChange, options, onPlus, className = "" }: any) {
   return (
     <div className={`flex items-start gap-2 ${className}`}>
       <SelectField label={label} value={value} onChange={onChange} options={options} className="flex-1" />
       <button onClick={onPlus} className="flex-shrink-0 w-7 h-7 rounded mt-3 flex items-center justify-center text-white text-base font-bold"
-        style={{ background: SC.primary }} data-testid={`button-add-${label.toLowerCase()}`}>
-        +
-      </button>
+        style={{ background: SC.primary }} data-testid={`button-add-${label.toLowerCase()}`}>+</button>
     </div>
   );
 }
 
 const GST_TYPES = [
-  { value: "registered_regular", label: "Registered Regular" },
-  { value: "registered_composition", label: "Registered Composition" },
-  { value: "unregistered", label: "Unregistered" },
-  { value: "consumer", label: "Consumer" },
-  { value: "overseas", label: "Overseas" },
+  { value: "registered_regular",      label: "Registered Regular" },
+  { value: "registered_composition",  label: "Registered Composition" },
+  { value: "unregistered",            label: "Unregistered" },
+  { value: "consumer",                label: "Consumer" },
+  { value: "overseas",                label: "Overseas" },
 ];
+
+// ─── Ledger Mapping Panel ─────────────────────────────────────────────────────
+function LedgerPanel({ isEdit, subLedgerId, subLedgerName, createLedger, onSubLedgerChange, onCreateLedgerChange, subledgers }: any) {
+  const [showDrop, setShowDrop] = useState(false);
+  const linked = subLedgerId ? subledgers.find((s: any) => s.id === subLedgerId) : null;
+  const linkedName = linked?.name || subLedgerName || "";
+
+  return (
+    <div className="mt-4 rounded-lg p-4 border border-dashed border-[#027fa5]/40 bg-[#eaf7fb]">
+      <div className="flex items-center gap-2 mb-3">
+        <Link2 size={15} className="text-[#027fa5]" />
+        <span className="text-sm font-semibold text-gray-700">Ledger Account — Sundry Creditors</span>
+      </div>
+
+      {linkedName ? (
+        <div className="flex items-center gap-3 mb-3">
+          <CheckCircle2 size={16} className="text-green-600 flex-shrink-0" />
+          <span className="text-sm text-gray-800 font-medium">{linkedName}</span>
+          <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Linked</span>
+          <button onClick={() => { onSubLedgerChange(""); setShowDrop(true); }}
+            className="ml-auto text-xs text-[#027fa5] underline" data-testid="btn-change-ledger">
+            Change
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-gray-500 mb-3">No ledger account linked.</p>
+      )}
+
+      {!linkedName && (
+        <>
+          <div className="flex items-center gap-3 mb-2">
+            {!isEdit && (
+              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={createLedger} onChange={e => onCreateLedgerChange(e.target.checked)}
+                  className="w-4 h-4 rounded accent-[#027fa5]" data-testid="checkbox-create-ledger" />
+                Auto-create ledger account on save
+              </label>
+            )}
+            {isEdit && (
+              <button onClick={() => onCreateLedgerChange(true)}
+                className="px-3 py-1.5 rounded text-sm font-medium text-white"
+                style={{ background: SC.primary }} data-testid="btn-create-ledger">
+                Create Ledger Account
+              </button>
+            )}
+            <button onClick={() => setShowDrop(v => !v)}
+              className="text-xs text-[#027fa5] underline ml-auto" data-testid="btn-select-existing-ledger">
+              {showDrop ? "Hide" : "Select existing"}
+            </button>
+          </div>
+
+          {showDrop && (
+            <div className="mt-2">
+              <select value={subLedgerId} onChange={e => { onSubLedgerChange(e.target.value); setShowDrop(false); }}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#027fa5]"
+                data-testid="select-sub-ledger">
+                <option value="">— select sub-ledger —</option>
+                {subledgers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
+        </>
+      )}
+
+      {linkedName && showDrop && (
+        <div className="mt-2">
+          <select value={subLedgerId} onChange={e => { onSubLedgerChange(e.target.value); setShowDrop(false); }}
+            className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#027fa5]"
+            data-testid="select-sub-ledger-change">
+            <option value="">— select sub-ledger —</option>
+            {subledgers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Supplier Form (3 tabs) ───────────────────────────────────────────────────
 function SupplierForm({ initial, cities, states, onClose }: any) {
-  const [form, setForm] = useState<any>({ ...EMPTY_FORM, ...initial });
+  const [form, setForm] = useState<any>({
+    ...EMPTY_FORM,
+    ...initial,
+    subLedgerId: initial?.sub_ledger_id || initial?.subLedgerId || "",
+  });
   const [tab, setTab] = useState<"address" | "account" | "other">("address");
+  const [createLedger, setCreateLedger] = useState(!initial?.id);
   const qc = useQueryClient();
+
+  const { data: creditors = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/creditors"] });
 
   const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
 
@@ -119,8 +178,16 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
       if (!res.ok) throw new Error((await res.json()).message || "Save failed");
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/suppliers"] }); onClose(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/creditors"] });
+      onClose();
+    },
   });
+
+  const handleSave = () => {
+    saveMut.mutate({ ...form, createLedger: createLedger && !form.subLedgerId });
+  };
 
   const TABS = [
     { key: "address", label: "Address" },
@@ -128,12 +195,11 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
     { key: "other",   label: "Other Info" },
   ] as const;
 
-  const cityOptions = (cities || []).map((c: any) => ({ value: c.name, label: c.name }));
+  const cityOptions  = (cities || []).map((c: any) => ({ value: c.name, label: c.name }));
   const stateOptions = (states || []).map((s: any) => ({ value: s.name, label: s.name }));
 
   return (
     <div className="bg-white rounded-xl" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
-      {/* Header row */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
         <h2 className="text-lg font-bold text-gray-800">Supplier</h2>
         <div className="flex items-center gap-2">
@@ -149,13 +215,11 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
       </div>
 
       <div className="px-5 py-4">
-        {/* Company Name + Short Name */}
         <div className="flex gap-4 mb-5">
-          <Field label="Company Name" value={form.name} onChange={f("name")} className="flex-1" />
-          <Field label="Short Name" value={form.shortName} onChange={f("shortName")} className="w-56" />
+          <Field label="Company Name" value={form.name}      onChange={f("name")}      className="flex-1" />
+          <Field label="Short Name"   value={form.shortName} onChange={f("shortName")} className="w-56" />
         </div>
 
-        {/* Tabs */}
         <div className="border-b border-gray-200 mb-4">
           <div className="flex">
             {TABS.map(t => (
@@ -169,66 +233,69 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
           </div>
         </div>
 
-        {/* ── ADDRESS TAB ── */}
         {tab === "address" && (
           <div className="flex gap-4">
-            {/* Company Address panel */}
             <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
               <div className="font-semibold text-gray-700 mb-4">Company Address</div>
               <div className="space-y-4">
                 <Field label="Address 1" value={form.address1} onChange={f("address1")} />
                 <Field label="Address 2" value={form.address2} onChange={f("address2")} />
                 <div className="flex gap-3">
-                  <DropPlus label="City" value={form.city} onChange={f("city")} options={cityOptions} onPlus={() => {}} className="flex-1" />
+                  <DropPlus label="City"  value={form.city}  onChange={f("city")}  options={cityOptions}  onPlus={() => {}} className="flex-1" />
                   <DropPlus label="State" value={form.state} onChange={f("state")} options={stateOptions} onPlus={() => {}} className="flex-1" />
                 </div>
                 <Field label="GST State Code" value={form.gstStateCode} onChange={f("gstStateCode")} className="w-40" />
               </div>
             </div>
-            {/* Contact Details panel */}
             <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
               <div className="font-semibold text-gray-700 mb-4">Contact Details</div>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Name"      value={form.contactName} onChange={f("contactName")} />
-                <Field label="Role"      value={form.contactRole} onChange={f("contactRole")} />
-                <Field label="Email"     value={form.email}       onChange={f("email")} />
-                <Field label="Telephone" value={form.telephone}   onChange={f("telephone")} />
-                <Field label="Website URL" value={form.websiteUrl} onChange={f("websiteUrl")} className="col-span-2" />
+                <Field label="Name"        value={form.contactName} onChange={f("contactName")} />
+                <Field label="Role"        value={form.contactRole} onChange={f("contactRole")} />
+                <Field label="Email"       value={form.email}       onChange={f("email")} />
+                <Field label="Telephone"   value={form.telephone}   onChange={f("telephone")} />
+                <Field label="Website URL" value={form.websiteUrl}  onChange={f("websiteUrl")} className="col-span-2" />
               </div>
             </div>
           </div>
         )}
 
-        {/* ── ACCOUNT INFO TAB ── */}
         {tab === "account" && (
-          <div className="flex gap-4">
-            {/* Credits panel */}
-            <div className="w-56 flex-shrink-0 rounded-lg p-4" style={{ background: SC.bg }}>
-              <div className="font-semibold text-gray-700 mb-4">Credits</div>
-              <div className="space-y-4">
-                <Field label="Credit limit" value={form.creditLimit} onChange={f("creditLimit")} type="number" />
-                <Field label="Credit Days"  value={form.creditDays}  onChange={f("creditDays")}  type="number" />
+          <div>
+            <div className="flex gap-4">
+              <div className="w-56 flex-shrink-0 rounded-lg p-4" style={{ background: SC.bg }}>
+                <div className="font-semibold text-gray-700 mb-4">Credits</div>
+                <div className="space-y-4">
+                  <Field label="Credit limit" value={form.creditLimit} onChange={f("creditLimit")} type="number" />
+                  <Field label="Credit Days"  value={form.creditDays}  onChange={f("creditDays")}  type="number" />
+                </div>
+              </div>
+              <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
+                <div className="font-semibold text-gray-700 mb-4">Bank Details</div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Account No"          value={form.accountNo}          onChange={f("accountNo")} />
+                  <Field label="Account Holder Name" value={form.accountHolderName}  onChange={f("accountHolderName")} />
+                  <Field label="Account Type"        value={form.accountType}        onChange={f("accountType")} />
+                  <Field label="Bank Name"           value={form.bankName}           onChange={f("bankName")} />
+                  <Field label="Branch Name"         value={form.branchName}         onChange={f("branchName")} />
+                  <Field label="IFSC Code"           value={form.ifscCode}           onChange={f("ifscCode")} />
+                </div>
               </div>
             </div>
-            {/* Bank Details panel */}
-            <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
-              <div className="font-semibold text-gray-700 mb-4">Bank Details</div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Account No"          value={form.accountNo}          onChange={f("accountNo")} />
-                <Field label="Account Holder Name" value={form.accountHolderName} onChange={f("accountHolderName")} />
-                <Field label="Account Type"        value={form.accountType}        onChange={f("accountType")} />
-                <Field label="Bank Name"           value={form.bankName}           onChange={f("bankName")} />
-                <Field label="Branch Name"         value={form.branchName}         onChange={f("branchName")} />
-                <Field label="IFSC Code"           value={form.ifscCode}           onChange={f("ifscCode")} />
-              </div>
-            </div>
+            <LedgerPanel
+              isEdit={!!initial?.id}
+              subLedgerId={form.subLedgerId}
+              subLedgerName={initial?.sub_ledger_name || ""}
+              createLedger={createLedger}
+              onSubLedgerChange={(id: string) => setForm((p: any) => ({ ...p, subLedgerId: id }))}
+              onCreateLedgerChange={setCreateLedger}
+              subledgers={creditors}
+            />
           </div>
         )}
 
-        {/* ── OTHER INFO TAB ── */}
         {tab === "other" && (
           <div className="flex gap-4">
-            {/* Tax Type panel */}
             <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
               <div className="font-semibold text-gray-700 mb-4">Tax Type</div>
               <div className="space-y-4">
@@ -240,7 +307,6 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
                 </div>
               </div>
             </div>
-            {/* Delivery panel */}
             <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
               <div className="font-semibold text-gray-700 mb-4">Delivery</div>
               <div className="grid grid-cols-2 gap-4">
@@ -263,20 +329,17 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
           </div>
         )}
 
-        {/* Notes */}
         <div className="mt-4">
           <TextArea label="Notes" value={form.notes} onChange={f("notes")} />
         </div>
 
-        {/* Cancel / Save */}
         <div className="flex justify-end gap-3 mt-4">
           <button onClick={onClose}
             className="px-8 py-2 rounded border text-sm font-semibold text-gray-700 hover:bg-gray-50"
             style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">
             Cancel
           </button>
-          <button
-            onClick={() => saveMut.mutate(form)}
+          <button onClick={handleSave}
             disabled={saveMut.isPending || !form.name.trim()}
             className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: SC.orange }} data-testid="button-save">
@@ -299,7 +362,6 @@ function SupplierList({ suppliers, onEdit, onDelete, onNew }: any) {
 
   return (
     <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
         <h2 className="text-lg font-bold text-gray-800">Suppliers</h2>
         <button onClick={onNew}
@@ -308,7 +370,6 @@ function SupplierList({ suppliers, onEdit, onDelete, onNew }: any) {
           <Plus size={14} /> New Supplier
         </button>
       </div>
-      {/* Search */}
       <div className="px-5 py-3 border-b border-gray-100">
         <div className="relative w-72">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -317,29 +378,33 @@ function SupplierList({ suppliers, onEdit, onDelete, onNew }: any) {
             data-testid="input-search-suppliers" />
         </div>
       </div>
-      {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: SC.tonal }}>
-              {["S.No", "Company Name", "Short Name", "City", "State", "GSTIN", "Phone", "Email", "Actions"].map(h =>
+              {["S.No", "Company Name", "Short Name", "City", "State", "GSTIN", "Phone", "Email", "Ledger Account", "Actions"].map(h =>
                 <th key={h} className="text-left px-4 py-2.5 font-semibold text-gray-600 whitespace-nowrap">{h}</th>
               )}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {filtered.length === 0
-              ? <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No suppliers found</td></tr>
-              : filtered.map((s: Supplier, i: number) => (
+              ? <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">No suppliers found</td></tr>
+              : filtered.map((s: any, i: number) => (
                 <tr key={s.id} className="hover:bg-gray-50" data-testid={`row-supplier-${s.id}`}>
                   <td className="px-4 py-2.5 text-gray-500">{i + 1}</td>
                   <td className="px-4 py-2.5 font-medium" style={{ color: SC.primary }}>{s.name}</td>
-                  <td className="px-4 py-2.5 text-gray-600">{s.shortName || "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{s.shortName || s.short_name || "—"}</td>
                   <td className="px-4 py-2.5 text-gray-600">{s.city || "—"}</td>
                   <td className="px-4 py-2.5 text-gray-600">{s.state || "—"}</td>
                   <td className="px-4 py-2.5 text-gray-600">{s.gstin || "—"}</td>
                   <td className="px-4 py-2.5 text-gray-600">{s.telephone || s.phone || "—"}</td>
                   <td className="px-4 py-2.5 text-gray-600">{s.email || "—"}</td>
+                  <td className="px-4 py-2.5">
+                    {s.sub_ledger_name
+                      ? <span className="flex items-center gap-1 text-green-700 text-xs"><CheckCircle2 size={12} />{s.sub_ledger_name}</span>
+                      : <span className="text-xs text-gray-400">Not linked</span>}
+                  </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-2">
                       <button onClick={() => onEdit(s)} className="p-1.5 rounded hover:bg-blue-50"
@@ -362,7 +427,6 @@ function SupplierList({ suppliers, onEdit, onDelete, onNew }: any) {
   );
 }
 
-// ─── Delete confirm modal ────────────────────────────────────────────────────
 function DeleteModal({ onConfirm, onCancel }: any) {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
@@ -380,14 +444,13 @@ function DeleteModal({ onConfirm, onCancel }: any) {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Suppliers() {
-  const [view, setView] = useState<"list" | "form">("list");
-  const [editing, setEditing] = useState<Supplier | null>(null);
+  const [view, setView]     = useState<"list" | "form">("list");
+  const [editing, setEditing] = useState<any>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const qc = useQueryClient();
 
-  const { data: suppliers = [], isLoading } = useQuery<Supplier[]>({ queryKey: ["/api/suppliers"] });
+  const { data: suppliers = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
   const { data: cities  = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
   const { data: states  = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
 
@@ -399,8 +462,8 @@ export default function Suppliers() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/suppliers"] }); setDeleteId(null); },
   });
 
-  const openNew  = () => { setEditing(null); setView("form"); };
-  const openEdit = (s: Supplier) => { setEditing(s); setView("form"); };
+  const openNew   = () => { setEditing(null);  setView("form"); };
+  const openEdit  = (s: any) => { setEditing(s); setView("form"); };
   const closeForm = () => { setEditing(null); setView("list"); };
 
   if (isLoading) return (
@@ -411,8 +474,7 @@ export default function Suppliers() {
 
   return (
     <>
-      {deleteId && <DeleteModal onConfirm={() => deleteMut.mutate(deleteId)} onCancel={() => setDeleteId(null)} />}
-
+      {deleteId && <DeleteModal onConfirm={() => deleteMut.mutate(deleteId!)} onCancel={() => setDeleteId(null)} />}
       {view === "list"
         ? <SupplierList suppliers={suppliers} onNew={openNew} onEdit={openEdit} onDelete={setDeleteId} />
         : <SupplierForm initial={editing} cities={cities} states={states} onClose={closeForm} />

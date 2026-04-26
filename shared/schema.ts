@@ -69,6 +69,7 @@ export const suppliers = pgTable("suppliers", {
   sameAsCompany: boolean("same_as_company").default(false),
   notes: text("notes").default(""),
   contactPerson: text("contact_person").default(""),
+  subLedgerId: varchar("sub_ledger_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertSupplierSchema = createInsertSchema(suppliers).omit({ id: true, createdAt: true });
@@ -116,6 +117,7 @@ export const customers = pgTable("customers", {
   contactPerson: text("contact_person").default(""),
   termOfPayment: text("term_of_payment").default(""),
   freight: text("freight").default("to_pay"),
+  subLedgerId: varchar("sub_ledger_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
