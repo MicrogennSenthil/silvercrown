@@ -1375,8 +1375,6 @@ function GeneralLedgerModal({ item, categories, onClose }: { item?: any; categor
 
   const [name, setName]       = useState(item?.name || "");
   const [catId, setCatId]     = useState(item?.categoryId || "");
-  const [opening, setOpening] = useState(item?.openingBalance ?? "0");
-  const [balType, setBalType] = useState(item?.balanceType || "Dr");
   const [desc, setDesc]       = useState(item?.description || "");
 
   const saveMut = useMutation({
@@ -1390,8 +1388,6 @@ function GeneralLedgerModal({ item, categories, onClose }: { item?: any; categor
         body: JSON.stringify({
           code, name: name.trim(),
           categoryId: catId || null,
-          openingBalance: opening,
-          balanceType: balType,
           description: desc,
           isActive: true,
         }),
@@ -1431,26 +1427,6 @@ function GeneralLedgerModal({ item, categories, onClose }: { item?: any; categor
               <option value="">-- Select Category --</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-
-          {/* Opening Balance + Balance Type */}
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Opening Balance</label>
-              <input type="number" value={opening} onChange={e => setOpening(e.target.value)}
-                placeholder="0.00"
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                data-testid="input-opening-balance" />
-            </div>
-            <div className="relative w-32">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Type</label>
-              <select value={balType} onChange={e => setBalType(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm bg-white outline-none focus:border-[#027fa5] appearance-none"
-                data-testid="select-balance-type">
-                <option value="Dr">Dr (Debit)</option>
-                <option value="Cr">Cr (Credit)</option>
-              </select>
-            </div>
           </div>
 
           {/* Description */}
@@ -1517,18 +1493,16 @@ export function GeneralLedgers() {
               <th className="px-5 py-2.5 text-left font-semibold text-gray-700 w-12">S.no</th>
               <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Ledger Name</th>
               <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Category</th>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Opening Balance</th>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Type</th>
               <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Status</th>
               <th className="px-3 py-2.5 w-10"></th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400 text-sm">Loading...</td></tr>
+              <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400 text-sm">Loading...</td></tr>
             )}
             {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400 text-sm">No ledgers found</td></tr>
+              <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400 text-sm">No ledgers found</td></tr>
             )}
             {filtered.map((r, i) => (
               <tr key={r.id} className={`border-t border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
@@ -1536,14 +1510,6 @@ export function GeneralLedgers() {
                 <td className="px-5 py-2.5 text-gray-500">{i + 1}</td>
                 <td className="px-5 py-2.5 font-medium text-gray-800">{r.name}</td>
                 <td className="px-5 py-2.5 text-gray-600">{catMap[r.categoryId] || <span className="text-gray-300">—</span>}</td>
-                <td className="px-5 py-2.5 text-gray-700 font-mono text-xs">
-                  {parseFloat(r.openingBalance || "0").toFixed(2)}
-                </td>
-                <td className="px-5 py-2.5">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.balanceType === "Cr" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"}`}>
-                    {r.balanceType}
-                  </span>
-                </td>
                 <td className="px-5 py-2.5">
                   <span className={`text-xs font-semibold ${r.isActive ? "text-green-600" : "text-red-400"}`}>
                     {r.isActive ? "Active" : "Inactive"}
