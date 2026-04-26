@@ -2005,6 +2005,22 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     finally { client.release(); }
   });
 
+  // ── Expense sub-ledgers (for PO Other Charges) ──────────────────────────────
+  app.get("/api/sub-ledgers/expense", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT sl.id, sl.name, gl.name AS gl_name
+        FROM sub_ledgers sl
+        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+        JOIN ledger_categories lc ON lc.id = gl.category_id
+        WHERE lc.name = 'Expense' AND sl.is_active = true
+        ORDER BY sl.name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Purchase Orders ─────────────────────────────────────────────────────────
 
   app.get("/api/purchase-orders", requireAuth, async (req, res) => {
@@ -2038,6 +2054,107 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       res.json({ ...hdr, items: items.rows, terms: terms.rows, charges: charges.rows });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+
+  // Helper: post voucher + outstanding entries for a PO
+  async function postPoVoucher(client: any, hdr: any, b: any) {
+    // GL IDs (seeded above)
+    const PURCHASES_GL  = "7e30f23a-4c07-4768-93cb-0c478916e99d";
+    const SC_GL         = "20845da1-6847-43ce-98d5-7e3e3e44b86b"; // Sundry Creditors
+    const CASH_GL       = "883c3242-ddd1-47af-9fd0-07e4c3a00c4f"; // Cash Account
+
+    // Grand total from items + charges
+    const itemTotal    = (b.items||[]).reduce((s: number, it: any) => s + (+it.total||0), 0);
+    const chargeTotal  = (b.charges||[]).reduce((s: number, c: any) => s + (+c.amount||0), 0);
+    const taxableTotal = (b.items||[]).reduce((s: number, it: any) => s + (+it.taxable_amt||0), 0);
+    const taxTotal     = (b.items||[]).reduce((s: number, it: any) => s + (+it.cgst_amt||0) + (+it.sgst_amt||0) + (+it.igst_amt||0), 0);
+    const grandTotal   = itemTotal + chargeTotal;
+    if (grandTotal <= 0) return;
+
+    // Get current financial year
+    const fyRes = await client.query(`SELECT id, label FROM financial_years WHERE is_current=true LIMIT 1`);
+    const fy = fyRes.rows[0] || { id: null, label: "" };
+
+    // Delete existing voucher entries linked to this PO (for PATCH re-post)
+    await client.query(`
+      DELETE FROM voucher_det WHERE voucher_mas_id IN
+        (SELECT id FROM voucher_mas WHERE source_type='purchase_order' AND source_id=$1)
+    `, [hdr.id]);
+    await client.query(`DELETE FROM voucher_mas WHERE source_type='purchase_order' AND source_id=$1`, [hdr.id]);
+
+    // Delete existing outstanding bill for this PO
+    await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1 AND ref_date::text=$2`,
+      [hdr.voucher_no, hdr.po_date]);
+
+    // Find or create supplier sub_ledger under Sundry Creditors
+    let supplierSlId: string | null = null;
+    const suppName = b.supplier_name || b.supplier_name_manual || "";
+    if (b.supplier_id) {
+      // Check if a sub_ledger exists for this supplier under SC_GL
+      const slRes = await client.query(
+        `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND name=(SELECT name FROM customers WHERE id=$2 LIMIT 1) LIMIT 1`,
+        [SC_GL, b.supplier_id]
+      );
+      if (slRes.rows.length > 0) {
+        supplierSlId = slRes.rows[0].id;
+      } else {
+        // Create a sub_ledger for this supplier under Sundry Creditors
+        const custRes = await client.query(`SELECT name FROM customers WHERE id=$1`, [b.supplier_id]);
+        const custName = custRes.rows[0]?.name || suppName || "Unknown Supplier";
+        const newSlRes = await client.query(`
+          INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
+          VALUES (gen_random_uuid()::text, $1, $2, $3, 'Credit', true) RETURNING id
+        `, [`SL-${Date.now()}`, custName, SC_GL]);
+        supplierSlId = newSlRes.rows[0].id;
+      }
+    }
+
+    // Insert voucher_mas
+    const vmRes = await client.query(`
+      INSERT INTO voucher_mas
+        (voucher_no, voucher_type, voucher_date, ref_no, ref_date,
+         financial_year_id, financial_year, total_amount, taxable_amount, tax_amount,
+         narration, source_type, source_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id
+    `, [
+      hdr.voucher_no, "Purchase Order", hdr.po_date,
+      hdr.voucher_no, hdr.po_date,
+      fy.id, fy.label, grandTotal, taxableTotal, taxTotal,
+      `Purchase Order ${hdr.voucher_no}`,
+      "purchase_order", hdr.id
+    ]);
+    const vmId = vmRes.rows[0].id;
+
+    // voucher_det row 1: DR Purchases Account
+    await client.query(`
+      INSERT INTO voucher_det (voucher_mas_id, seq_no, general_ledger_id, sub_ledger_id, dr_cr, amount, narration)
+      VALUES ($1,1,$2,NULL,'DR',$3,$4)
+    `, [vmId, PURCHASES_GL, grandTotal, `Purchase from ${suppName}`]);
+
+    const isCash = (b.payment_mode||"Cash") === "Cash";
+
+    if (isCash) {
+      // voucher_det row 2: CR Cash Account
+      await client.query(`
+        INSERT INTO voucher_det (voucher_mas_id, seq_no, general_ledger_id, sub_ledger_id, dr_cr, amount, narration)
+        VALUES ($1,2,$2,NULL,'CR',$3,$4)
+      `, [vmId, CASH_GL, grandTotal, `Cash payment for ${hdr.voucher_no}`]);
+    } else {
+      // voucher_det row 2: CR Sundry Creditors (supplier sub-ledger)
+      await client.query(`
+        INSERT INTO voucher_det (voucher_mas_id, seq_no, general_ledger_id, sub_ledger_id, dr_cr, amount, narration)
+        VALUES ($1,2,$2,$3,'CR',$4,$5)
+      `, [vmId, SC_GL, supplierSlId, grandTotal, `Credit purchase from ${suppName}`]);
+
+      // Outstanding bill in sub_ledger_bills (Credit only)
+      if (supplierSlId) {
+        await client.query(`
+          INSERT INTO sub_ledger_bills
+            (id, sub_ledger_id, ref_no, ref_date, voucher_no, voucher_date, amount, cr_dr)
+          VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, 'CR')
+        `, [supplierSlId, hdr.voucher_no, hdr.po_date, hdr.voucher_no, hdr.po_date, grandTotal]);
+      }
+    }
+  }
 
   app.post("/api/purchase-orders", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
@@ -2081,6 +2198,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         await client.query(`INSERT INTO purchase_order_charges (po_id,seq_no,charge_type,amount) VALUES ($1,$2,$3,$4)`,
           [hdr.id,i+1,c.charge_type||"",+c.amount||0]);
       }
+      // Post accounting voucher entries
+      await postPoVoucher(client, hdr, b);
       await client.query("COMMIT");
       res.json({ ...hdr, voucher_no });
     } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
@@ -2128,6 +2247,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         await client.query(`INSERT INTO purchase_order_charges (po_id,seq_no,charge_type,amount) VALUES ($1,$2,$3,$4)`,
           [req.params.id,i+1,c.charge_type||"",+c.amount||0]);
       }
+      // Re-post accounting voucher entries
+      await postPoVoucher(client, hRes.rows[0], b);
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
     } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }

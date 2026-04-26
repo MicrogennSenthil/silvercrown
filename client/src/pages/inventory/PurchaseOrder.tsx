@@ -63,8 +63,11 @@ function recalcItem(row: PoItem): PoItem {
 function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const qc = useQueryClient();
   const isEdit = !!editData?.id;
-  const { data: suppliers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
-  const { data: products = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: suppliers = [] }    = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: products = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: termTypes = [] }    = useQuery<any[]>({ queryKey: ["/api/term-types"] });
+  const { data: allTerms = [] }     = useQuery<any[]>({ queryKey: ["/api/terms"] });
+  const { data: expenseSleds = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
 
   const [voucherNo,  setVoucherNo]  = useState(editData?.voucher_no || "");
   const [poDate,     setPoDate]     = useState(editData?.po_date?.split("T")[0] || today());
@@ -472,16 +475,21 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                     style={{ gridTemplateColumns: "36px 1fr 1fr 30px" }}>
                     {["S.No","Term Types","Terms",""].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
                   </div>
-                  {terms.map((t, idx) => (
+                  {terms.map((t, idx) => {
+                    const selectedTT = (termTypes as any[]).find((tt: any) => tt.name === t.term_type || tt.id === t.term_type);
+                    const filteredTerms = (allTerms as any[]).filter((tr: any) => !selectedTT || tr.term_type_id === selectedTT.id);
+                    return (
                     <div key={t._key} className="grid items-center border-b last:border-0"
                       style={{ gridTemplateColumns: "36px 1fr 1fr 30px" }}>
                       <div className="px-2 py-1.5 text-xs text-gray-500">{String(idx+1).padStart(2,"0")}</div>
                       <div className="px-1 py-1">
                         <select value={t.term_type}
-                          onChange={e => setTerms(prev => prev.map(r => r._key===t._key ? {...r,term_type:e.target.value} : r))}
+                          onChange={e => setTerms(prev => prev.map(r => r._key===t._key ? {...r,term_type:e.target.value,terms:""} : r))}
                           className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white">
                           <option value="">Select Type</option>
-                          {["Payment","Delivery","Warranty","Quality","Packaging"].map(o => <option key={o}>{o}</option>)}
+                          {(termTypes as any[]).filter((tt: any) => tt.is_active !== false).map((tt: any) => (
+                            <option key={tt.id} value={tt.name}>{tt.name}</option>
+                          ))}
                         </select>
                       </div>
                       <div className="px-1 py-1">
@@ -489,7 +497,9 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                           onChange={e => setTerms(prev => prev.map(r => r._key===t._key ? {...r,terms:e.target.value} : r))}
                           className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white">
                           <option value="">Select Terms</option>
-                          {["Net 30","Net 60","50% Advance","100% Advance","On Delivery","As per PO"].map(o => <option key={o}>{o}</option>)}
+                          {filteredTerms.map((tr: any) => (
+                            <option key={tr.id} value={tr.name}>{tr.name}</option>
+                          ))}
                         </select>
                       </div>
                       <div className="flex justify-center">
@@ -498,7 +508,8 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                           : <button onClick={() => setTerms(p=>p.filter(r=>r._key!==t._key))} className="text-red-400 p-1"><Trash2 size={12}/></button>}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Other Charges */}
@@ -515,8 +526,10 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                         <select value={c.charge_type}
                           onChange={e => setCharges(prev => prev.map(r => r._key===c._key ? {...r,charge_type:e.target.value} : r))}
                           className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white">
-                          <option value="">Select</option>
-                          {["Freight","Packing","Insurance","Loading","Handling"].map(o=><option key={o}>{o}</option>)}
+                          <option value="">Select Charges</option>
+                          {(expenseSleds as any[]).map((sl: any) => (
+                            <option key={sl.id} value={sl.name}>{sl.name}</option>
+                          ))}
                         </select>
                       </div>
                       <div className="px-1 py-1">
