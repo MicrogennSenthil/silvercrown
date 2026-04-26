@@ -59,7 +59,12 @@ export default function JobWorkDespatch() {
   const [voucherNo,      setVoucherNo]      = useState("");
   const [despatchDate,   setDespatchDate]   = useState(today());
   const [notes,          setNotes]          = useState("");
-  const [vehicleNo,      setVehicleNo]      = useState("");
+  // Vehicle No — 4-part: state | district | series | number
+  const [vehP1, setVehP1] = useState(""); // e.g. TN
+  const [vehP2, setVehP2] = useState(""); // e.g. 00
+  const [vehP3, setVehP3] = useState(""); // e.g. AB
+  const [vehP4, setVehP4] = useState(""); // e.g. 1234
+  const vehicleNo = `${vehP1}${vehP2}${vehP3}${vehP4}`;
   const [gridSearch,     setGridSearch]     = useState("");
 
   // Party selection
@@ -137,13 +142,16 @@ export default function JobWorkDespatch() {
             process:         r.process || "",
             qty_inward:      r.qty_inward,
             qty_prev_despatched: r.qty_prev_despatched,
+            remark:          r.remark || "",
           }));
         setItems(prev => [...prev.filter(it => it.inward_id !== inward.id), ...newItems]);
 
         // Auto-fill vehicle no from inward if not already set
-        const inwardVeh = (inward.vehicle_no || "").trim();
-        if (inwardVeh) {
-          setVehicleNo(prev => prev || inwardVeh.toUpperCase());
+        const inwardVeh = (inward.vehicle_no || "").trim().toUpperCase();
+        if (inwardVeh && !vehP1) {
+          const vm = inwardVeh.match(/^([A-Z]{1,2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
+          if (vm) { setVehP1(vm[1]); setVehP2(vm[2]); setVehP3(vm[3]); setVehP4(vm[4]); }
+          else setVehP1(inwardVeh);
         }
       } catch {}
       setLoadingInwardId(null);
@@ -165,7 +173,11 @@ export default function JobWorkDespatch() {
       setDespatchDate(data.despatch_date?.split("T")[0] || today());
       setNotes(data.notes || "");
 
-      setVehicleNo((data.vehicle_no || "").toUpperCase());
+      // Parse vehicle_no into 4 parts
+  const vRaw = (data.vehicle_no || "").toUpperCase();
+  const vMatch = vRaw.match(/^([A-Z]{1,2})(\d{1,2})([A-Z]{1,3})(\d{1,4})$/);
+  if (vMatch) { setVehP1(vMatch[1]); setVehP2(vMatch[2]); setVehP3(vMatch[3]); setVehP4(vMatch[4]); }
+  else { setVehP1(vRaw); setVehP2(""); setVehP3(""); setVehP4(""); }
 
       // Set party
       const pId = data.party_id || "";
@@ -199,6 +211,7 @@ export default function JobWorkDespatch() {
         process:         it.process || "",
         qty_inward:      it.qty_inward,
         qty_prev_despatched: it.qty_prev_despatched,
+        remark:          it.remark || "",
       })));
 
       setSearchText("");
@@ -212,7 +225,7 @@ export default function JobWorkDespatch() {
     setVoucherNo("");
     setDespatchDate(today());
     setNotes("");
-    setVehicleNo("");
+    setVehP1(""); setVehP2(""); setVehP3(""); setVehP4("");
     setGridSearch("");
     setSelectedRows(new Set());
     setPartyId(""); setPartySearch("");
@@ -302,7 +315,7 @@ export default function JobWorkDespatch() {
         qty_prev_despatched: it.qty_prev_despatched,
         qty_despatched:  it.qty,
         rate:            it.rate || 0,
-        remark:          "",
+        remark:          it.remark || "",
       })),
     }, {
       onSuccess: () => { if (isNew) resetForm(); },
@@ -471,17 +484,27 @@ export default function JobWorkDespatch() {
             <div className="relative w-44">
               <DatePicker label="Despatch Date" value={despatchDate} onChange={setDespatchDate} />
             </div>
-            {/* Vehicle No — single text box */}
-            <div className="relative w-40">
+            {/* Vehicle No — 4-part input */}
+            <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Vehicle No</label>
-              <input
-                value={vehicleNo}
-                onChange={e => setVehicleNo(e.target.value.toUpperCase())}
-                placeholder="TN66AB1234"
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm font-semibold outline-none focus:ring-1 uppercase tracking-wider"
-                style={{ focusRingColor: SC.primary }}
-                data-testid="input-vehicle-no"
-              />
+              <div className="flex border border-gray-300 rounded overflow-hidden" style={{ height: 42 }}>
+                {[
+                  { val: vehP1, set: setVehP1, w: 44, ph: "TN",   maxLen: 2, upper: true },
+                  { val: vehP2, set: setVehP2, w: 36, ph: "00",   maxLen: 2, upper: false },
+                  { val: vehP3, set: setVehP3, w: 44, ph: "AB",   maxLen: 3, upper: true },
+                  { val: vehP4, set: setVehP4, w: 52, ph: "1234", maxLen: 4, upper: false },
+                ].map((p, idx) => (
+                  <input key={idx}
+                    value={p.val}
+                    maxLength={p.maxLen}
+                    onChange={e => p.set(p.upper ? e.target.value.toUpperCase().replace(/[^A-Z]/g, "") : e.target.value.replace(/\D/g, ""))}
+                    placeholder={p.ph}
+                    className={`py-2.5 text-sm font-semibold text-center outline-none uppercase tracking-wider ${idx < 3 ? "border-r border-gray-300" : ""}`}
+                    style={{ width: p.w }}
+                    data-testid={`input-veh-p${idx+1}`}
+                  />
+                ))}
+              </div>
             </div>
             {/* Grid search box */}
             <div className="relative flex-1">
@@ -523,6 +546,8 @@ export default function JobWorkDespatch() {
                     <th className="px-3 py-2.5 text-left w-28">Work Ord no</th>
                     <th className="px-3 py-2.5 text-left min-w-[120px]">Nature Of Process</th>
                     <th className="px-3 py-2.5 text-left w-24">Inward No</th>
+                    <th className="px-3 py-2.5 text-right w-24">Tot.Amt ₹</th>
+                    <th className="px-3 py-2.5 text-left min-w-[160px]">Remark</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -537,7 +562,7 @@ export default function JobWorkDespatch() {
                       : items;
                     if (filtered.length === 0) return (
                       <tr>
-                        <td colSpan={12} className="px-4 py-10 text-center text-gray-300 text-sm italic">
+                        <td colSpan={14} className="px-4 py-10 text-center text-gray-300 text-sm italic">
                           {q ? "No items match your search" : partyId ? "Check an inward to load items" : "Select a party and check an inward"}
                         </td>
                       </tr>
@@ -587,6 +612,43 @@ export default function JobWorkDespatch() {
                       <td className="px-3 py-1.5 text-gray-500">{row.work_order_no || "—"}</td>
                       <td className="px-3 py-1.5 text-gray-500">{row.process || "—"}</td>
                       <td className="px-3 py-1.5 font-medium" style={{ color: SC.primary }}>{row.inward_voucher || "—"}</td>
+                      {/* Tot.Amt ₹ */}
+                      <td className="px-3 py-1.5 text-right font-semibold text-gray-700">
+                        {(parseFloat(row.qty || 0) * parseFloat(row.rate || 0)) > 0
+                          ? fmtAmount(parseFloat(row.qty) * parseFloat(row.rate))
+                          : "—"}
+                      </td>
+                      {/* Remark + per-row delete */}
+                      <td className="px-1.5 py-1">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={row.remark || ""}
+                            onChange={e => updateItem(origIdx, "remark", e.target.value)}
+                            placeholder="Remark…"
+                            className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] min-w-0"
+                            data-testid={`input-remark-${i}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const remaining = items.filter((_, ii) => ii !== origIdx);
+                              const remainingInwardIds = new Set(remaining.map(it => it.inward_id).filter(Boolean));
+                              setCheckedInwardIds(prev => {
+                                const next = new Set<string>();
+                                prev.forEach(id => { if (remainingInwardIds.has(id)) next.add(id); });
+                                return next;
+                              });
+                              setItems(remaining);
+                              setSelectedRows(new Set());
+                            }}
+                            className="shrink-0 p-1 rounded hover:bg-red-50 hover:text-red-500 text-gray-400 transition-colors"
+                            data-testid={`btn-delete-row-${i}`}
+                            title="Remove row">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ); }); })()}
                 </tbody>
