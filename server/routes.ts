@@ -3152,6 +3152,107 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Store Issue Indents ──────────────────────────────────────────────────────
+  app.get("/api/store-issue-indents", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT s.*, w.name AS store_name_db, d.name AS dept_name_db
+        FROM store_issue_indents s
+        LEFT JOIN warehouses w ON w.id = s.store_id
+        LEFT JOIN departments d ON d.id = s.department_id
+        ORDER BY s.created_at DESC
+      `);
+      res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db || "", dept_name: row.dept_name_db || "" })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/store-issue-indents/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hRes, iRes, sRes] = await Promise.all([
+        pool.query(`SELECT s.*, w.name AS store_name_db, d.name AS dept_name_db
+          FROM store_issue_indents s
+          LEFT JOIN warehouses w ON w.id=s.store_id
+          LEFT JOIN departments d ON d.id=s.department_id
+          WHERE s.id=$1`, [req.params.id]),
+        pool.query(`SELECT * FROM store_issue_indent_items WHERE sii_id=$1 ORDER BY sno`, [req.params.id]),
+        pool.query(`SELECT * FROM store_issue_indent_srns WHERE sii_id=$1`, [req.params.id]),
+      ]);
+      if (!hRes.rows[0]) return res.status(404).json({ message: "SII not found" });
+      const hdr = hRes.rows[0];
+      res.json({ ...hdr, store_name: hdr.store_name_db || "", dept_name: hdr.dept_name_db || "", items: iRes.rows, linked_srns: sRes.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/store-issue-indents", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucherNo = await generateVoucherNo("store_issue", pool);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const hdrRes = await client.query(`
+          INSERT INTO store_issue_indents(id,voucher_no,issue_date,store_id,department_id,issue_type,status,remark,total_qty,grand_total,created_by)
+          VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+        `, [voucherNo, b.issue_date||new Date().toISOString().slice(0,10), b.store_id||null, b.department_id||null,
+            b.issue_type||"Goods Request", b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.grand_total||0), (req as any).user?.id||null]);
+        const hdr = hdrRes.rows[0];
+        for (const it of (b.items||[])) {
+          await client.query(`INSERT INTO store_issue_indent_items(id,sii_id,sno,item_code,item_name,stock,issued_qty,unit,rate,amount,srn_id)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [hdr.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.issued_qty||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0), it.srn_id||null]);
+        }
+        for (const sr of (b.linked_srns||[])) {
+          await client.query(`INSERT INTO store_issue_indent_srns(id,sii_id,srn_id,srn_no,srn_date)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4)`,
+            [hdr.id, sr.srn_id, sr.srn_no, sr.srn_date||null]);
+        }
+        await client.query("COMMIT");
+        res.status(201).json({ ...hdr, items: b.items||[], linked_srns: b.linked_srns||[] });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/store-issue-indents/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(`UPDATE store_issue_indents SET issue_date=$1,store_id=$2,department_id=$3,issue_type=$4,status=$5,remark=$6,total_qty=$7,grand_total=$8,updated_at=NOW() WHERE id=$9`,
+          [b.issue_date, b.store_id||null, b.department_id||null, b.issue_type||"Goods Request", b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.grand_total||0), req.params.id]);
+        await client.query(`DELETE FROM store_issue_indent_items WHERE sii_id=$1`, [req.params.id]);
+        await client.query(`DELETE FROM store_issue_indent_srns WHERE sii_id=$1`, [req.params.id]);
+        for (const it of (b.items||[])) {
+          await client.query(`INSERT INTO store_issue_indent_items(id,sii_id,sno,item_code,item_name,stock,issued_qty,unit,rate,amount,srn_id)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [req.params.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.issued_qty||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0), it.srn_id||null]);
+        }
+        for (const sr of (b.linked_srns||[])) {
+          await client.query(`INSERT INTO store_issue_indent_srns(id,sii_id,srn_id,srn_no,srn_date)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4)`,
+            [req.params.id, sr.srn_id, sr.srn_no, sr.srn_date||null]);
+        }
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/store-issue-indents/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM store_issue_indents WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Store Request Notes ──────────────────────────────────────────────────────
   app.get("/api/store-request-notes", requireAuth, async (req, res) => {
     try {

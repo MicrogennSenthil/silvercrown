@@ -38,6 +38,7 @@ import PurchaseAmendment from "@/pages/inventory/PurchaseAmendment";
 import PurchaseOrderApproval from "@/pages/inventory/PurchaseOrderApproval";
 import GoodsReceiptNote from "@/pages/inventory/GoodsReceiptNote";
 import StoreRequestNote from "@/pages/inventory/StoreRequestNote";
+import StoreIssueIndent from "@/pages/inventory/StoreIssueIndent";
 import FinancialYears from "@/pages/masters/FinancialYears";
 import VoucherSeries from "@/pages/masters/VoucherSeries";
 import StoreMaster from "@/pages/masters/StoreMaster";
@@ -74,6 +75,7 @@ function Router() {
       <Route path="/inventory/purchase-order-approval"><ProtectedRoute component={PurchaseOrderApproval} /></Route>
       <Route path="/inventory/goods-receipt-note"><ProtectedRoute component={GoodsReceiptNote} /></Route>
       <Route path="/inventory/store-request-note"><ProtectedRoute component={StoreRequestNote} /></Route>
+      <Route path="/inventory/store-issue-indent"><ProtectedRoute component={StoreIssueIndent} /></Route>
       <Route path="/inventory/items"><ProtectedRoute component={Inventory} /></Route>
       <Route path="/inventory/categories"><ProtectedRoute component={Inventory} /></Route>
       <Route path="/sales/invoices"><ProtectedRoute component={Sales} /></Route>
