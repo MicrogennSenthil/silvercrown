@@ -35,7 +35,7 @@ function newItem(): PoaItem {
 function newTerm():   PoaTerm   { return { _key: crypto.randomUUID(), term_type: "", terms: "" }; }
 function newCharge(): PoaCharge { return { _key: crypto.randomUUID(), charge_type: "", amount: "0" }; }
 
-function recalcItem(row: PoaItem): PoaItem {
+function recalcItem(row: PoaItem, isInterState = false): PoaItem {
   const qty = parseFloat(row.qty) || 0;
   const rate = parseFloat(row.rate) || 0;
   const taxable = qty * rate;
@@ -43,9 +43,9 @@ function recalcItem(row: PoaItem): PoaItem {
   const cgstPct = tc ? tc.cgst : parseFloat(row.cgst_pct) || 0;
   const sgstPct = tc ? tc.sgst : parseFloat(row.sgst_pct) || 0;
   const igstPct = tc ? tc.igst : parseFloat(row.igst_pct) || 0;
-  const cgstAmt = taxable * cgstPct / 100;
-  const sgstAmt = taxable * sgstPct / 100;
-  const igstAmt = taxable * igstPct / 100;
+  const cgstAmt = isInterState ? 0 : taxable * cgstPct / 100;
+  const sgstAmt = isInterState ? 0 : taxable * sgstPct / 100;
+  const igstAmt = isInterState ? taxable * igstPct / 100 : 0;
   return {
     ...row, taxable_amt: taxable.toFixed(2),
     cgst_pct: String(cgstPct), sgst_pct: String(sgstPct), igst_pct: String(igstPct),
@@ -90,6 +90,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const [schedDate,    setSchedDate]    = useState(editData?.schedule_date?.split("T")[0] || "");
   const [priority,     setPriority]     = useState(editData?.priority || "Medium");
   const [payMode,      setPayMode]      = useState(editData?.payment_mode || "Cash");
+  const [purchaseType, setPurchaseType] = useState(editData?.purchase_type || "within_state");
   const [ourRef,       setOurRef]       = useState(editData?.our_ref_no || "");
   const [yourRef,      setYourRef]      = useState(editData?.your_ref_no || "");
   const [delivLoc,     setDelivLoc]     = useState(editData?.delivery_location || "");
@@ -119,6 +120,11 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  useEffect(() => {
+    const inter = purchaseType === "inter_state";
+    setItems(prev => prev.map(r => recalcItem(r, inter)));
+  }, [purchaseType]);
+
   // Load PO data when a source PO is selected
   async function loadSourcePo(po: any) {
     setSourcePo(po);
@@ -145,24 +151,27 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   }
 
   function pickProduct(key: string, prod: any) {
+    const inter = purchaseType === "inter_state";
     setItems(prev => prev.map(r => {
       if (r._key !== key) return r;
       const taxCode = prod.cgst_rate && prod.sgst_rate
         ? Object.entries(TAX_CODES).find(([, v]) => Math.abs(v.cgst - parseFloat(prod.cgst_rate)) < 0.1)?.[0] || ""
         : "";
+      const rate = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
       const updated: PoaItem = {
         ...r, item_id: prod.id, item_code: prod.code||"", item_name: prod.name,
-        unit: prod.uom||prod.unit||"", rate: String(prod.purchase_price||prod.cost_price||""),
+        unit: prod.uom||prod.unit||"", rate: String(rate),
         tax_code: taxCode, cgst_pct: String(prod.cgst_rate||"0"),
         sgst_pct: String(prod.sgst_rate||"0"), igst_pct: String(prod.igst_rate||"0"),
       };
-      return recalcItem(updated);
+      return recalcItem(updated, inter);
     }));
     setItemSearch(prev => ({ ...prev, [key]: prod.name }));
     setItemDropOpen(null);
   }
 
   function updateItemField(key: string, field: keyof PoaItem, val: string) {
+    const inter = purchaseType === "inter_state";
     setItems(prev => prev.map(r => {
       if (r._key !== key) return r;
       let updated = { ...r, [field]: val };
@@ -170,7 +179,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
         const tc = TAX_CODES[val];
         if (tc) { updated.cgst_pct = String(tc.cgst); updated.sgst_pct = String(tc.sgst); updated.igst_pct = String(tc.igst); }
       }
-      return recalcItem(updated);
+      return recalcItem(updated, inter);
     }));
   }
 
@@ -212,6 +221,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
         original_po_no: sourcePo?.voucher_no || editData?.original_po_no || "",
         supplier_id: suppId||null, supplier_name_manual: suppId ? "" : suppSearch,
         po_type: poType, schedule_date: schedDate||null, priority, payment_mode: payMode,
+        purchase_type: purchaseType,
         our_ref_no: ourRef, your_ref_no: yourRef, delivery_location: delivLoc,
         remark, status: "Draft",
         items: items.map(r => ({
@@ -364,6 +374,18 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                   <input type="radio" name="pay_mode" checked={payMode===m} onChange={() => setPayMode(m)}
                     className="accent-[#d74700]" data-testid={`radio-${m.toLowerCase()}`}/>
                   <span className="text-sm font-medium text-gray-700">{m}</span>
+                </label>
+              ))}
+            </div>
+            {/* Within State / Inter State */}
+            <div className="flex items-center gap-1 px-1">
+              <span className="text-xs text-gray-500 font-medium mr-1">Purchase:</span>
+              {[{val:"within_state",label:"Within State"},{val:"inter_state",label:"Inter State"}].map(opt => (
+                <label key={opt.val} className="flex items-center gap-1 cursor-pointer">
+                  <input type="radio" name="purchase_type_amend" checked={purchaseType===opt.val}
+                    onChange={() => setPurchaseType(opt.val)}
+                    className="accent-[#027fa5]" data-testid={`radio-amend-${opt.val}`}/>
+                  <span className="text-sm font-medium text-gray-700 mr-2">{opt.label}</span>
                 </label>
               ))}
             </div>

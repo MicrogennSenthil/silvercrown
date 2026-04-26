@@ -2168,12 +2168,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const hRes = await client.query(`
         INSERT INTO purchase_orders
           (voucher_no, po_date, supplier_id, supplier_name_manual, po_type,
-           schedule_date, priority, payment_mode, our_ref_no, your_ref_no,
+           schedule_date, priority, payment_mode, purchase_type, our_ref_no, your_ref_no,
            delivery_location, remark, status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *
       `, [voucher_no, b.po_date||new Date().toISOString().split("T")[0],
           b.supplier_id||null, b.supplier_name_manual||"", b.po_type||"Purchase Order",
           b.schedule_date||null, b.priority||"Medium", b.payment_mode||"Cash",
+          b.purchase_type||"within_state",
           b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
           b.remark||"", b.status||"Draft"]);
       const hdr = hRes.rows[0];
@@ -2214,11 +2215,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const hRes = await client.query(`
         UPDATE purchase_orders SET
           po_date=$1, supplier_id=$2, supplier_name_manual=$3, po_type=$4,
-          schedule_date=$5, priority=$6, payment_mode=$7, our_ref_no=$8,
-          your_ref_no=$9, delivery_location=$10, remark=$11, status=$12
-        WHERE id=$13 RETURNING *
+          schedule_date=$5, priority=$6, payment_mode=$7, purchase_type=$8,
+          our_ref_no=$9, your_ref_no=$10, delivery_location=$11, remark=$12, status=$13
+        WHERE id=$14 RETURNING *
       `, [b.po_date, b.supplier_id||null, b.supplier_name_manual||"", b.po_type||"Purchase Order",
           b.schedule_date||null, b.priority||"Medium", b.payment_mode||"Cash",
+          b.purchase_type||"within_state",
           b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
           b.remark||"", b.status||"Draft", req.params.id]);
       await client.query(`DELETE FROM purchase_order_items WHERE po_id=$1`, [req.params.id]);
