@@ -1049,7 +1049,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       // Auto-generate voucher number
       if (!data.voucher_no) {
         const { generateVoucherNo } = await import("./voucher");
-        data.voucher_no = await generateVoucherNo("job_work_inward");
+        data.voucher_no = await generateVoucherNo("job_work_inward", client);
       }
 
       // Resolve or auto-create customer in masters
@@ -1289,7 +1289,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { items = [], ...data } = req.body;
 
       const { generateVoucherNo } = await import("./voucher");
-      const voucherNo = data.voucher_no || await generateVoucherNo("job_work_despatch");
+      const voucherNo = data.voucher_no || await generateVoucherNo("job_work_despatch", client);
 
       // Resolve or auto-create customer in masters
       const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
