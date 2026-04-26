@@ -29,15 +29,19 @@ const NAV: any[] = [
       },
       {
         label: "Items", icon: Package, subChildren: [
-          { label: "Categories", href: "/masters/categories" },
-          { label: "Sub Categories", href: "/masters/sub-categories" },
-          { label: "Products", href: "/masters/products" },
-          { label: "Store Item Groups", href: "/masters/store-item-groups" },
-          { label: "Purchase Store Items", href: "/masters/purchase-store-items" },
-          { label: "Units of Measure", href: "/masters/uom" },
-          { label: "Tax Rates", href: "/masters/tax-rates" },
-          { label: "Warehouses", href: "/masters/warehouses" },
-          { label: "Inventory Categories", href: "/masters/inventory-categories" },
+          { label: "Product", href: "/masters/products" },
+          { label: "Machine", href: "/masters/machines" },
+          { label: "Category", href: "/masters/categories" },
+          { label: "Sub Category", href: "/masters/sub-categories" },
+          { label: "Purchase approval", href: "/masters/purchase-approvals" },
+          { label: "Approval Authority", href: "/masters/approval-authority" },
+          { label: "Purchase Store Item", href: "/masters/purchase-store-items" },
+          { label: "Store Item Group", href: "/masters/store-item-groups" },
+          { label: "Store Item Sub Group", href: "/masters/store-item-sub-groups" },
+          { label: "UOM", href: "/masters/uom" },
+          { label: "Terms", href: "/masters/terms" },
+          { label: "Term types", href: "/masters/term-types" },
+          { label: "Department", href: "/masters/departments" },
         ]
       },
       {
@@ -54,7 +58,6 @@ const NAV: any[] = [
   },
   {
     label: "Engineering", icon: Cpu, children: [
-      { label: "Machine Master", href: "/masters/machines" },
       { label: "Departments", href: "/masters/departments" },
       { label: "Purchase Approval", href: "/masters/purchase-approvals" },
     ]
