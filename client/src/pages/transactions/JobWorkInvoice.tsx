@@ -449,6 +449,26 @@ export default function JobWorkInvoice() {
                 {filteredParties.length === 0 && <div className="px-3 py-2 text-gray-400 text-sm">No parties found</div>}
               </div>
             )}
+
+            {/* Party details card — fills empty space below dropdown */}
+            {partyId && (() => {
+              const party = customerList.find((c: any) => c.id === partyId);
+              if (!party) return null;
+              const addrParts = [party.address, party.address1, party.address2, party.city, party.state].filter(Boolean);
+              return (
+                <div className="mt-2 px-3 py-2.5 rounded-lg border border-blue-100 bg-blue-50/50 text-xs">
+                  <div className="font-semibold text-sm mb-0.5" style={{ color: SC.primary }}>{party.name}</div>
+                  {addrParts.length > 0 && (
+                    <div className="text-gray-600 leading-relaxed mb-0.5">{addrParts.join(", ")}</div>
+                  )}
+                  <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                    {party.phone    && <span className="text-gray-500">Ph: {party.phone}</span>}
+                    {party.gstin    && <span className="text-gray-500">GSTIN: <span className="font-mono font-semibold text-gray-700">{party.gstin}</span></span>}
+                    {party.email    && <span className="text-gray-500">{party.email}</span>}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Right: Inward selection panel */}
