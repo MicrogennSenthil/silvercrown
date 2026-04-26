@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Scan, Trash2, Eye, X, Upload, Loader2, Edit } from "lucide-react";
+import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", bg: "#f5f0ed" };
 
@@ -71,14 +72,28 @@ function InvoiceForm({ initial, items: initItems, onSave, onClose }: any) {
     saveMut.mutate({ ...form, items });
   }
 
-  const F = ({ label, name, type = "text", required = false, half = false }: any) => (
-    <div className={half ? "col-span-1" : "col-span-2"}>
-      <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>{label}</label>
-      <input type={type} value={form[name] || ""} onChange={e => setForm((f: any) => ({ ...f, [name]: e.target.value }))} required={required}
-        className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors" style={{ borderColor: "#00000040", color: "#000000cc" }}
-        data-testid={`input-${name}`} />
-    </div>
-  );
+  const F = ({ label, name, type = "text", required = false, half = false }: any) => {
+    if (type === "date") {
+      return (
+        <div className={half ? "col-span-1" : "col-span-2"}>
+          <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>{label}</label>
+          <DatePicker
+            value={form[name] || ""}
+            onChange={v => setForm((f: any) => ({ ...f, [name]: v }))}
+            data-testid={`input-${name}`}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className={half ? "col-span-1" : "col-span-2"}>
+        <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>{label}</label>
+        <input type={type} value={form[name] || ""} onChange={e => setForm((f: any) => ({ ...f, [name]: e.target.value }))} required={required}
+          className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors" style={{ borderColor: "#00000040", color: "#000000cc" }}
+          data-testid={`input-${name}`} />
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center p-4 overflow-auto">

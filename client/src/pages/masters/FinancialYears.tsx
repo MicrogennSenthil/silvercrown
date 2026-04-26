@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, CheckCircle, Calendar } from "lucide-react";
+import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -109,18 +110,18 @@ export default function FinancialYears() {
                   autoFocus data-testid="input-fy-label" />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Start Date <span className="text-red-400">*</span></label>
-                  <input type="date" value={form.start_date} onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
-                    className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                    data-testid="input-fy-start" />
-                </div>
-                <div className="relative">
-                  <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">End Date <span className="text-red-400">*</span></label>
-                  <input type="date" value={form.end_date} onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))}
-                    className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                    data-testid="input-fy-end" />
-                </div>
+                <DatePicker
+                  label="Start Date *"
+                  value={form.start_date}
+                  onChange={v => setForm(p => ({ ...p, start_date: v }))}
+                  data-testid="input-fy-start"
+                />
+                <DatePicker
+                  label="End Date *"
+                  value={form.end_date}
+                  onChange={v => setForm(p => ({ ...p, end_date: v }))}
+                  data-testid="input-fy-end"
+                />
               </div>
               <label className="flex items-center gap-2 cursor-pointer" data-testid="toggle-is-current">
                 <input type="checkbox" checked={form.is_current} onChange={e => setForm(p => ({ ...p, is_current: e.target.checked }))}

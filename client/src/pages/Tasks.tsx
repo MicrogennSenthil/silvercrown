@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Edit, X, Loader2, Bell, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700" };
 const PRIORITY_COLORS: Record<string, string> = { low: "bg-gray-100 text-gray-600", medium: "bg-yellow-100 text-yellow-700", high: "bg-red-100 text-red-700" };
@@ -48,8 +49,11 @@ function TaskForm({ initial, onClose }: any) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Due Date</label>
-              <input type="date" value={form.dueDate || ""} onChange={e => setForm((f: any) => ({ ...f, dueDate: e.target.value }))}
-                className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="input-dueDate" />
+              <DatePicker
+                value={form.dueDate || ""}
+                onChange={v => setForm((f: any) => ({ ...f, dueDate: v }))}
+                data-testid="input-dueDate"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Due Time</label>
@@ -74,8 +78,11 @@ function TaskForm({ initial, onClose }: any) {
           {form.isReminder && (
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Reminder Date</label>
-              <input type="date" value={form.reminderDate || ""} onChange={e => setForm((f: any) => ({ ...f, reminderDate: e.target.value }))}
-                className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="input-reminderDate" />
+              <DatePicker
+                value={form.reminderDate || ""}
+                onChange={v => setForm((f: any) => ({ ...f, reminderDate: v }))}
+                data-testid="input-reminderDate"
+              />
             </div>
           )}
         </div>

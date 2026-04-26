@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import DatePicker from "@/components/DatePicker";
 import { Plus, Edit, Trash2, Search, List, Info, ChevronDown, X } from "lucide-react";
 import type { Supplier } from "@shared/schema";
 
@@ -21,6 +22,17 @@ const EMPTY_FORM = {
 
 // ─── Field component ──────────────────────────────────────────────────────────
 function Field({ label, value, onChange, type = "text", className = "", readOnly = false }: any) {
+  if (type === "date") {
+    return (
+      <DatePicker
+        label={label}
+        value={value}
+        onChange={onChange}
+        className={className}
+        data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`}
+      />
+    );
+  }
   return (
     <div className={`relative ${className}`}>
       <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>

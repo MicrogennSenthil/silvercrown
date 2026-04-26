@@ -4,6 +4,7 @@ import {
   Plus, Trash2, Info, Upload, Camera, FolderOpen, X,
   Search, PencilLine, Loader2, AlertCircle, CheckCircle2
 } from "lucide-react";
+import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -479,13 +480,14 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                 data-testid="input-inward-no" />
             </div>
 
-            {/* Inward Date */}
-            <div className="relative">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Inward Date</label>
-              <input type="date" value={inwardDate} onChange={e => setInwardDate(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                data-testid="input-inward-date" />
-            </div>
+            {/* Inward Date — min = today, no past dates */}
+            <DatePicker
+              label="Inward Date"
+              value={inwardDate}
+              onChange={setInwardDate}
+              min={new Date().toISOString().split("T")[0]}
+              data-testid="input-inward-date"
+            />
           </div>
 
           {/* Row 2 — DC details */}
@@ -496,18 +498,18 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                 className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
                 data-testid="input-party-dc-no" />
             </div>
-            <div className="relative col-span-1">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Party Dc Date</label>
-              <input type="date" value={partyDcDate} onChange={e => setPartyDcDate(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                data-testid="input-party-dc-date" />
-            </div>
-            <div className="relative col-span-1">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Delivery Date</label>
-              <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                data-testid="input-delivery-date" />
-            </div>
+            <DatePicker
+              label="Party DC Date"
+              value={partyDcDate}
+              onChange={setPartyDcDate}
+              data-testid="input-party-dc-date"
+            />
+            <DatePicker
+              label="Delivery Date"
+              value={deliveryDate}
+              onChange={setDeliveryDate}
+              data-testid="input-delivery-date"
+            />
             <div className="relative col-span-1">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Work Order No</label>
               <input value={workOrderNo} onChange={e => setWorkOrderNo(e.target.value)}

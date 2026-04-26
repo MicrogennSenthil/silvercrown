@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PencilLine, Plus, Trash2, Info, ChevronDown } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -297,9 +298,11 @@ function LedgerForm({
                           data-testid={`input-ref-no-${i}`} />
                       </td>
                       <td className="px-2 py-1.5">
-                        <input type="date" value={b.refDate} onChange={e => updateBill(b._key, "refDate", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
-                          data-testid={`input-ref-date-${i}`} />
+                        <DatePicker
+                          value={b.refDate}
+                          onChange={v => updateBill(b._key, "refDate", v)}
+                          data-testid={`input-ref-date-${i}`}
+                        />
                       </td>
                       <td className="px-2 py-1.5">
                         <input value={b.voucherNo} onChange={e => updateBill(b._key, "voucherNo", e.target.value)}
@@ -307,9 +310,11 @@ function LedgerForm({
                           data-testid={`input-voucher-no-${i}`} />
                       </td>
                       <td className="px-2 py-1.5">
-                        <input type="date" value={b.voucherDate} onChange={e => updateBill(b._key, "voucherDate", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
-                          data-testid={`input-voucher-date-${i}`} />
+                        <DatePicker
+                          value={b.voucherDate}
+                          onChange={v => updateBill(b._key, "voucherDate", v)}
+                          data-testid={`input-voucher-date-${i}`}
+                        />
                       </td>
                       <td className="px-2 py-1.5">
                         <input type="number" value={b.amount} onChange={e => updateBill(b._key, "amount", e.target.value)}

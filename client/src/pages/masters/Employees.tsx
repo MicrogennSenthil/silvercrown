@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Trash2, Edit, X, Loader2, UserCheck } from "lucide-react";
+import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700" };
 const EMPTY = { employeeCode: "", name: "", userId: "", department: "", designation: "", email: "", phone: "", dateOfJoining: "", dateOfBirth: "", address: "", emergencyContact: "", isActive: true };
@@ -18,13 +19,27 @@ function EmployeeForm({ initial, users, onClose }: any) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/employees"] }); onClose(); }
   });
 
-  const F = ({ label, name, type = "text", span = false }: any) => (
-    <div className={span ? "col-span-2" : ""}>
-      <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>{label}</label>
-      <input type={type} value={(form as any)[name] ?? ""} onChange={e => setForm((f: any) => ({ ...f, [name]: e.target.value }))}
-        className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid={`input-${name}`} />
-    </div>
-  );
+  const F = ({ label, name, type = "text", span = false }: any) => {
+    if (type === "date") {
+      return (
+        <div className={span ? "col-span-2" : ""}>
+          <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>{label}</label>
+          <DatePicker
+            value={(form as any)[name] ?? ""}
+            onChange={v => setForm((f: any) => ({ ...f, [name]: v }))}
+            data-testid={`input-${name}`}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className={span ? "col-span-2" : ""}>
+        <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>{label}</label>
+        <input type={type} value={(form as any)[name] ?? ""} onChange={e => setForm((f: any) => ({ ...f, [name]: e.target.value }))}
+          className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid={`input-${name}`} />
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center p-4 overflow-auto">
