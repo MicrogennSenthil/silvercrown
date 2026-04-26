@@ -781,6 +781,11 @@ export default function JobWorkInward() {
                 className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded w-56 outline-none focus:border-[#027fa5]"
                 data-testid="input-search" />
             </div>
+            <button onClick={() => setView("add")}
+              className="px-4 py-1.5 rounded text-sm font-semibold text-white"
+              style={{ background: SC.orange }} data-testid="btn-new">
+              + New
+            </button>
           </div>
         </div>
 
@@ -808,7 +813,7 @@ export default function JobWorkInward() {
                   <div className="flex flex-col items-center gap-2 text-gray-400">
                     <Upload size={28} />
                     <div className="text-sm font-medium">No inward entries yet</div>
-                    <div className="text-xs">Click "Add" to create your first Job Work Inward entry</div>
+                    <div className="text-xs">Click "+ New" to create your first Job Work Inward entry</div>
                   </div>
                 </td>
               </tr>
@@ -839,14 +844,6 @@ export default function JobWorkInward() {
           </tbody>
         </table>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-          <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-            style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-          <button onClick={() => setView("add")}
-            className="px-8 py-2 rounded text-sm font-semibold text-white"
-            style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-        </div>
       </div>
     </div>
   );
