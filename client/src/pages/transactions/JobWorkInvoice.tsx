@@ -641,6 +641,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                       <th className="px-2 py-2 text-left w-16">Unit</th>
                       <th className="px-2 py-2 text-right w-24">Rate ₹</th>
                       <th className="px-2 py-2 text-right w-28">Taxable Amt ₹</th>
+                      <th className="px-2 py-2 text-center w-20">GST %</th>
                       {isInterState
                         ? <th className="px-2 py-2 text-right w-24">IGST ₹</th>
                         : <>
@@ -655,8 +656,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                   <tbody>
                     {filteredItems.length === 0 && (
                       <tr>
-                        <td colSpan={isInterState ? 17 : 18} className="text-center py-8 text-gray-400 text-sm">
-                          Select an inward from the panel to load items
+                        <td colSpan={isInterState ? 18 : 19} className="text-center py-8 text-gray-400 text-sm">
+                          Select a despatch or inward from the panel to load items
                         </td>
                       </tr>
                     )}
@@ -716,6 +717,27 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                               }} />
                           </td>
                           <td className="px-2 py-1 text-right text-gray-800">{fmtAmt(taxable)}</td>
+                          <td className="px-2 py-1 text-center">
+                            <input type="number" min={0} max={28} step="0.5"
+                              data-testid={`input-gst-pct-${idx}`}
+                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
+                              value={isInterState
+                                ? (parseFloat(it.igst_rate || 0) || "")
+                                : (parseFloat(it.cgst_rate || 0) * 2 || "")}
+                              onChange={e => {
+                                const pct = parseFloat(e.target.value || "0");
+                                const half = pct / 2;
+                                setItems(prev => prev.map((row, i) => i === realIdx ? {
+                                  ...row,
+                                  cgst_rate: isInterState ? 0 : half,
+                                  sgst_rate: isInterState ? 0 : half,
+                                  igst_rate: isInterState ? pct : 0,
+                                  cgst_amt:  isInterState ? 0 : taxable * half / 100,
+                                  sgst_amt:  isInterState ? 0 : taxable * half / 100,
+                                  igst_amt:  isInterState ? taxable * pct / 100 : 0,
+                                } : row));
+                              }} />
+                          </td>
                           {isInterState
                             ? <td className="px-2 py-1 text-right" style={{ color: SC.primary }}>{fmtAmt(igstAmt)}</td>
                             : <>
