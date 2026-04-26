@@ -63,7 +63,7 @@ function recalcItem(row: PoItem): PoItem {
 function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const qc = useQueryClient();
   const isEdit = !!editData?.id;
-  const { data: suppliers = [] }    = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: suppliers = [] }    = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/creditors"] });
   const { data: products = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: termTypes = [] }    = useQuery<any[]>({ queryKey: ["/api/term-types"] });
   const { data: allTerms = [] }     = useQuery<any[]>({ queryKey: ["/api/terms"] });
@@ -273,7 +273,7 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
               {suppOpen && filteredSuppliers.length > 0 && (
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-48 overflow-y-auto mt-0.5">
                   {filteredSuppliers.slice(0, 8).map((s: any) => (
-                    <button key={s.id} onClick={() => { setSuppId(s.id); setSuppSearch(s.name); setSuppOpen(false); }}
+                    <button key={s.id} onClick={() => { setSuppId(""); setSuppSearch(s.name); setSuppOpen(false); }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa]" data-testid={`opt-sup-${s.id}`}>
                       {s.name}
                     </button>

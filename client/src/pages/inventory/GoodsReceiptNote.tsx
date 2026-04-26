@@ -50,7 +50,7 @@ function calcItem(it: GrnItem): GrnItem {
 function SupplierSelect({ value, name, onChange }: { value: string; name: string; onChange: (id: string, name: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const { data: suppliers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: suppliers = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/creditors"] });
   const filtered = (suppliers as any[]).filter((s: any) =>
     !q || s.name?.toLowerCase().includes(q.toLowerCase()));
   return (
@@ -70,7 +70,7 @@ function SupplierSelect({ value, name, onChange }: { value: string; name: string
           <div className="overflow-y-auto flex-1">
             {filtered.map((s: any) => (
               <button key={s.id} type="button"
-                onClick={() => { onChange(s.id, s.name); setOpen(false); setQ(""); }}
+                onClick={() => { onChange("", s.name); setOpen(false); setQ(""); }}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] transition-colors">
                 {s.name}
               </button>

@@ -2005,6 +2005,21 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     finally { client.release(); }
   });
 
+  // ── Creditor sub-ledgers (for Purchase supplier dropdowns) ──────────────────
+  app.get("/api/sub-ledgers/creditors", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name
+        FROM sub_ledgers sl
+        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+        WHERE gl.name ILIKE '%creditor%' AND sl.is_active = true
+        ORDER BY sl.name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Expense sub-ledgers (for PO Other Charges) ──────────────────────────────
   app.get("/api/sub-ledgers/expense", requireAuth, async (req, res) => {
     try {
@@ -2505,21 +2520,19 @@ Return ONLY valid JSON (no markdown, no explanation):
     await client.query(`DELETE FROM voucher_mas WHERE source_type='grn' AND source_id=$1`, [hdr.id]);
     await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1`, [hdr.voucher_no]);
 
-    // Find or auto-create supplier sub_ledger
+    // Find or auto-create supplier sub_ledger under Sundry Creditors (lookup by name)
     let supplierSlId: string | null = null;
-    if (b.supplier_id && (b.payment_mode||"Cash") === "Credit") {
+    if (suppName && (b.payment_mode||"Cash") === "Credit") {
       const slRes = await client.query(
-        `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND name=(SELECT name FROM customers WHERE id=$2 LIMIT 1) LIMIT 1`,
-        [SC_GL, b.supplier_id]);
+        `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND LOWER(name)=LOWER($2) LIMIT 1`,
+        [SC_GL, suppName]);
       if (slRes.rows.length > 0) {
         supplierSlId = slRes.rows[0].id;
       } else {
-        const custRes = await client.query(`SELECT name FROM customers WHERE id=$1`, [b.supplier_id]);
-        const custName = custRes.rows[0]?.name || suppName || "Unknown Supplier";
         const newSl = await client.query(`
           INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
           VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
-          [`SL-${Date.now()}`, custName, SC_GL]);
+          [`SL-${Date.now()}`, suppName, SC_GL]);
         supplierSlId = newSl.rows[0].id;
       }
     }
