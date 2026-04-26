@@ -19,6 +19,9 @@ const NAV = [
       { label: "Warehouses", href: "/masters/warehouses" },
       { label: "Units of Measure", href: "/masters/uom" },
       { label: "Tax Rates", href: "/masters/tax-rates" },
+      { label: "Countries", href: "/masters/countries" },
+      { label: "States", href: "/masters/states" },
+      { label: "Cities", href: "/masters/cities" },
     ]
   },
   {

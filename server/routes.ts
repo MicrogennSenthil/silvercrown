@@ -358,5 +358,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.deleteTaxRate(req.params.id); res.json({ ok: true });
   });
 
+  // Countries
+  app.get("/api/countries", requireAuth, async (_req, res) => res.json(await storage.listCountries()));
+  app.post("/api/countries", requireAuth, async (req, res) => {
+    try { res.json(await storage.createCountry(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/countries/:id", requireAuth, async (req, res) => {
+    res.json(await storage.updateCountry(req.params.id, req.body));
+  });
+  app.delete("/api/countries/:id", requireAuth, async (req, res) => {
+    await storage.deleteCountry(req.params.id); res.json({ ok: true });
+  });
+
+  // States
+  app.get("/api/states", requireAuth, async (req, res) => {
+    res.json(await storage.listStates(req.query.countryId as string | undefined));
+  });
+  app.post("/api/states", requireAuth, async (req, res) => {
+    try { res.json(await storage.createState(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/states/:id", requireAuth, async (req, res) => {
+    res.json(await storage.updateState(req.params.id, req.body));
+  });
+  app.delete("/api/states/:id", requireAuth, async (req, res) => {
+    await storage.deleteState(req.params.id); res.json({ ok: true });
+  });
+
+  // Cities
+  app.get("/api/cities", requireAuth, async (req, res) => {
+    res.json(await storage.listCities(req.query.stateId as string | undefined));
+  });
+  app.post("/api/cities", requireAuth, async (req, res) => {
+    try { res.json(await storage.createCity(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
+  });
+  app.patch("/api/cities/:id", requireAuth, async (req, res) => {
+    res.json(await storage.updateCity(req.params.id, req.body));
+  });
+  app.delete("/api/cities/:id", requireAuth, async (req, res) => {
+    await storage.deleteCity(req.params.id); res.json({ ok: true });
+  });
+
   return httpServer;
 }

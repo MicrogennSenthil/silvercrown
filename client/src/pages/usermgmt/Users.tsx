@@ -6,10 +6,11 @@ const SC = { primary: "#027fa5", orange: "#d74700" };
 const ROLES = ["admin", "manager", "user"] as const;
 
 function UserForm({ initial, employees, userRoles, onClose }: any) {
+  const { password: _pw, ...safeInitial } = initial || {};
   const [form, setForm] = useState({
-    username: "", password: "", name: "", email: "",
+    username: "", name: "", email: "",
     role: "user" as any, employeeId: "", userRoleId: "",
-    ...initial, password: ""
+    ...safeInitial, password: ""
   });
   const [showPass, setShowPass] = useState(false);
   const qc = useQueryClient();

@@ -7,6 +7,7 @@ import {
   purchaseInvoices, purchaseInvoiceItems, salesInvoices, salesInvoiceItems,
   accounts, journalEntries, journalEntryLines, tasks, tallySyncLogs,
   employees, userRoles, roleRights, warehouses, unitsOfMeasure, taxRates,
+  countries, states, cities,
   type User, type InsertUser,
   type Supplier, type InsertSupplier,
   type Customer, type InsertCustomer,
@@ -27,6 +28,9 @@ import {
   type Warehouse, type InsertWarehouse,
   type Uom, type InsertUom,
   type TaxRate, type InsertTaxRate,
+  type Country, type InsertCountry,
+  type State, type InsertState,
+  type City, type InsertCity,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -283,6 +287,30 @@ export class DatabaseStorage implements IStorage {
   async createTaxRate(t: InsertTaxRate) { const [r] = await db.insert(taxRates).values({ ...t, id: randomUUID() }).returning(); return r; }
   async updateTaxRate(id: string, t: Partial<InsertTaxRate>) { const [r] = await db.update(taxRates).set(t).where(eq(taxRates.id, id)).returning(); return r; }
   async deleteTaxRate(id: string) { await db.delete(taxRates).where(eq(taxRates.id, id)); }
+
+  // Countries
+  async listCountries() { return db.select().from(countries).orderBy(countries.name); }
+  async createCountry(c: InsertCountry) { const [r] = await db.insert(countries).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async updateCountry(id: string, c: Partial<InsertCountry>) { const [r] = await db.update(countries).set(c).where(eq(countries.id, id)).returning(); return r; }
+  async deleteCountry(id: string) { await db.delete(countries).where(eq(countries.id, id)); }
+
+  // States
+  async listStates(countryId?: string) {
+    if (countryId) return db.select().from(states).where(eq(states.countryId, countryId)).orderBy(states.name);
+    return db.select().from(states).orderBy(states.name);
+  }
+  async createState(s: InsertState) { const [r] = await db.insert(states).values({ ...s, id: randomUUID() }).returning(); return r; }
+  async updateState(id: string, s: Partial<InsertState>) { const [r] = await db.update(states).set(s).where(eq(states.id, id)).returning(); return r; }
+  async deleteState(id: string) { await db.delete(states).where(eq(states.id, id)); }
+
+  // Cities
+  async listCities(stateId?: string) {
+    if (stateId) return db.select().from(cities).where(eq(cities.stateId, stateId)).orderBy(cities.name);
+    return db.select().from(cities).orderBy(cities.name);
+  }
+  async createCity(c: InsertCity) { const [r] = await db.insert(cities).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async updateCity(id: string, c: Partial<InsertCity>) { const [r] = await db.update(cities).set(c).where(eq(cities.id, id)).returning(); return r; }
+  async deleteCity(id: string) { await db.delete(cities).where(eq(cities.id, id)); }
 
   async getDashboardStats() {
     const [allPurchases, allSales, allItems, allTasks] = await Promise.all([

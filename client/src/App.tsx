@@ -20,6 +20,7 @@ import NotFound from "@/pages/not-found";
 // Masters
 import Employees from "@/pages/masters/Employees";
 import { Warehouses, UnitsOfMeasure, TaxRates } from "@/pages/masters/MastersList";
+import { Countries, States, Cities } from "@/pages/masters/Geography";
 // User Management
 import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
@@ -65,6 +66,9 @@ function Router() {
       <Route path="/masters/tax-rates"><ProtectedRoute component={TaxRates} /></Route>
       <Route path="/masters/accounts"><ProtectedRoute component={Accounts} /></Route>
       <Route path="/masters/inventory-categories"><ProtectedRoute component={Inventory} /></Route>
+      <Route path="/masters/countries"><ProtectedRoute component={Countries} /></Route>
+      <Route path="/masters/states"><ProtectedRoute component={States} /></Route>
+      <Route path="/masters/cities"><ProtectedRoute component={Cities} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>
