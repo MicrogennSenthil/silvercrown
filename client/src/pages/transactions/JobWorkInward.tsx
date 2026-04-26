@@ -17,13 +17,13 @@ function QuickAddPartyModal({ defaultName, onCreated, onClose }: { defaultName: 
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/suppliers", {
+      const res = await fetch("/api/customers", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), email: "", phone: "", address: "", gstin: "" }),
       });
       const party = await res.json();
-      qc.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      qc.invalidateQueries({ queryKey: ["/api/customers"] });
       onCreated(party);
     } finally { setSaving(false); }
   }
@@ -277,7 +277,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   const qc = useQueryClient();
   const isEdit = !!editData?.id;
 
-  const { data: suppliers = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
+  const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: storeItems = [] } = useQuery<any[]>({ queryKey: ["/api/purchase-store-items"] });
 
   const [partyId, setPartyId] = useState(editData?.party_id || "");
@@ -286,6 +286,16 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   const [quickParty, setQuickParty] = useState<string | null>(null);
 
   const [inwardNo, setInwardNo] = useState(editData?.voucher_no || "");
+
+  // Pre-load next voucher number when opening a new entry
+  useEffect(() => {
+    if (!isEdit && !inwardNo) {
+      fetch("/api/voucher-series/next/job_work_inward", { credentials: "include" })
+        .then(r => r.json())
+        .then(d => { if (d.voucher_no) setInwardNo(d.voucher_no); })
+        .catch(() => {});
+    }
+  }, []);
   const [inwardDate, setInwardDate] = useState(editData?.inward_date?.split("T")[0] || new Date().toISOString().split("T")[0]);
   const [partyDcNo, setPartyDcNo] = useState(editData?.party_dc_no || "");
   const [partyDcDate, setPartyDcDate] = useState(editData?.party_dc_date?.split("T")[0] || "");
@@ -334,7 +344,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     // Party
     if (data.partyName) {
       setPartySearch(data.partyName);
-      const match = suppliers.find((s: any) => s.name.toLowerCase().includes(data.partyName.toLowerCase()));
+      const match = customers.find((s: any) => s.name.toLowerCase().includes(data.partyName.toLowerCase()));
       if (match) setPartyId(match.id);
     }
     if (data.dcNo) setPartyDcNo(data.dcNo);
@@ -395,7 +405,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     onError: (e: any) => setError(e.message),
   });
 
-  const filteredSuppliers = suppliers.filter((s: any) =>
+  const filteredCustomers = customers.filter((s: any) =>
     !partySearch || s.name.toLowerCase().includes(partySearch.toLowerCase())
   );
 
@@ -428,13 +438,13 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
           <div className="grid grid-cols-3 gap-4">
             {/* Party Name — searchable dropdown with quick-add */}
             <div className="relative">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Party Name</label>
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Customer Name</label>
               <div className="flex">
                 <input
                   value={partySearch}
                   onChange={e => { setPartySearch(e.target.value); setPartyId(""); setPartyDropOpen(true); }}
                   onFocus={() => setPartyDropOpen(true)}
-                  placeholder="Search or type party..."
+                  placeholder="Search or type customer..."
                   className="flex-1 border border-gray-300 rounded-l px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
                   data-testid="input-party-search"
                 />
@@ -447,9 +457,9 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                   <Plus size={14} />
                 </button>
               </div>
-              {partyDropOpen && partySearch && filteredSuppliers.length > 0 && (
+              {partyDropOpen && partySearch && filteredCustomers.length > 0 && (
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto mt-0.5">
-                  {filteredSuppliers.slice(0, 8).map((s: any) => (
+                  {filteredCustomers.slice(0, 8).map((s: any) => (
                     <button key={s.id} onClick={() => { setPartyId(s.id); setPartySearch(s.name); setPartyDropOpen(false); }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] transition-colors"
                       data-testid={`opt-party-${s.id}`}>
@@ -462,9 +472,10 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
             {/* Inward No */}
             <div className="relative">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Inward no</label>
-              <input value={inwardNo} readOnly placeholder="Auto-generated"
-                className="w-full border border-gray-200 rounded px-3 py-2.5 text-sm bg-gray-50 text-gray-500 outline-none"
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Inward No</label>
+              <input value={inwardNo} onChange={e => setInwardNo(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm font-semibold outline-none focus:border-[#027fa5]"
+                style={{ color: SC.primary }}
                 data-testid="input-inward-no" />
             </div>
 

@@ -627,6 +627,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
 
+  // Preview next voucher number without consuming it
+  app.get("/api/voucher-series/next/:type", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const fyRows = await db.execute(sql`SELECT id FROM financial_years WHERE is_current = true LIMIT 1`);
+      const fyId = (fyRows.rows[0] as any)?.id;
+      let seriesRow: any;
+      if (fyId) {
+        const r = await db.execute(sql`SELECT * FROM voucher_series WHERE transaction_type = ${req.params.type} AND financial_year_id = ${fyId} AND is_active = true LIMIT 1`);
+        seriesRow = r.rows[0];
+      }
+      if (!seriesRow) {
+        const r = await db.execute(sql`SELECT * FROM voucher_series WHERE transaction_type = ${req.params.type} AND is_active = true LIMIT 1`);
+        seriesRow = r.rows[0];
+      }
+      if (!seriesRow) return res.json({ voucher_no: `${req.params.type.slice(0, 3).toUpperCase()}${Date.now()}` });
+      const num = seriesRow.current_number || seriesRow.starting_number || 1;
+      const preview = `${seriesRow.prefix}${String(num).padStart(seriesRow.digits, "0")}`;
+      res.json({ voucher_no: preview });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── AI: Extract DC from image ──────────────────────────────────────────────
   app.post("/api/ai/extract-dc", requireAuth, upload.single("file"), async (req, res) => {
     try {
@@ -706,7 +729,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     try {
       const { db } = await import("./db");
       const { sql } = await import("drizzle-orm");
-      const rows = await db.execute(sql`SELECT j.*, s.name as party_name_db FROM job_work_inward j LEFT JOIN suppliers s ON s.id = j.party_id ORDER BY j.created_at DESC`);
+      const rows = await db.execute(sql`SELECT j.*, c.name as party_name_db FROM job_work_inward j LEFT JOIN customers c ON c.id = j.party_id ORDER BY j.created_at DESC`);
       res.json(rows.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -714,7 +737,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     try {
       const { db } = await import("./db");
       const { sql } = await import("drizzle-orm");
-      const [header] = (await db.execute(sql`SELECT j.*, s.name as party_name_db FROM job_work_inward j LEFT JOIN suppliers s ON s.id = j.party_id WHERE j.id = ${req.params.id}`)).rows;
+      const [header] = (await db.execute(sql`SELECT j.*, c.name as party_name_db FROM job_work_inward j LEFT JOIN customers c ON c.id = j.party_id WHERE j.id = ${req.params.id}`)).rows;
       if (!header) return res.status(404).json({ message: "Not found" });
       const items = (await db.execute(sql`SELECT * FROM job_work_inward_items WHERE inward_id = ${req.params.id} ORDER BY seq_no`)).rows;
       res.json({ ...header, items });
