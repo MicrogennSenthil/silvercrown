@@ -839,6 +839,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const r = await db.execute(sql`SELECT * FROM voucher_series WHERE transaction_type = ${req.params.type} AND is_active = true LIMIT 1`);
         seriesRow = r.rows[0];
       }
+      res.setHeader("Cache-Control", "no-store");
       if (!seriesRow) return res.json({ voucher_no: `${req.params.type.slice(0, 3).toUpperCase()}${Date.now()}` });
       const num = seriesRow.current_number || seriesRow.starting_number || 1;
       const preview = `${seriesRow.prefix}${String(num).padStart(seriesRow.digits, "0")}`;

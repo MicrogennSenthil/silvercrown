@@ -65,14 +65,15 @@ export async function generateVoucherNo(
   const digits = seriesRow.digits || 5;
   const num = seriesRow.current_number || seriesRow.starting_number || 1;
 
-  // Atomically increment current_number — runs inside the caller's transaction if client provided
+  // Atomically increment current_number — use GREATEST so that when current_number starts at 0
+  // the counter jumps to starting_number+1 (not back to 1 which would repeat the same number)
   if (client) {
     await client.query(
-      `UPDATE voucher_series SET current_number = current_number + 1 WHERE id = $1`,
+      `UPDATE voucher_series SET current_number = GREATEST(current_number, starting_number) + 1 WHERE id = $1`,
       [seriesRow.id]
     );
   } else {
-    await db.execute(sql`UPDATE voucher_series SET current_number = current_number + 1 WHERE id = ${seriesRow.id}`);
+    await db.execute(sql`UPDATE voucher_series SET current_number = GREATEST(current_number, starting_number) + 1 WHERE id = ${seriesRow.id}`);
   }
 
   return `${prefix}${String(num).padStart(digits, "0")}`;

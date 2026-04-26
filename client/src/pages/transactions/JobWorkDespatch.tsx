@@ -94,7 +94,7 @@ export default function JobWorkDespatch() {
   // Auto-generate voucher number for new despatch
   useEffect(() => {
     if (!editingId && !voucherNo) {
-      fetch("/api/voucher-series/next/job_work_despatch", { credentials: "include" })
+      fetch("/api/voucher-series/next/job_work_despatch", { credentials: "include", cache: "no-store" })
         .then(r => r.json()).then(d => setVoucherNo(d.voucher_no || "")).catch(() => {});
     }
   }, [editingId]);
@@ -221,7 +221,7 @@ export default function JobWorkDespatch() {
     setSaveError("");
     setSaveOk(false);
     // Re-fetch next voucher number
-    fetch("/api/voucher-series/next/job_work_despatch", { credentials: "include" })
+    fetch("/api/voucher-series/next/job_work_despatch", { credentials: "include", cache: "no-store" })
       .then(r => r.json()).then(d => setVoucherNo(d.voucher_no || "")).catch(() => {});
   }
 
