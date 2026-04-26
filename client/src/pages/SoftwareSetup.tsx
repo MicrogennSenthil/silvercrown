@@ -36,8 +36,10 @@ const AI_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (Latest)" },
   ],
   groq: [
-    { value: "llama-3.2-11b-vision-preview", label: "Llama 3.2 11B Vision" },
+    { value: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B Vision (Latest)" },
+    { value: "meta-llama/llama-4-maverick-17b-128e-instruct", label: "Llama 4 Maverick 17B Vision" },
     { value: "llama-3.2-90b-vision-preview", label: "Llama 3.2 90B Vision" },
+    { value: "llama-3.2-11b-vision-preview", label: "Llama 3.2 11B Vision (Fast)" },
   ],
 };
 
