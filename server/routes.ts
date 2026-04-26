@@ -697,21 +697,28 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         const text = result.response.text().trim().replace(/^```json\n?/, "").replace(/\n?```$/, "");
         extracted = JSON.parse(text);
       } else {
-        // Groq via fetch
+        // Groq via fetch (vision models)
+        const groqMime = mimeType === "application/pdf" ? "image/jpeg" : mimeType;
         const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             model,
-            messages: [{ role: "user", content: [
-              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
-              { type: "text", text: prompt }
-            ]}],
-            max_tokens: 1500,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "image_url", image_url: { url: `data:${groqMime};base64,${base64}` } },
+                { type: "text", text: prompt }
+              ]
+            }],
+            max_tokens: 2000,
+            temperature: 0.1,
           }),
         });
         const jResp = await resp.json() as any;
-        const text = jResp.choices?.[0]?.message?.content?.trim().replace(/^```json\n?/, "").replace(/\n?```$/, "") || "{}";
+        if (jResp.error) throw new Error(jResp.error.message || JSON.stringify(jResp.error));
+        const rawText = jResp.choices?.[0]?.message?.content || "{}";
+        const text = rawText.trim().replace(/^```json\n?/, "").replace(/\n?```$/, "").replace(/^```\n?/, "").replace(/\n?```$/, "");
         extracted = JSON.parse(text);
       }
 
