@@ -1214,15 +1214,18 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         await client.query(`
           INSERT INTO job_work_despatch_items
             (id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code, item_name,
-             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-        `, [despatchId, data.inward_id, it.inward_item_id || null, seq++,
+             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark, rate)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        `, [despatchId, it.inward_id || data.inward_id, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
             (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
-            it.qty_inward || 0, it.qty_prev_despatched || 0, it.qty_despatched || 0, it.remark || ""]);
+            it.qty_inward || 0, it.qty_prev_despatched || 0, it.qty_despatched || 0,
+            it.remark || "", it.rate || 0]);
       }
 
-      if (data.inward_id) await recalcInwardDespatchStatus(client, data.inward_id);
+      const inwardIds = [...new Set(items.map((it: any) => it.inward_id).filter(Boolean))];
+      if (data.inward_id && !inwardIds.includes(data.inward_id)) inwardIds.push(data.inward_id);
+      for (const iid of inwardIds) await recalcInwardDespatchStatus(client, iid);
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
     } catch (e: any) {
@@ -1256,15 +1259,18 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         await client.query(`
           INSERT INTO job_work_despatch_items
             (id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code, item_name,
-             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-        `, [req.params.id, data.inward_id, it.inward_item_id || null, seq++,
+             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark, rate)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        `, [req.params.id, it.inward_id || data.inward_id, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
             (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
-            it.qty_inward || 0, it.qty_prev_despatched || 0, it.qty_despatched || 0, it.remark || ""]);
+            it.qty_inward || 0, it.qty_prev_despatched || 0, it.qty_despatched || 0,
+            it.remark || "", it.rate || 0]);
       }
 
-      if (data.inward_id) await recalcInwardDespatchStatus(client, data.inward_id);
+      const inwardIdsP = [...new Set(items.map((it: any) => it.inward_id).filter(Boolean))];
+      if (data.inward_id && !inwardIdsP.includes(data.inward_id)) inwardIdsP.push(data.inward_id);
+      for (const iid of inwardIdsP) await recalcInwardDespatchStatus(client, iid);
       await client.query("COMMIT");
       const hRes = await client.query(`SELECT * FROM job_work_despatch WHERE id=$1`, [req.params.id]);
       res.json(hRes.rows[0]);
