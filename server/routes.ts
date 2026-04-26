@@ -2454,6 +2454,350 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Goods Receipt Notes ─────────────────────────────────────────────────────
+
+  // AI Scan: extract GRN / purchase bill from image
+  app.post("/api/grn/scan-document", requireAuth, upload.single("file"), async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const rows = await db.execute(sql`SELECT key, value FROM app_settings WHERE category = 'AI Configuration'`);
+      const cfg: Record<string,string> = {};
+      rows.rows.forEach((r: any) => { cfg[r.key] = r.value; });
+      const provider = cfg["ai_provider"] || "gemini";
+      const model    = cfg["ai_model"]    || "gemini-2.0-flash";
+      const apiKey   = provider === "gemini" ? cfg["gemini_api_key"] : cfg["groq_api_key"];
+      if (!apiKey) return res.status(400).json({ message: `${provider === "gemini" ? "Gemini" : "Groq"} API key not configured in AI Configuration settings.` });
+      const filePath = (req as any).file?.path;
+      if (!filePath) return res.status(400).json({ message: "No file uploaded" });
+      const imageData = fs.readFileSync(filePath);
+      const base64 = imageData.toString("base64");
+      const mimeType = (req as any).file?.mimetype || "image/jpeg";
+
+      const prompt = `You are an OCR assistant for an Indian manufacturing ERP. Extract data from this Purchase Bill / Goods Receipt / Invoice image.
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "supplierName": "string",
+  "billNo": "string",
+  "billDate": "YYYY-MM-DD or empty",
+  "dcNo": "string",
+  "paymentMode": "Cash or Credit",
+  "items": [
+    {
+      "itemCode": "string",
+      "itemName": "string",
+      "batchNo": "string",
+      "expiryDate": "YYYY-MM-DD or empty",
+      "qty": number,
+      "unit": "string",
+      "rate": number,
+      "cgstPct": number,
+      "sgstPct": number,
+      "igstPct": number
+    }
+  ]
+}`;
+
+      let extracted: any = {};
+      if (provider === "gemini") {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const gModel = genAI.getGenerativeModel({ model });
+        const result = await gModel.generateContent([{ inlineData: { data: base64, mimeType } }, prompt]);
+        const text = result.response.text().trim().replace(/^```json\n?/,"").replace(/\n?```$/,"");
+        extracted = JSON.parse(text);
+      } else {
+        const groqMime = mimeType === "application/pdf" ? "image/jpeg" : mimeType;
+        const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role:"user", content:[
+              { type:"image_url", image_url:{ url:`data:${groqMime};base64,${base64}` } },
+              { type:"text", text:prompt }
+            ]}],
+            max_tokens: 2000, temperature: 0.1,
+          }),
+        });
+        const jResp = await resp.json() as any;
+        if (jResp.error) throw new Error(jResp.error.message || JSON.stringify(jResp.error));
+        const rawText = jResp.choices?.[0]?.message?.content || "{}";
+        extracted = JSON.parse(rawText.trim().replace(/^```json\n?/,"").replace(/\n?```$/,"").replace(/^```\n?/,"").replace(/\n?```$/,""));
+      }
+      try { fs.unlinkSync(filePath); } catch {}
+      res.json({ ok: true, data: extracted });
+    } catch (e: any) { res.status(500).json({ message: e.message || "Scan failed" }); }
+  });
+
+  // Get all warehouses (stores)
+  app.get("/api/warehouses", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`SELECT * FROM warehouses WHERE is_active=true ORDER BY name`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // List GRNs
+  app.get("/api/goods-receipt-notes", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT g.*, c.name AS supplier_name_db, w.name AS store_name_db
+        FROM goods_receipt_notes g
+        LEFT JOIN customers c ON c.id = g.supplier_id
+        LEFT JOIN warehouses w ON w.id = g.store_id
+        ORDER BY g.created_at DESC
+      `);
+      res.json(r.rows.map((row: any) => ({
+        ...row,
+        supplier_name: row.supplier_name_db || row.supplier_name_manual || "",
+        store_name: row.store_name_db || row.store_name || "",
+      })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Get single GRN with items
+  app.get("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hRes, iRes] = await Promise.all([
+        pool.query(`SELECT g.*, c.name AS supplier_name_db, w.name AS store_name_db
+          FROM goods_receipt_notes g
+          LEFT JOIN customers c ON c.id = g.supplier_id
+          LEFT JOIN warehouses w ON w.id = g.store_id
+          WHERE g.id=$1`, [req.params.id]),
+        pool.query(`SELECT * FROM goods_receipt_note_items WHERE grn_id=$1 ORDER BY sno`, [req.params.id]),
+      ]);
+      if (!hRes.rows[0]) return res.status(404).json({ message: "GRN not found" });
+      const hdr = hRes.rows[0];
+      res.json({
+        ...hdr,
+        supplier_name: hdr.supplier_name_db || hdr.supplier_name_manual || "",
+        store_name: hdr.store_name_db || hdr.store_name || "",
+        items: iRes.rows,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GRN voucher posting helper
+  async function postGrnVoucher(client: any, hdr: any, b: any) {
+    const PURCHASES_GL = "7e30f23a-4c07-4768-93cb-0c478916e99d";
+    const SC_GL        = "20845da1-6847-43ce-98d5-7e3e3e44b86b";
+    const CASH_GL      = "883c3242-ddd1-47af-9fd0-07e4c3a00c4f";
+    const CGST_GL      = "cgst0001-0000-0000-0000-000000000001";
+    const SGST_GL      = "sgst0001-0000-0000-0000-000000000001";
+    const IGST_GL      = "igst0001-0000-0000-0000-000000000001";
+    const ROUND_GL     = "rdof0001-0000-0000-0000-000000000001";
+
+    const items = b.items || [];
+    const taxableAmt = items.reduce((s: number, it: any) => s + (+it.taxable_amt||0), 0);
+    const cgstAmt    = items.reduce((s: number, it: any) => s + (+it.cgst_amt||0), 0);
+    const sgstAmt    = items.reduce((s: number, it: any) => s + (+it.sgst_amt||0), 0);
+    const igstAmt    = items.reduce((s: number, it: any) => s + (+it.igst_amt||0), 0);
+    const roundOff   = +(b.round_off||0);
+    const grandTotal = +(b.grand_total||0) || (taxableAmt + cgstAmt + sgstAmt + igstAmt + roundOff);
+    if (grandTotal <= 0) return;
+
+    const fyRes = await client.query(`SELECT id, label FROM financial_years WHERE is_current=true LIMIT 1`);
+    const fy = fyRes.rows[0] || { id: null, label: "" };
+    const suppName = b.supplier_name || b.supplier_name_manual || "";
+
+    // Delete existing voucher entries for re-post
+    await client.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN
+      (SELECT id FROM voucher_mas WHERE source_type='grn' AND source_id=$1)`, [hdr.id]);
+    await client.query(`DELETE FROM voucher_mas WHERE source_type='grn' AND source_id=$1`, [hdr.id]);
+    await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1`, [hdr.voucher_no]);
+
+    // Find or auto-create supplier sub_ledger
+    let supplierSlId: string | null = null;
+    if (b.supplier_id && (b.payment_mode||"Cash") === "Credit") {
+      const slRes = await client.query(
+        `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND name=(SELECT name FROM customers WHERE id=$2 LIMIT 1) LIMIT 1`,
+        [SC_GL, b.supplier_id]);
+      if (slRes.rows.length > 0) {
+        supplierSlId = slRes.rows[0].id;
+      } else {
+        const custRes = await client.query(`SELECT name FROM customers WHERE id=$1`, [b.supplier_id]);
+        const custName = custRes.rows[0]?.name || suppName || "Unknown Supplier";
+        const newSl = await client.query(`
+          INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
+          [`SL-${Date.now()}`, custName, SC_GL]);
+        supplierSlId = newSl.rows[0].id;
+      }
+    }
+
+    // Insert voucher_mas
+    const vmRes = await client.query(`
+      INSERT INTO voucher_mas
+        (voucher_no, voucher_type, voucher_date, ref_no, ref_date,
+         financial_year_id, financial_year, total_amount, taxable_amount, tax_amount,
+         narration, source_type, source_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'grn',$12) RETURNING id
+    `, [
+      hdr.voucher_no, "Goods Receipt Note", hdr.grn_date,
+      b.bill_no||hdr.voucher_no, b.bill_date||hdr.grn_date,
+      fy.id, fy.label, grandTotal, taxableAmt, cgstAmt+sgstAmt+igstAmt,
+      `GRN ${hdr.voucher_no} - ${suppName}`, hdr.id,
+    ]);
+    const vmId = vmRes.rows[0].id;
+
+    let seq = 1;
+    const det = async (gl: string, sl: string|null, drCr: string, amt: number, narr: string) => {
+      if (amt === 0) return;
+      await client.query(`INSERT INTO voucher_det (voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)`, [vmId, seq++, gl, sl, drCr, Math.abs(amt), narr]);
+    };
+
+    const isCash = (b.payment_mode||"Cash") === "Cash";
+
+    // DR lines (purchases breakdown)
+    await det(PURCHASES_GL, null, "DR", taxableAmt, `Purchases - ${suppName}`);
+    await det(CGST_GL, null, "DR", cgstAmt, `CGST Input Credit`);
+    await det(SGST_GL, null, "DR", sgstAmt, `SGST Input Credit`);
+    if (igstAmt > 0) await det(IGST_GL, null, "DR", igstAmt, `IGST Input Credit`);
+    if (roundOff !== 0) await det(ROUND_GL, null, roundOff > 0 ? "DR" : "CR", Math.abs(roundOff), `Round Off`);
+
+    // CR line (cash or party)
+    if (isCash) {
+      await det(CASH_GL, null, "CR", grandTotal, `Cash Payment to ${suppName}`);
+    } else {
+      await det(SC_GL, supplierSlId, "CR", grandTotal, `Payable to ${suppName}`);
+      // Outstanding bill
+      if (supplierSlId) {
+        await client.query(`INSERT INTO sub_ledger_bills
+          (id, sub_ledger_id, ref_no, ref_date, voucher_no, voucher_date, amount, cr_dr)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,'CR')`,
+          [supplierSlId, b.bill_no||hdr.voucher_no, b.bill_date||hdr.grn_date,
+           hdr.voucher_no, hdr.grn_date, grandTotal]);
+      }
+    }
+  }
+
+  // Create GRN
+  app.post("/api/goods-receipt-notes", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      const { generateVoucherNo } = await import("./voucher");
+      const voucher_no = await generateVoucherNo("purchase_receipt", client);
+
+      // Compute totals from items
+      const items = b.items || [];
+      const total_qty      = items.reduce((s: number, it: any) => s + (+it.qty||0), 0);
+      const taxable_amount = items.reduce((s: number, it: any) => s + (+it.taxable_amt||0), 0);
+      const cgst_amount    = items.reduce((s: number, it: any) => s + (+it.cgst_amt||0), 0);
+      const sgst_amount    = items.reduce((s: number, it: any) => s + (+it.sgst_amt||0), 0);
+      const igst_amount    = items.reduce((s: number, it: any) => s + (+it.igst_amt||0), 0);
+      const round_off      = +(b.round_off||0);
+      const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + round_off);
+
+      const hdrRes = await client.query(`
+        INSERT INTO goods_receipt_notes
+          (voucher_no, grn_date, store_id, store_name, supplier_id, supplier_name_manual,
+           dc_no, bill_no, bill_date, payment_mode, purchase_type, po_id, po_no,
+           total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
+           remark, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'Draft')
+        RETURNING *
+      `, [voucher_no, b.grn_date||new Date().toISOString().slice(0,10),
+          b.store_id||null, b.store_name||"", b.supplier_id||null, b.supplier_name_manual||"",
+          b.dc_no||"", b.bill_no||"", b.bill_date||null, b.payment_mode||"Cash",
+          b.purchase_type||"PO", b.po_id||null, b.po_no||"",
+          total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
+          b.remark||""]);
+      const hdr = hdrRes.rows[0];
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await client.query(`
+          INSERT INTO goods_receipt_note_items
+            (grn_id, sno, item_code, item_name, batch_no, expiry_date, qty, unit, rate,
+             taxable_amt, cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt, total)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        `, [hdr.id, i+1, it.item_code||"", it.item_name||"", it.batch_no||"",
+            it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0,
+            +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
+            +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
+      }
+
+      await postGrnVoucher(client, hdr, { ...b, items, grand_total });
+      await client.query("COMMIT");
+      res.json(hdr);
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  // Update GRN
+  app.patch("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      const items = b.items || [];
+      const total_qty      = items.reduce((s: number, it: any) => s + (+it.qty||0), 0);
+      const taxable_amount = items.reduce((s: number, it: any) => s + (+it.taxable_amt||0), 0);
+      const cgst_amount    = items.reduce((s: number, it: any) => s + (+it.cgst_amt||0), 0);
+      const sgst_amount    = items.reduce((s: number, it: any) => s + (+it.sgst_amt||0), 0);
+      const igst_amount    = items.reduce((s: number, it: any) => s + (+it.igst_amt||0), 0);
+      const round_off      = +(b.round_off||0);
+      const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + round_off);
+
+      const hdrRes = await client.query(`
+        UPDATE goods_receipt_notes SET
+          grn_date=$1, store_id=$2, store_name=$3, supplier_id=$4, supplier_name_manual=$5,
+          dc_no=$6, bill_no=$7, bill_date=$8, payment_mode=$9, purchase_type=$10,
+          po_id=$11, po_no=$12, total_qty=$13, taxable_amount=$14, cgst_amount=$15,
+          sgst_amount=$16, igst_amount=$17, round_off=$18, grand_total=$19, remark=$20
+        WHERE id=$21 RETURNING *
+      `, [b.grn_date, b.store_id||null, b.store_name||"", b.supplier_id||null, b.supplier_name_manual||"",
+          b.dc_no||"", b.bill_no||"", b.bill_date||null, b.payment_mode||"Cash",
+          b.purchase_type||"PO", b.po_id||null, b.po_no||"",
+          total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
+          b.remark||"", req.params.id]);
+      if (!hdrRes.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "GRN not found" }); }
+      const hdr = hdrRes.rows[0];
+
+      await client.query(`DELETE FROM goods_receipt_note_items WHERE grn_id=$1`, [hdr.id]);
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await client.query(`
+          INSERT INTO goods_receipt_note_items
+            (grn_id, sno, item_code, item_name, batch_no, expiry_date, qty, unit, rate,
+             taxable_amt, cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt, total)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        `, [hdr.id, i+1, it.item_code||"", it.item_name||"", it.batch_no||"",
+            it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0,
+            +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
+            +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
+      }
+
+      await postGrnVoucher(client, hdr, { ...b, items, grand_total });
+      await client.query("COMMIT");
+      res.json(hdr);
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  // Delete GRN
+  app.delete("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const hRes = await pool.query(`SELECT voucher_no FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
+      if (!hRes.rows[0]) return res.status(404).json({ message: "GRN not found" });
+      const vno = hRes.rows[0].voucher_no;
+      await pool.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN (SELECT id FROM voucher_mas WHERE source_type='grn' AND source_id=$1)`, [req.params.id]);
+      await pool.query(`DELETE FROM voucher_mas WHERE source_type='grn' AND source_id=$1`, [req.params.id]);
+      await pool.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1`, [vno]);
+      await pool.query(`DELETE FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Purchase Order Amendments ────────────────────────────────────────────────
 
   app.get("/api/purchase-order-amendments", requireAuth, async (req, res) => {

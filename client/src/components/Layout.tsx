@@ -78,6 +78,7 @@ const NAV: any[] = [
       { label: "Purchase Order", href: "/inventory/purchase-order" },
       { label: "Purchase Amendment", href: "/inventory/purchase-amendment" },
       { label: "Purchase Order Approval", href: "/inventory/purchase-order-approval" },
+      { label: "Goods Receipt Note", href: "/inventory/goods-receipt-note" },
       { label: "Stock Items", href: "/inventory/items" },
       { label: "Stock Transfer", href: "/inventory/transfer" },
       { label: "Stock Adjustment", href: "/inventory/adjustment" },
