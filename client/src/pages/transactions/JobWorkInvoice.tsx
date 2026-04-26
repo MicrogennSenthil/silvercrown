@@ -464,14 +464,23 @@ export default function JobWorkInvoice() {
                 </label>
               ))}
             </div>
-            {/* Inward table header */}
-            <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
-              style={{ gridTemplateColumns: "1fr 110px 110px 52px" }}>
-              <div className="px-2 py-1.5">Inw no</div>
-              <div className="px-2 py-1.5">Party Dc Date</div>
-              <div className="px-2 py-1.5">Party Dc no</div>
-              <div className="px-2 py-1.5 text-center">Select</div>
-            </div>
+            {/* Inward table header — columns vary by mode */}
+            {invoiceType === "despatch_notes" ? (
+              <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
+                style={{ gridTemplateColumns: "1fr 120px 52px" }}>
+                <div className="px-2 py-1.5">Party Dc Date</div>
+                <div className="px-2 py-1.5">Party Dc no</div>
+                <div className="px-2 py-1.5 text-center">Select</div>
+              </div>
+            ) : (
+              <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
+                style={{ gridTemplateColumns: "90px 1fr 110px 52px" }}>
+                <div className="px-2 py-1.5">Inw no</div>
+                <div className="px-2 py-1.5">Party Dc Date</div>
+                <div className="px-2 py-1.5">Party Dc no</div>
+                <div className="px-2 py-1.5 text-center">Select</div>
+              </div>
+            )}
             {/* Inward rows */}
             <div className="max-h-24 overflow-y-auto">
               {partyInwards.length === 0 && (
@@ -480,24 +489,44 @@ export default function JobWorkInvoice() {
                 </div>
               )}
               {partyInwards.map((inw: any) => (
-                <div key={inw.id}
-                  className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
-                  style={{ gridTemplateColumns: "1fr 110px 110px 52px" }}>
-                  <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{inw.voucher_no}</div>
-                  <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.party_dc_date)}</div>
-                  <div className="px-2 py-1.5 text-xs text-gray-600">{inw.party_dc_no}</div>
-                  <div className="px-2 py-1.5 flex justify-center">
-                    {loadingInwardId === inw.id
-                      ? <Loader2 size={14} className="animate-spin" style={{ color: SC.primary }} />
-                      : <input type="checkbox"
-                          data-testid={`chk-inward-${inw.id}`}
-                          className="accent-orange-600 cursor-pointer w-4 h-4"
-                          checked={checkedInwardIds.has(inw.id)}
-                          onChange={e => toggleInward(inw, e.target.checked)}
-                        />
-                    }
+                invoiceType === "despatch_notes" ? (
+                  <div key={inw.id}
+                    className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
+                    style={{ gridTemplateColumns: "1fr 120px 52px" }}>
+                    <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.party_dc_date)}</div>
+                    <div className="px-2 py-1.5 text-xs text-gray-600">{inw.party_dc_no}</div>
+                    <div className="px-2 py-1.5 flex justify-center">
+                      {loadingInwardId === inw.id
+                        ? <Loader2 size={14} className="animate-spin" style={{ color: SC.primary }} />
+                        : <input type="checkbox"
+                            data-testid={`chk-inward-${inw.id}`}
+                            className="accent-orange-600 cursor-pointer w-4 h-4"
+                            checked={checkedInwardIds.has(inw.id)}
+                            onChange={e => toggleInward(inw, e.target.checked)}
+                          />
+                      }
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div key={inw.id}
+                    className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
+                    style={{ gridTemplateColumns: "90px 1fr 110px 52px" }}>
+                    <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{inw.voucher_no}</div>
+                    <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.party_dc_date)}</div>
+                    <div className="px-2 py-1.5 text-xs text-gray-600">{inw.party_dc_no}</div>
+                    <div className="px-2 py-1.5 flex justify-center">
+                      {loadingInwardId === inw.id
+                        ? <Loader2 size={14} className="animate-spin" style={{ color: SC.primary }} />
+                        : <input type="checkbox"
+                            data-testid={`chk-inward-${inw.id}`}
+                            className="accent-orange-600 cursor-pointer w-4 h-4"
+                            checked={checkedInwardIds.has(inw.id)}
+                            onChange={e => toggleInward(inw, e.target.checked)}
+                          />
+                      }
+                    </div>
+                  </div>
+                )
               ))}
             </div>
           </div>
