@@ -440,6 +440,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/store-item-groups/:id", requireAuth, async (req, res) => { res.json(await storage.updateStoreItemGroup(req.params.id, req.body)); });
   app.delete("/api/store-item-groups/:id", requireAuth, async (req, res) => { await storage.deleteStoreItemGroup(req.params.id); res.json({ ok: true }); });
 
+  // Store Item Sub Groups
+  app.get("/api/store-item-sub-groups", requireAuth, async (req, res) => { res.json(await storage.listStoreItemSubGroups()); });
+  app.post("/api/store-item-sub-groups", requireAuth, async (req, res) => {
+    try { res.json(await storage.createStoreItemSubGroup(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/store-item-sub-groups/:id", requireAuth, async (req, res) => { res.json(await storage.updateStoreItemSubGroup(req.params.id, req.body)); });
+  app.delete("/api/store-item-sub-groups/:id", requireAuth, async (req, res) => { await storage.deleteStoreItemSubGroup(req.params.id); res.json({ ok: true }); });
+
   // Purchase Store Items
   app.get("/api/purchase-store-items", requireAuth, async (req, res) => {
     res.json(await storage.listPurchaseStoreItems(req.query.groupId as string | undefined));

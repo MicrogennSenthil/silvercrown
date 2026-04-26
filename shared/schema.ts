@@ -474,6 +474,19 @@ export const insertStoreItemGroupSchema = createInsertSchema(storeItemGroups).om
 export type InsertStoreItemGroup = z.infer<typeof insertStoreItemGroupSchema>;
 export type StoreItemGroup = typeof storeItemGroups.$inferSelect;
 
+// Store Item Sub Groups
+export const storeItemSubGroups = pgTable("store_item_sub_groups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  groupId: varchar("group_id").references(() => storeItemGroups.id),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertStoreItemSubGroupSchema = createInsertSchema(storeItemSubGroups).omit({ id: true, createdAt: true });
+export type InsertStoreItemSubGroup = z.infer<typeof insertStoreItemSubGroupSchema>;
+export type StoreItemSubGroup = typeof storeItemSubGroups.$inferSelect;
+
 // Purchase Store Items
 export const purchaseStoreItems = pgTable("purchase_store_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -9,7 +9,7 @@ import {
   employees, userRoles, roleRights, warehouses, unitsOfMeasure, taxRates,
   countries, states, cities,
   categories, subCategories, products, machineMaster,
-  storeItemGroups, purchaseStoreItems, purchaseApprovalLevels,
+  storeItemGroups, storeItemSubGroups, purchaseStoreItems, purchaseApprovalLevels,
   voucherTypes, payModeTypes, ledgerCategories,
   termTypes, terms, departments, approvalAuthority, purchaseApprovalConfig,
   type User, type InsertUser,
@@ -40,6 +40,7 @@ import {
   type Product, type InsertProduct,
   type Machine, type InsertMachine,
   type StoreItemGroup, type InsertStoreItemGroup,
+  type StoreItemSubGroup, type InsertStoreItemSubGroup,
   type PurchaseStoreItem, type InsertPurchaseStoreItem,
   type PurchaseApproval, type InsertPurchaseApproval,
   type VoucherType, type InsertVoucherType,
@@ -207,6 +208,11 @@ export interface IStorage {
   createStoreItemGroup(g: InsertStoreItemGroup): Promise<StoreItemGroup>;
   updateStoreItemGroup(id: string, g: Partial<InsertStoreItemGroup>): Promise<StoreItemGroup>;
   deleteStoreItemGroup(id: string): Promise<void>;
+
+  listStoreItemSubGroups(): Promise<StoreItemSubGroup[]>;
+  createStoreItemSubGroup(g: InsertStoreItemSubGroup): Promise<StoreItemSubGroup>;
+  updateStoreItemSubGroup(id: string, g: Partial<InsertStoreItemSubGroup>): Promise<StoreItemSubGroup>;
+  deleteStoreItemSubGroup(id: string): Promise<void>;
 
   // Purchase Store Items
   listPurchaseStoreItems(groupId?: string): Promise<PurchaseStoreItem[]>;
@@ -455,6 +461,11 @@ export class DatabaseStorage implements IStorage {
   async createStoreItemGroup(g: InsertStoreItemGroup) { const [r] = await db.insert(storeItemGroups).values({ ...g, id: randomUUID() }).returning(); return r; }
   async updateStoreItemGroup(id: string, g: Partial<InsertStoreItemGroup>) { const [r] = await db.update(storeItemGroups).set(g).where(eq(storeItemGroups.id, id)).returning(); return r; }
   async deleteStoreItemGroup(id: string) { await db.delete(storeItemGroups).where(eq(storeItemGroups.id, id)); }
+
+  async listStoreItemSubGroups() { return db.select().from(storeItemSubGroups).orderBy(storeItemSubGroups.name); }
+  async createStoreItemSubGroup(g: InsertStoreItemSubGroup) { const [r] = await db.insert(storeItemSubGroups).values({ ...g, id: randomUUID() }).returning(); return r; }
+  async updateStoreItemSubGroup(id: string, g: Partial<InsertStoreItemSubGroup>) { const [r] = await db.update(storeItemSubGroups).set(g).where(eq(storeItemSubGroups.id, id)).returning(); return r; }
+  async deleteStoreItemSubGroup(id: string) { await db.delete(storeItemSubGroups).where(eq(storeItemSubGroups.id, id)); }
 
   // Purchase Store Items
   async listPurchaseStoreItems(groupId?: string) {
