@@ -598,23 +598,23 @@ export default function JobWorkInvoice() {
               </div>
             </div>
           )}
+          {activeTab === "invoice" && (
+            <div className="flex items-end pb-1">
+              <div className="flex items-center gap-4">
+                {[false, true].map(val => (
+                  <label key={String(val)} className="flex items-center gap-1.5 cursor-pointer text-sm font-medium">
+                    <input type="radio" name="stateType" className="accent-orange-600"
+                      checked={isInterState === val}
+                      onChange={() => setIsInterState(val)} />
+                    <span style={isInterState === val ? { color: SC.orange, fontWeight: 700 } : { color: "#555" }}>
+                      {val ? "Inter-State" : "Within State"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* ── Within / Inter-State toggle ── */}
-        {activeTab === "invoice" && (
-          <div className="flex items-center gap-4 mb-3">
-            {[false, true].map(val => (
-              <label key={String(val)} className="flex items-center gap-2 cursor-pointer text-sm font-medium">
-                <input type="radio" name="stateType" className="accent-orange-600"
-                  checked={isInterState === val}
-                  onChange={() => setIsInterState(val)} />
-                <span style={isInterState === val ? { color: SC.orange, fontWeight: 700 } : { color: "#555" }}>
-                  {val ? "Inter-State" : "Within State"}
-                </span>
-              </label>
-            ))}
-          </div>
-        )}
 
         {/* ── TAB: Job Work Invoice ── */}
         {activeTab === "invoice" && (
