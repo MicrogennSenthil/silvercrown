@@ -158,10 +158,14 @@ export default function SoftwareSetup() {
   const [activeTab, setActiveTab] = useState("AI Configuration");
 
   useEffect(() => {
-    const map: Record<string, string> = {};
-    rawSettings.forEach(s => { map[s.key] = s.value || ""; });
-    setValues(map);
-  }, [rawSettings]);
+    if (!rawSettings.length) return;
+    setValues(prev => {
+      if (Object.keys(prev).length === rawSettings.length) return prev;
+      const map: Record<string, string> = {};
+      rawSettings.forEach(s => { map[s.key] = s.value || ""; });
+      return map;
+    });
+  }, [rawSettings.length]);
 
   // Group by category
   const categories = Array.from(new Set(rawSettings.map(s => s.category)));

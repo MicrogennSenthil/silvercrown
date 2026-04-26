@@ -26,6 +26,7 @@ import { MachineMaster, PurchaseStoreItems, PurchaseApprovals, Terms } from "@/p
 import ApprovalAuthority from "@/pages/masters/ApprovalAuthority";
 import SubLedgerMaster from "@/pages/masters/SubLedger";
 import SoftwareSetup from "@/pages/SoftwareSetup";
+import JobWorkInward from "@/pages/transactions/JobWorkInward";
 // User Management
 import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
@@ -92,6 +93,7 @@ function Router() {
       <Route path="/masters/general-ledgers"><ProtectedRoute component={GeneralLedgers} /></Route>
       <Route path="/masters/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>
       <Route path="/setup"><ProtectedRoute component={SoftwareSetup} /></Route>
+      <Route path="/engineering/job-work-inward"><ProtectedRoute component={JobWorkInward} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>

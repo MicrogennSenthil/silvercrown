@@ -58,9 +58,12 @@ const NAV: any[] = [
   },
   {
     label: "Engineering", icon: Cpu, children: [
-      { label: "Job Work", href: "/engineering/job-work" },
-      { label: "Work Orders", href: "/engineering/work-orders" },
-      { label: "BOM", href: "/engineering/bom" },
+      { label: "Job Work Inward", href: "/engineering/job-work-inward" },
+      { label: "Job Work Despatch", href: "/engineering/job-work-despatch" },
+      { label: "Job Work Invoice", href: "/engineering/job-work-invoice" },
+      { label: "Returnable Inward", href: "/engineering/returnable-inward" },
+      { label: "Returnable Outward", href: "/engineering/returnable-outward" },
+      { label: "Gate Pass", href: "/engineering/gate-pass" },
     ]
   },
   {

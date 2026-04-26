@@ -557,6 +557,147 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/purchase-approval-config/:id", requireAuth, async (req, res) => { res.json(await storage.updatePurchaseApprovalConfig(req.params.id, req.body)); });
   app.delete("/api/purchase-approval-config/:id", requireAuth, async (req, res) => { await storage.deletePurchaseApprovalConfig(req.params.id); res.json({ ok: true }); });
 
+  // ─── AI: Extract DC from image ──────────────────────────────────────────────
+  app.post("/api/ai/extract-dc", requireAuth, upload.single("file"), async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const rows = await db.execute(sql`SELECT key, value FROM app_settings WHERE category = 'AI Configuration'`);
+      const cfg: Record<string, string> = {};
+      rows.rows.forEach((r: any) => { cfg[r.key] = r.value; });
+
+      const provider = cfg["ai_provider"] || "gemini";
+      const model = cfg["ai_model"] || "gemini-1.5-flash";
+      const apiKey = provider === "gemini" ? cfg["gemini_api_key"] : cfg["groq_api_key"];
+
+      if (!apiKey) return res.status(400).json({ message: `${provider === "gemini" ? "Gemini" : "Groq"} API key not configured. Please set it in Software Setup → AI Configuration.` });
+
+      const filePath = (req as any).file?.path;
+      if (!filePath) return res.status(400).json({ message: "No file uploaded" });
+
+      const imageData = fs.readFileSync(filePath);
+      const base64 = imageData.toString("base64");
+      const mimeType = (req as any).file?.mimetype || "image/jpeg";
+
+      const prompt = `You are an OCR assistant for an Indian manufacturing ERP. Extract data from this Delivery Challan / DC image.
+Return ONLY valid JSON with exactly this structure (no markdown, no explanation):
+{
+  "partyName": "string",
+  "dcNo": "string",
+  "dcDate": "YYYY-MM-DD or empty string",
+  "deliveryDate": "YYYY-MM-DD or empty string",
+  "vehicleNo": "string",
+  "items": [
+    { "itemCode": "string", "itemName": "string", "qty": number, "unit": "string", "process": "string", "hsn": "string", "remark": "string" }
+  ]
+}`;
+
+      let extracted: any = {};
+
+      if (provider === "gemini") {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const gModel = genAI.getGenerativeModel({ model });
+        const result = await gModel.generateContent([
+          { inlineData: { data: base64, mimeType } },
+          prompt,
+        ]);
+        const text = result.response.text().trim().replace(/^```json\n?/, "").replace(/\n?```$/, "");
+        extracted = JSON.parse(text);
+      } else {
+        // Groq via fetch
+        const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: [
+              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } },
+              { type: "text", text: prompt }
+            ]}],
+            max_tokens: 1500,
+          }),
+        });
+        const jResp = await resp.json() as any;
+        const text = jResp.choices?.[0]?.message?.content?.trim().replace(/^```json\n?/, "").replace(/\n?```$/, "") || "{}";
+        extracted = JSON.parse(text);
+      }
+
+      // Cleanup temp file
+      try { fs.unlinkSync(filePath); } catch {}
+      res.json(extracted);
+    } catch (e: any) {
+      console.error("AI extract error:", e.message);
+      res.status(500).json({ message: e.message || "AI extraction failed" });
+    }
+  });
+
+  // ─── Job Work Inward ─────────────────────────────────────────────────────────
+  app.get("/api/job-work-inward", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const rows = await db.execute(sql`SELECT j.*, s.name as party_name_db FROM job_work_inward j LEFT JOIN suppliers s ON s.id = j.party_id ORDER BY j.created_at DESC`);
+      res.json(rows.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/job-work-inward/:id", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const [header] = (await db.execute(sql`SELECT j.*, s.name as party_name_db FROM job_work_inward j LEFT JOIN suppliers s ON s.id = j.party_id WHERE j.id = ${req.params.id}`)).rows;
+      if (!header) return res.status(404).json({ message: "Not found" });
+      const items = (await db.execute(sql`SELECT * FROM job_work_inward_items WHERE inward_id = ${req.params.id} ORDER BY seq_no`)).rows;
+      res.json({ ...header, items });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/job-work-inward", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const { items = [], ...data } = req.body;
+      // Auto-generate voucher_no if not provided
+      if (!data.voucher_no) {
+        const settings = (await db.execute(sql`SELECT value FROM app_settings WHERE key = 'voucher_prefix_inward'`)).rows[0] as any;
+        const prefix = settings?.value || "INW";
+        const count = (await db.execute(sql`SELECT COUNT(*) as c FROM job_work_inward`)).rows[0] as any;
+        data.voucher_no = `${prefix}${String(parseInt(count.c) + 1).padStart(4, "0")}`;
+      }
+      const [header] = (await db.execute(sql`
+        INSERT INTO job_work_inward (id, voucher_no, inward_date, party_id, party_name_manual, party_dc_no, party_dc_date, delivery_date, work_order_no, party_po_no, vehicle_no, notes, status)
+        VALUES (gen_random_uuid(), ${data.voucher_no}, ${data.inward_date || new Date().toISOString().split("T")[0]}, ${data.party_id || null}, ${data.party_name_manual || ""}, ${data.party_dc_no || ""}, ${data.party_dc_date || null}, ${data.delivery_date || null}, ${data.work_order_no || ""}, ${data.party_po_no || ""}, ${data.vehicle_no || ""}, ${data.notes || ""}, 'Saved')
+        RETURNING *
+      `)).rows;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await db.execute(sql`INSERT INTO job_work_inward_items (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, hsn, remark) VALUES (gen_random_uuid(), ${header.id}, ${i + 1}, ${it.item_code || ""}, ${it.item_id || null}, ${it.item_name || ""}, ${it.qty || 0}, ${it.unit || ""}, ${it.process || ""}, ${it.hsn || ""}, ${it.remark || ""})`);
+      }
+      res.json(header);
+    } catch (e: any) { console.error(e); res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/job-work-inward/:id", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const { items = [], ...data } = req.body;
+      await db.execute(sql`UPDATE job_work_inward SET inward_date=${data.inward_date}, party_id=${data.party_id || null}, party_name_manual=${data.party_name_manual || ""}, party_dc_no=${data.party_dc_no || ""}, party_dc_date=${data.party_dc_date || null}, delivery_date=${data.delivery_date || null}, work_order_no=${data.work_order_no || ""}, party_po_no=${data.party_po_no || ""}, vehicle_no=${data.vehicle_no || ""}, notes=${data.notes || ""}, status='Saved' WHERE id=${req.params.id}`);
+      await db.execute(sql`DELETE FROM job_work_inward_items WHERE inward_id = ${req.params.id}`);
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await db.execute(sql`INSERT INTO job_work_inward_items (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, hsn, remark) VALUES (gen_random_uuid(), ${req.params.id}, ${i + 1}, ${it.item_code || ""}, ${it.item_id || null}, ${it.item_name || ""}, ${it.qty || 0}, ${it.unit || ""}, ${it.process || ""}, ${it.hsn || ""}, ${it.remark || ""})`);
+      }
+      const [header] = (await db.execute(sql`SELECT * FROM job_work_inward WHERE id = ${req.params.id}`)).rows;
+      res.json(header);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.delete("/api/job-work-inward/:id", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`DELETE FROM job_work_inward WHERE id = ${req.params.id}`);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   // App Settings
   app.get("/api/settings", requireAuth, async (req, res) => {
     try {
