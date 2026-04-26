@@ -260,8 +260,8 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
             <DatePicker label="Due Date" value={dueDate} onChange={setDueDate} />
           </div>
 
-          {/* Row 2 — Party Name | Vehicle No */}
-          <div className="flex gap-4 items-start">
+          {/* Row 2 — Party Name | Vehicle No | Tabs */}
+          <div className="flex gap-4 items-center">
             {/* Party Name */}
             <div className="flex-1 relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Party Name</label>
@@ -286,18 +286,18 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
             </div>
 
             {/* Vehicle No */}
-            <div>
-              <p className="text-xs text-gray-500 mb-1.5 pl-1">Vehicle No</p>
-              <div className="flex items-center gap-1">
+            <div className="relative flex-shrink-0">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Vehicle No</label>
+              <div className="flex items-center gap-1 border border-gray-300 rounded px-2 py-1.5">
                 {[
-                  { val: vehP1, set: setVehP1, w: "w-14", ph: "TN",   max: 2 },
-                  { val: vehP2, set: setVehP2, w: "w-12", ph: "00",   max: 2 },
-                  { val: vehP3, set: setVehP3, w: "w-14", ph: "AB",   max: 2 },
-                  { val: vehP4, set: setVehP4, w: "w-20", ph: "1234", max: 4 },
+                  { val: vehP1, set: setVehP1, w: "w-10", ph: "TN",   max: 2 },
+                  { val: vehP2, set: setVehP2, w: "w-9",  ph: "00",   max: 2 },
+                  { val: vehP3, set: setVehP3, w: "w-10", ph: "AB",   max: 2 },
+                  { val: vehP4, set: setVehP4, w: "w-16", ph: "1234", max: 4 },
                 ].map((p, i) => (
                   <input key={i} value={p.val} maxLength={p.max} placeholder={p.ph}
                     onChange={e => p.set(e.target.value.toUpperCase())}
-                    className={`${p.w} border border-gray-300 rounded px-2 py-2.5 text-sm text-center uppercase outline-none focus:border-[#027fa5]`}
+                    className={`${p.w} border-0 border-r border-gray-200 last:border-r-0 py-1 text-sm text-center uppercase outline-none bg-transparent`}
                     data-testid={`input-veh-p${i+1}`}
                   />
                 ))}
@@ -305,7 +305,7 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
             </div>
 
             {/* Tabs */}
-            <div className="flex items-end gap-1 ml-4">
+            <div className="flex gap-1 flex-shrink-0">
               {tabBtn("item", "Item")}
               {tabBtn("delivery", "Delivery Details")}
             </div>
