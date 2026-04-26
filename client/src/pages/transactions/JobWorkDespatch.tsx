@@ -74,6 +74,7 @@ export default function JobWorkDespatch() {
 
   // Items grid
   const [items, setItems] = useState<any[]>([]);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
   // Save state
   const [saveError, setSaveError] = useState("");
@@ -213,6 +214,7 @@ export default function JobWorkDespatch() {
     setNotes("");
     setVehicleNo("");
     setGridSearch("");
+    setSelectedRows(new Set());
     setPartyId(""); setPartySearch("");
     setCheckedInwardIds(new Set());
     setItems([]);
@@ -227,6 +229,21 @@ export default function JobWorkDespatch() {
   function removeAllItems() {
     setItems([]);
     setCheckedInwardIds(new Set());
+    setSelectedRows(new Set());
+  }
+
+  // ── Remove selected rows ──────────────────────────────────────────────────────
+  function removeSelectedItems() {
+    const remaining = items.filter((_, i) => !selectedRows.has(i));
+    // Uncheck any inward whose items are entirely removed
+    const remainingInwardIds = new Set(remaining.map(it => it.inward_id).filter(Boolean));
+    setCheckedInwardIds(prev => {
+      const next = new Set<string>();
+      prev.forEach(id => { if (remainingInwardIds.has(id)) next.add(id); });
+      return next;
+    });
+    setItems(remaining);
+    setSelectedRows(new Set());
   }
 
   // ── Update item field ─────────────────────────────────────────────────────────
@@ -488,6 +505,13 @@ export default function JobWorkDespatch() {
               <table className="w-full text-xs min-w-[900px]">
                 <thead>
                   <tr className="font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200" style={{ background: "#f0f7fa" }}>
+                    <th className="px-3 py-2.5 text-center w-9">
+                      <input type="checkbox"
+                        checked={items.length > 0 && selectedRows.size === items.length}
+                        onChange={e => setSelectedRows(e.target.checked ? new Set(items.map((_, i) => i)) : new Set())}
+                        className="accent-[#027fa5] cursor-pointer"
+                        data-testid="checkbox-select-all" />
+                    </th>
                     <th className="px-3 py-2.5 text-left w-10">S.no</th>
                     <th className="px-3 py-2.5 text-left w-24">Item Code</th>
                     <th className="px-3 py-2.5 text-left min-w-[140px]">Item Name</th>
@@ -513,17 +537,28 @@ export default function JobWorkDespatch() {
                       : items;
                     if (filtered.length === 0) return (
                       <tr>
-                        <td colSpan={11} className="px-4 py-10 text-center text-gray-300 text-sm italic">
+                        <td colSpan={12} className="px-4 py-10 text-center text-gray-300 text-sm italic">
                           {q ? "No items match your search" : partyId ? "Check an inward to load items" : "Select a party and check an inward"}
                         </td>
                       </tr>
                     );
                     return filtered.map((row, i) => {
                       const origIdx = items.indexOf(row);
+                      const isChecked = selectedRows.has(origIdx);
                       return (
                     <tr key={`${row.inward_item_id}-${i}`}
-                      className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
+                      className={`border-t border-gray-100 ${isChecked ? "bg-blue-50" : i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
                       data-testid={`row-item-${i}`}>
+                      <td className="px-3 py-1.5 text-center">
+                        <input type="checkbox" checked={isChecked}
+                          onChange={e => setSelectedRows(prev => {
+                            const next = new Set(prev);
+                            e.target.checked ? next.add(origIdx) : next.delete(origIdx);
+                            return next;
+                          })}
+                          className="accent-[#027fa5] cursor-pointer"
+                          data-testid={`checkbox-row-${i}`} />
+                      </td>
                       <td className="px-3 py-1.5 text-gray-400">{i + 1}</td>
                       <td className="px-3 py-1.5 text-gray-600 font-mono">{row.item_code || "—"}</td>
                       <td className="px-3 py-1.5 font-medium text-gray-800">{row.item_name}</td>
@@ -560,11 +595,20 @@ export default function JobWorkDespatch() {
 
             {/* Footer row */}
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-200 bg-gray-50">
-              <button onClick={removeAllItems}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-colors"
-                data-testid="btn-remove-all">
-                <Trash2 size={12} /> Remove all
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={removeAllItems}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-colors"
+                  data-testid="btn-remove-all">
+                  <Trash2 size={12} /> Remove all
+                </button>
+                {selectedRows.size > 0 && (
+                  <button onClick={removeSelectedItems}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-300 text-red-600 rounded bg-red-50 hover:bg-red-100 transition-colors"
+                    data-testid="btn-remove-selected">
+                    <Trash2 size={12} /> Remove selected ({selectedRows.size})
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-8 text-sm">
                 <div className="flex items-center gap-2 text-gray-500 text-xs">
                   Total Quantity :
