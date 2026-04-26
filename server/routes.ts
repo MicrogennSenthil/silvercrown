@@ -3152,5 +3152,94 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Store Request Notes ──────────────────────────────────────────────────────
+  app.get("/api/store-request-notes", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT s.*, w.name AS store_name_db
+        FROM store_request_notes s
+        LEFT JOIN warehouses w ON w.id = s.store_id
+        ORDER BY s.created_at DESC
+      `);
+      res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db || row.store_name || "" })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/store-request-notes/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hRes, iRes] = await Promise.all([
+        pool.query(`SELECT s.*, w.name AS store_name_db FROM store_request_notes s LEFT JOIN warehouses w ON w.id=s.store_id WHERE s.id=$1`, [req.params.id]),
+        pool.query(`SELECT * FROM store_request_note_items WHERE srn_id=$1 ORDER BY sno`, [req.params.id]),
+      ]);
+      if (!hRes.rows[0]) return res.status(404).json({ message: "SRN not found" });
+      const hdr = hRes.rows[0];
+      res.json({ ...hdr, store_name: hdr.store_name_db || "", items: iRes.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/store-request-notes", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucherNo = await generateVoucherNo("store_request", pool);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const hdrRes = await client.query(`
+          INSERT INTO store_request_notes(id,voucher_no,request_date,store_id,required_before,status,remark,total_qty,grand_total,created_by)
+          VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+          RETURNING *
+        `, [voucherNo, b.request_date||new Date().toISOString().slice(0,10), b.store_id||null, b.required_before||null,
+            b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.grand_total||0), (req as any).user?.id||null]);
+        const hdr = hdrRes.rows[0];
+        for (const it of (b.items||[])) {
+          await client.query(`
+            INSERT INTO store_request_note_items(id,srn_id,sno,item_code,item_name,qty,stock,unit,rate,amount)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+          `, [hdr.id, it.sno, it.item_code||"", it.item_name||"", +(it.qty||0), +(it.stock||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0)]);
+        }
+        await client.query("COMMIT");
+        res.status(201).json({ ...hdr, items: b.items||[] });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/store-request-notes/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(`
+          UPDATE store_request_notes SET request_date=$1,store_id=$2,required_before=$3,status=$4,remark=$5,total_qty=$6,grand_total=$7,updated_at=NOW()
+          WHERE id=$8
+        `, [b.request_date, b.store_id||null, b.required_before||null, b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.grand_total||0), req.params.id]);
+        await client.query(`DELETE FROM store_request_note_items WHERE srn_id=$1`, [req.params.id]);
+        for (const it of (b.items||[])) {
+          await client.query(`
+            INSERT INTO store_request_note_items(id,srn_id,sno,item_code,item_name,qty,stock,unit,rate,amount)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+          `, [req.params.id, it.sno, it.item_code||"", it.item_name||"", +(it.qty||0), +(it.stock||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0)]);
+        }
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/store-request-notes/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM store_request_notes WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }
