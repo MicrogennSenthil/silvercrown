@@ -491,7 +491,7 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
 
           {/* ── Item Tab ─────────────────────────────────────────────────────── */}
           {tab === "item" && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-gray-200 rounded-lg overflow-visible">
               {/* Non-Returnable Outward columns */}
               {!isReturnable && (
                 <>
@@ -543,7 +543,7 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                             placeholder="Search item..."
                             data-testid={`input-item-name-${idx}`} />
                           {itemDropOpen === row._key && filteredProds.length > 0 && (
-                            <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-36 overflow-y-auto">
+                            <div className="absolute top-full left-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto min-w-[220px]">
                               {filteredProds.slice(0, 10).map((p: any) => (
                                 <button key={p.id} onClick={() => selectProduct(row._key, p)}
                                   className="w-full text-left px-2 py-1.5 text-xs hover:bg-[#d2f1fa] transition-colors">
