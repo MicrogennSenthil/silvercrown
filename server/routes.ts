@@ -1493,6 +1493,40 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/job-work-invoice/invoiced-ids — despatch + inward IDs already covered by invoices
+  // Optional ?exclude_invoice_id=xxx to allow the current invoice's own records through (for edit mode)
+  app.get("/api/job-work-invoice/invoiced-ids", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const excludeId = (req.query.exclude_invoice_id as string) || null;
+
+      // Despatch IDs already in a despatch-notes invoice
+      const dq = await pool.query(`
+        SELECT DISTINCT ii.despatch_id
+        FROM job_work_invoice_items ii
+        JOIN job_work_invoices inv ON inv.id = ii.invoice_id
+        WHERE ii.despatch_id IS NOT NULL
+          AND inv.invoice_type = 'despatch_notes'
+          ${excludeId ? "AND inv.id <> $1" : ""}
+      `, excludeId ? [excludeId] : []);
+
+      // Inward IDs already in a direct invoice
+      const iq = await pool.query(`
+        SELECT DISTINCT ii.inward_id
+        FROM job_work_invoice_items ii
+        JOIN job_work_invoices inv ON inv.id = ii.invoice_id
+        WHERE ii.inward_id IS NOT NULL
+          AND inv.invoice_type = 'direct_invoice'
+          ${excludeId ? "AND inv.id <> $1" : ""}
+      `, excludeId ? [excludeId] : []);
+
+      res.json({
+        despatch_ids:       dq.rows.map((r: any) => r.despatch_id),
+        direct_inward_ids:  iq.rows.map((r: any) => r.inward_id),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/job-work-invoice — list all
   app.get("/api/job-work-invoice", requireAuth, async (req, res) => {
     try {

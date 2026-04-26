@@ -34,6 +34,16 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
+
+  // IDs already covered by existing invoices (excluded when editing own invoice)
+  const invoicedIdsKey = editId
+    ? `/api/job-work-invoice/invoiced-ids?exclude_invoice_id=${editId}`
+    : "/api/job-work-invoice/invoiced-ids";
+  const { data: invoicedIds } = useQuery<{ despatch_ids: string[]; direct_inward_ids: string[] }>({
+    queryKey: [invoicedIdsKey],
+  });
+  const invoicedDespatchIds  = new Set(invoicedIds?.despatch_ids || []);
+  const invoicedDirectInwIds = new Set(invoicedIds?.direct_inward_ids || []);
   const settingsMap = (settingsList as any[]).reduce((m: any, s: any) => { m[s.key] = s.value; return m; }, {});
 
   // ── Tab ───────────────────────────────────────────────────────────────────────
@@ -99,11 +109,15 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     !partySearch || c.name?.toLowerCase().includes(partySearch.toLowerCase())
   );
 
-  // Despatch Notes mode: despatches for selected party (inward→despatch→invoice)
-  const partyDespatches = (despatchList as any[]).filter((d: any) => d.party_id === partyId);
-  // Direct Invoice mode: inwards for party with NO despatch done (despatch_status = 'Pending')
+  // Despatch Notes mode: despatches for party not yet invoiced
+  const partyDespatches = (despatchList as any[]).filter((d: any) =>
+    d.party_id === partyId && !invoicedDespatchIds.has(d.id)
+  );
+  // Direct Invoice mode: inwards for party with NO despatch and NOT yet directly invoiced
   const partyDirectInwards = (inwardList as any[]).filter((r: any) =>
-    r.party_id === partyId && (!r.despatch_status || r.despatch_status === "Pending")
+    r.party_id === partyId &&
+    (!r.despatch_status || r.despatch_status === "Pending") &&
+    !invoicedDirectInwIds.has(r.id)
   );
 
   // Filtered items in grid
@@ -291,15 +305,25 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // ── Mutations ─────────────────────────────────────────────────────────────────
   const createMut = useMutation({
     mutationFn: (body: any) => apiRequest("POST", "/api/job-work-invoice", body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/job-work-invoice"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/job-work-invoice"] });
+      qc.invalidateQueries({ queryKey: ["/api/job-work-invoice/invoiced-ids"] });
+    },
   });
   const updateMut = useMutation({
     mutationFn: ({ id, body }: any) => apiRequest("PATCH", `/api/job-work-invoice/${id}`, body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/job-work-invoice"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/job-work-invoice"] });
+      qc.invalidateQueries({ queryKey: ["/api/job-work-invoice/invoiced-ids"] });
+    },
   });
   const deleteMut = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/job-work-invoice/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/job-work-invoice"] }); resetForm(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/job-work-invoice"] });
+      qc.invalidateQueries({ queryKey: ["/api/job-work-invoice/invoiced-ids"] });
+      resetForm();
+    },
   });
 
   // ── Save ──────────────────────────────────────────────────────────────────────
@@ -486,7 +510,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                     <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party</div>
                   )}
                   {partyId && partyDespatches.length === 0 && (
-                    <div className="px-3 py-3 text-xs text-gray-400 text-center">No despatch records found</div>
+                    <div className="px-3 py-4 text-center">
+                      <div className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block">
+                        ⚠ No pending despatch notes — all despatches for this party have already been invoiced.
+                      </div>
+                    </div>
                   )}
                   {partyDespatches.map((d: any) => (
                     <div key={d.id}
@@ -528,7 +556,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                     <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party</div>
                   )}
                   {partyId && partyDirectInwards.length === 0 && (
-                    <div className="px-3 py-3 text-xs text-gray-400 text-center">No pending inwards (not yet despatched)</div>
+                    <div className="px-3 py-4 text-center">
+                      <div className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block">
+                        ⚠ No pending inwards — all eligible inwards for this party have already been invoiced or despatched.
+                      </div>
+                    </div>
                   )}
                   {partyDirectInwards.map((inw: any) => (
                     <div key={inw.id}
