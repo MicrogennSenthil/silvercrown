@@ -33,6 +33,8 @@ export default function JobWorkInvoice() {
   const { data: invoiceList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-invoice"] });
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
+  const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
+  const settingsMap = (settingsList as any[]).reduce((m: any, s: any) => { m[s.key] = s.value; return m; }, {});
 
   // ── Search bar ────────────────────────────────────────────────────────────────
   const [searchText, setSearchText] = useState("");
@@ -405,6 +407,25 @@ export default function JobWorkInvoice() {
       )}
 
       <div className="bg-white rounded-xl shadow p-5">
+        {/* Company info header */}
+        {settingsMap.company_name && (
+          <div className="flex items-start justify-between mb-4 pb-3 border-b border-gray-100">
+            <div>
+              <div className="font-bold text-base" style={{ color: SC.primary }}>{settingsMap.company_name}</div>
+              {(settingsMap.company_address || settingsMap.company_city || settingsMap.company_state) && (
+                <div className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                  {[settingsMap.company_address, settingsMap.company_city, settingsMap.company_state].filter(Boolean).join(", ")}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-x-4 mt-0.5 text-xs text-gray-500">
+                {settingsMap.company_gstin  && <span>GSTIN: <span className="font-mono font-semibold text-gray-700">{settingsMap.company_gstin}</span></span>}
+                {settingsMap.company_phone  && <span>Ph: {settingsMap.company_phone}</span>}
+                {settingsMap.company_email  && <span>{settingsMap.company_email}</span>}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="flex gap-1 mb-5 border-b">
           {(["invoice", "charges"] as const).map(tab => (
