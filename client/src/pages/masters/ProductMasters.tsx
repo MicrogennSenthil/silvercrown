@@ -197,7 +197,12 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
   const [form, setForm] = useState<any>({ ...EMPTY_PRODUCT, ...initial });
   const qc = useQueryClient();
 
-  const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.value }));
+  const [formError, setFormError] = useState("");
+
+  const f = (key: string) => (e: any) => {
+    setFormError("");
+    setForm((p: any) => ({ ...p, [key]: e.target.value }));
+  };
 
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
@@ -215,7 +220,14 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
       return res.json();
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/products"] }); onClose(); },
+    onError: (e: any) => setFormError(e.message || "Save failed. Please try again."),
   });
+
+  function handleSave() {
+    if (!form.name?.trim()) { setFormError("Item Name is required."); return; }
+    setFormError("");
+    saveMut.mutate(form);
+  }
 
   const filteredSubs = subCategories.filter((s: any) => !form.categoryId || s.categoryId === form.categoryId);
   const unitOptions = uomList.map((u: any) => ({ value: u.name || u.code, label: u.name || u.code }));
@@ -280,18 +292,27 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
           </div>
         </div>
 
+        {/* Alert */}
+        {formError && (
+          <div className="mx-6 mb-3 flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+            <svg className="shrink-0 mt-0.5 text-red-500" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <p className="text-sm text-red-700 font-medium">{formError}</p>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button onClick={onClose} className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
             style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
-          <button onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending || !form.name.trim()}
+          <button onClick={handleSave} disabled={saveMut.isPending}
             className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: SC.orange }} data-testid="button-add">
             {saveMut.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}
             {initial?.id ? "Save" : "Add"}
           </button>
         </div>
-        {saveMut.isError && <p className="px-6 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>}
       </div>
     </div>
   );
