@@ -143,25 +143,158 @@ export function Warehouses() {
   }} />;
 }
 
-// --- Units of Measure ---
+// ─── UOM Modal ────────────────────────────────────────────────────────────────
+function UomModal({ item, onClose }: { item?: any; onClose: () => void }) {
+  const [name,      setName]      = useState(item?.name || "");
+  const [shortForm, setShortForm] = useState(item?.shortForm || "");
+  const [decimals,  setDecimals]  = useState(item?.numberOfDecimals ?? 0);
+  const qc = useQueryClient();
+  const isEdit = !!item?.id;
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const code = item?.code || name.trim().toUpperCase().replace(/\s+/g, "_") || `UOM-${Date.now()}`;
+      const url    = isEdit ? `/api/uom/${item.id}` : "/api/uom";
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method, credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: name.trim(), shortForm: shortForm.trim(), numberOfDecimals: Number(decimals), isActive: true }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/uom"] }); onClose(); },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-800">Unit of Measurement</h2>
+        </div>
+        <div className="px-6 py-6 space-y-5">
+          {/* Measurement Name */}
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Measurement name</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              placeholder="Enter New Measurement"
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5]"
+              data-testid="input-uom-name" autoFocus />
+          </div>
+          {/* Short Form + Decimals side by side */}
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Short Form</label>
+              <input value={shortForm} onChange={e => setShortForm(e.target.value)}
+                placeholder="Enter Short form"
+                className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5]"
+                data-testid="input-short-form" />
+            </div>
+            <div className="relative w-32">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none whitespace-nowrap">Number Of Decimals</label>
+              <input type="number" min={0} max={10} value={decimals} onChange={e => setDecimals(Number(e.target.value))}
+                placeholder="0"
+                className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5]"
+                data-testid="input-decimals" />
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose}
+            className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
+          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()}
+            className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="btn-save">
+            {saveMut.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}
+            {isEdit ? "Update" : "Add"}
+          </button>
+        </div>
+        {saveMut.isError && <p className="px-6 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function UnitsOfMeasure() {
-  return <MasterPage config={{
-    title: "Units of Measure",
-    apiBase: "/api/uom",
-    queryKey: "/api/uom",
-    fields: [
-      { name: "code", label: "UOM Code *" },
-      { name: "name", label: "UOM Name *" },
-      { name: "description", label: "Description" },
-      { name: "isActive", label: "Status", type: "checkbox", checkLabel: "Active", default: true },
-    ],
-    columns: [
-      { label: "Code", key: "code", render: (r: any) => <span className="font-mono text-xs font-semibold" style={{ color: "#027fa5" }}>{r.code}</span> },
-      { label: "Name", key: "name", render: (r: any) => <span className="font-medium">{r.name}</span> },
-      { label: "Description", key: "description" },
-      { label: "Status", key: "isActive", render: (r: any) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.isActive ? "Active" : "Inactive"}</span> },
-    ]
-  }} />;
+  const [search, setSearch]   = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+
+  const { data: rows = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/uom"] });
+
+  const filtered = rows.filter((r: any) =>
+    !search ||
+    r.name.toLowerCase().includes(search.toLowerCase()) ||
+    (r.shortForm || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="flex justify-center p-6 bg-[#f5f0ed] min-h-screen">
+      <div className="w-full max-w-lg">
+        <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
+            <span className="font-semibold text-gray-800 text-base whitespace-nowrap">UOM</span>
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search Measurement and short form...."
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
+                data-testid="input-search"
+              />
+            </div>
+          </div>
+
+          {/* Table */}
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: "#d2f1fa" }}>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Measurement Name</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Short Form</th>
+                <th className="w-12"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {isLoading ? (
+                <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400">No units of measure yet.</td></tr>
+              ) : filtered.map((r: any, i: number) => (
+                <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-uom-${r.id}`}>
+                  <td className="px-5 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="px-5 py-2.5 font-medium text-gray-800 uppercase tracking-wide">{r.name}</td>
+                  <td className="px-5 py-2.5 text-gray-600">{r.shortForm || "—"}</td>
+                  <td className="px-3 py-2.5">
+                    <button onClick={() => setEditing(r)}
+                      className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
+                      data-testid={`btn-edit-${r.id}`}>
+                      <PencilLine size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
+            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
+            <button onClick={() => setShowAdd(true)}
+              className="px-8 py-2 rounded text-sm font-semibold text-white"
+              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
+          </div>
+        </div>
+      </div>
+
+      {showAdd && <UomModal onClose={() => setShowAdd(false)} />}
+      {editing && <UomModal item={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
 }
 
 // --- Tax Rates ---

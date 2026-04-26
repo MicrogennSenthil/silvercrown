@@ -362,6 +362,8 @@ export const unitsOfMeasure = pgTable("units_of_measure", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
+  shortForm: text("short_form").notNull().default(""),
+  numberOfDecimals: integer("number_of_decimals").notNull().default(0),
   description: text("description").default(""),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
