@@ -252,7 +252,6 @@ export default function JobWorkDespatch() {
       qc.invalidateQueries({ queryKey: ["/api/job-work-inward"] });
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2000);
-      if (!editingId) resetForm();
     },
     onError: (e: any) => setSaveError(e.message),
   });
@@ -262,6 +261,7 @@ export default function JobWorkDespatch() {
     const activeItems = items.filter(it => parseFloat(it.qty || 0) > 0);
     if (!activeItems.length) { setSaveError("No items to despatch."); return; }
 
+    const isNew = !editingId;          // capture NOW — no closure issues
     const [primaryInward] = [...checkedInwardIds];
 
     saveMut.mutate({
@@ -287,6 +287,8 @@ export default function JobWorkDespatch() {
         rate:            it.rate || 0,
         remark:          "",
       })),
+    }, {
+      onSuccess: () => { if (isNew) resetForm(); },
     });
   }
 
