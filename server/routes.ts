@@ -140,7 +140,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!apiKey) return res.status(500).json({ message: "Gemini API key not configured" });
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
       const imageData = fs.readFileSync(req.file.path);
       const base64Image = imageData.toString("base64");
       const mimeType = req.file.mimetype as "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
@@ -660,7 +660,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       rows.rows.forEach((r: any) => { cfg[r.key] = r.value; });
 
       const provider = cfg["ai_provider"] || "gemini";
-      const model = cfg["ai_model"] || "gemini-1.5-flash";
+      const model = cfg["ai_model"] || "gemini-2.0-flash";
       const apiKey = provider === "gemini" ? cfg["gemini_api_key"] : cfg["groq_api_key"];
 
       if (!apiKey) return res.status(400).json({ message: `${provider === "gemini" ? "Gemini" : "Groq"} API key not configured. Please set it in Software Setup → AI Configuration.` });
