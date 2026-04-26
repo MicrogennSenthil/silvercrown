@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, ChevronDown, Loader2, AlertCircle, CheckCircle2, Info, Trash2 } from "lucide-react";
+import { Search, ChevronDown, Loader2, AlertCircle, CheckCircle2, Trash2, PencilLine } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
@@ -18,41 +18,12 @@ function fmtAmount(n: number) {
 }
 
 
-export default function JobWorkDespatch() {
+function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; editId?: string | null }) {
   const qc = useQueryClient();
 
   // ── Data queries ─────────────────────────────────────────────────────────────
   const { data: inwardList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
-  const { data: despatchList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-despatch"] });
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
-
-  // ── Search bar (finds existing despatches) ───────────────────────────────────
-  const [searchText, setSearchText]       = useState("");
-  const [showSearchDrop, setShowSearchDrop] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  const searchResults = searchText.trim()
-    ? despatchList.filter(d => {
-        const q = searchText.toLowerCase();
-        return (
-          d.voucher_no?.toLowerCase().includes(q) ||
-          d.party_name_db?.toLowerCase().includes(q) ||
-          d.inward_voucher_no?.toLowerCase().includes(q) ||
-          d.despatch_date?.includes(q)
-        );
-      }).slice(0, 8)
-    : [];
-
-  // Close search dropdown on outside click
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setShowSearchDrop(false);
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
 
   // ── Form state ───────────────────────────────────────────────────────────────
   const [editingId,      setEditingId]      = useState<string | null>(null);
@@ -221,30 +192,17 @@ export default function JobWorkDespatch() {
         igst_rate:       it.igst_rate || 0,
       })));
       setIsInterState(data.is_inter_state || false);
-
-      setSearchText("");
-      setShowSearchDrop(false);
     } catch {}
   }
 
-  // ── Reset form ────────────────────────────────────────────────────────────────
+  // Auto-load record when editId prop is provided
+  useEffect(() => {
+    if (editId) loadDespatch(editId);
+  }, [editId]);
+
+  // ── Reset form → go back to list ──────────────────────────────────────────────
   function resetForm() {
-    setEditingId(null);
-    setVoucherNo("");
-    setDespatchDate(today());
-    setNotes("");
-    setVehP1(""); setVehP2(""); setVehP3(""); setVehP4("");
-    setIsInterState(false);
-    setGridSearch("");
-    setSelectedRows(new Set());
-    setPartyId(""); setPartySearch("");
-    setCheckedInwardIds(new Set());
-    setItems([]);
-    setSaveError("");
-    setSaveOk(false);
-    // Re-fetch next voucher number
-    fetch("/api/voucher-series/next/job_work_despatch", { credentials: "include", cache: "no-store" })
-      .then(r => r.json()).then(d => setVoucherNo(d.voucher_no || "")).catch(() => {});
+    onBackToList();
   }
 
   // ── Remove all items ──────────────────────────────────────────────────────────
@@ -380,40 +338,14 @@ export default function JobWorkDespatch() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {/* Card header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-          <h2 className="text-base font-bold" style={{ color: SC.primary }}>Job Work Despatch</h2>
-
-          {/* Search existing despatches */}
-          <div className="flex items-center gap-2">
-            <div className="relative" ref={searchRef}>
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={searchText}
-                onChange={e => { setSearchText(e.target.value); setShowSearchDrop(true); }}
-                onFocus={() => setShowSearchDrop(true)}
-                placeholder="Search Despatch No, Date and Party Name ..."
-                className="pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg w-80 outline-none focus:border-[#027fa5] bg-gray-50"
-                data-testid="input-search"
-              />
-              {showSearchDrop && searchResults.length > 0 && (
-                <div className="absolute top-full right-0 mt-0.5 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-64 overflow-y-auto">
-                  {searchResults.map(d => (
-                    <button key={d.id} onClick={() => loadDespatch(d.id)}
-                      className="w-full text-left px-3 py-2.5 hover:bg-[#d2f1fa] border-b border-gray-50 last:border-0 text-sm transition-colors"
-                      data-testid={`search-result-${d.id}`}>
-                      <div className="font-semibold" style={{ color: SC.primary }}>{d.voucher_no}</div>
-                      <div className="text-xs text-gray-500 mt-0.5 flex gap-3">
-                        <span>{fmtDate(d.despatch_date)}</span>
-                        <span>{d.party_name_db || d.party_name_manual || "—"}</span>
-                        <span className="text-gray-400">{d.inward_voucher_no}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button className="p-1.5 rounded hover:bg-gray-100 text-gray-400" title="Info">
-              <Info size={16} />
+          <div className="flex items-center gap-3">
+            <button onClick={onBackToList} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors" data-testid="btn-back-to-list">
+              ← Back
             </button>
+            <span className="text-gray-300">|</span>
+            <h2 className="text-base font-bold" style={{ color: SC.primary }}>
+              {editingId ? "Edit Despatch" : "New Despatch"}
+            </h2>
           </div>
         </div>
 
@@ -817,6 +749,119 @@ export default function JobWorkDespatch() {
               Save
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Job Work Despatch List (default export) ───────────────────────────────────
+export default function JobWorkDespatch() {
+  const [view, setView] = useState<"list" | "form">("list");
+  const [editId, setEditId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const { data: records = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/job-work-despatch"] });
+
+  const filtered = records.filter((r: any) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      r.voucher_no?.toLowerCase().includes(q) ||
+      r.party_name_db?.toLowerCase().includes(q) ||
+      r.party_name_manual?.toLowerCase().includes(q) ||
+      r.inward_voucher_no?.toLowerCase().includes(q) ||
+      r.vehicle_no?.toLowerCase().includes(q)
+    );
+  });
+
+  if (view === "form") {
+    return <DespatchForm editId={editId} onBackToList={() => { setEditId(null); setView("list"); }} />;
+  }
+
+  return (
+    <div className="p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
+      <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h1 className="font-semibold text-gray-800 text-base">Job Work Despatch</h1>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search by voucher / party / vehicle..."
+                className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded w-64 outline-none focus:border-[#027fa5]"
+                data-testid="input-search" />
+            </div>
+            <button onClick={() => { setEditId(null); setView("form"); }}
+              className="px-6 py-2 rounded text-sm font-semibold text-white"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              + New
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: SC.tonal }}>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700 w-12">S.No</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Voucher No</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Date</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Party</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Inward Ref</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Vehicle</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Status</th>
+              <th className="px-3 py-2.5 w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && (
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400 text-sm">Loading...</td></tr>
+            )}
+            {!isLoading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-5 py-12 text-center">
+                  <div className="flex flex-col items-center gap-2 text-gray-400">
+                    <div className="text-sm font-medium">No despatch entries yet</div>
+                    <div className="text-xs">Click "+ New" to create your first Job Work Despatch</div>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {filtered.map((r: any, i: number) => (
+              <tr key={r.id} className={`border-t border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
+                data-testid={`row-despatch-${r.id}`}>
+                <td className="px-5 py-2.5 text-gray-500">{i + 1}</td>
+                <td className="px-5 py-2.5 font-semibold" style={{ color: SC.primary }}>{r.voucher_no}</td>
+                <td className="px-5 py-2.5 text-gray-600 text-xs">{r.despatch_date ? new Date(r.despatch_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</td>
+                <td className="px-5 py-2.5 font-medium text-gray-700">{r.party_name_db || r.party_name_manual || <span className="text-gray-300">—</span>}</td>
+                <td className="px-5 py-2.5 text-gray-600 text-xs">{r.inward_voucher_no || <span className="text-gray-300">—</span>}</td>
+                <td className="px-5 py-2.5 text-gray-600 text-xs font-mono tracking-wide">{r.vehicle_no ? String(r.vehicle_no).toUpperCase() : <span className="text-gray-300">—</span>}</td>
+                <td className="px-5 py-2.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.status === "Saved" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
+                    {r.status || "Draft"}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <button onClick={() => { setEditId(r.id); setView("form"); }}
+                    className="p-1.5 rounded hover:bg-blue-50 transition-colors" style={{ color: SC.primary }}
+                    data-testid={`btn-edit-${r.id}`}>
+                    <PencilLine size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
+          <button onClick={() => { setEditId(null); setView("form"); }}
+            className="px-8 py-2 rounded text-sm font-semibold text-white"
+            style={{ background: SC.orange }} data-testid="btn-new">
+            + New Despatch
+          </button>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Loader2, AlertCircle, CheckCircle2, Info, Trash2, Plus } from "lucide-react";
+import { Search, Loader2, AlertCircle, CheckCircle2, Trash2, Plus, PencilLine } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -26,35 +26,14 @@ function parseVehicle(s: string) {
   return { p1: clean.slice(0,2), p2: clean.slice(2,4), p3: clean.slice(4,6), p4: clean.slice(6) };
 }
 
-export default function JobWorkInvoice() {
+function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editId?: string | null }) {
   const qc = useQueryClient();
 
   const { data: inwardList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
-  const { data: invoiceList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-invoice"] });
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
   const settingsMap = (settingsList as any[]).reduce((m: any, s: any) => { m[s.key] = s.value; return m; }, {});
-
-  // ── Search bar ────────────────────────────────────────────────────────────────
-  const [searchText, setSearchText] = useState("");
-  const [showSearchDrop, setShowSearchDrop] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-  const searchResults = searchText.trim()
-    ? invoiceList.filter((d: any) => {
-        const q = searchText.toLowerCase();
-        return d.voucher_no?.toLowerCase().includes(q) ||
-          d.party_name_db?.toLowerCase().includes(q) ||
-          d.invoice_date?.includes(q);
-      }).slice(0, 8)
-    : [];
-  useEffect(() => {
-    function h(e: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearchDrop(false);
-    }
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
 
   // ── Tab ───────────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"invoice" | "charges">("invoice");
@@ -257,29 +236,13 @@ export default function JobWorkInvoice() {
   }
 
   // ── Reset form ────────────────────────────────────────────────────────────────
+  // Auto-load record when editId prop is provided
+  useEffect(() => {
+    if (editId) loadInvoice(editId);
+  }, [editId]);
+
   function resetForm() {
-    setEditingId(null);
-    setVoucherNo("");
-    setInvoiceDate(today());
-    setVehP1(""); setVehP2(""); setVehP3(""); setVehP4("");
-    setInvoiceType("despatch_notes");
-    setIsInterState(false);
-    setRemark("");
-    setPartyId("");
-    setPartySearch("");
-    setCheckedInwardIds(new Set());
-    setItems([]);
-    setCharges([{ subledger_id: "", charge_name: "", amount: "" }]);
-    setTermOfDel("");
-    setTransport("");
-    setFreight("to_pay");
-    setDeliveryAddr("");
-    setSameAsCompany(false);
-    setSaveError("");
-    setSaveOk(false);
-    setActiveTab("invoice");
-    fetch("/api/voucher-series/next/job_work_invoice", { credentials: "include", cache: "no-store" })
-      .then(r => r.json()).then(d => setVoucherNo(d.voucher_no || "")).catch(() => {});
+    onBackToList();
   }
 
   // ── Remove all items ──────────────────────────────────────────────────────────
@@ -360,38 +323,15 @@ export default function JobWorkInvoice() {
   // ── Shared header + panel layout ──────────────────────────────────────────────
   return (
     <div style={{ background: SC.bg, minHeight: "100vh", padding: "24px" }}>
-      {/* Page title + search */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold" style={{ color: SC.primary }}>Job Work Invoice</h1>
-        <div className="relative" ref={searchRef}>
-          <div className="flex items-center border rounded-lg px-3 py-2 bg-white shadow-sm gap-2" style={{ width: 340 }}>
-            <Search size={15} className="text-gray-400" />
-            <input
-              data-testid="input-invoice-search"
-              className="outline-none text-sm flex-1"
-              placeholder="Search Invoice No, Date and Party Name ..."
-              value={searchText}
-              onChange={e => { setSearchText(e.target.value); setShowSearchDrop(true); }}
-              onFocus={() => setShowSearchDrop(true)}
-            />
-            <Info size={15} className="text-gray-400 cursor-pointer" />
-          </div>
-          {showSearchDrop && searchResults.length > 0 && (
-            <div className="absolute right-0 top-10 bg-white border rounded-lg shadow-xl z-50 w-full overflow-hidden">
-              {searchResults.map((inv: any) => (
-                <div key={inv.id}
-                  className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm"
-                  onClick={() => loadInvoice(inv.id)}>
-                  <span className="font-semibold" style={{ color: SC.primary }}>{inv.voucher_no}</span>
-                  <span className="mx-2 text-gray-400">|</span>
-                  <span>{inv.party_name_db}</span>
-                  <span className="mx-2 text-gray-400">|</span>
-                  <span className="text-gray-500">{fmtDate(inv.invoice_date)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Page title + back */}
+      <div className="flex items-center gap-3 mb-4">
+        <button onClick={onBackToList} className="text-sm text-gray-500 hover:text-gray-800 transition-colors" data-testid="btn-back-to-list">
+          ← Back
+        </button>
+        <span className="text-gray-300">|</span>
+        <h1 className="text-xl font-bold" style={{ color: SC.primary }}>
+          {editingId ? "Edit Invoice" : "New Invoice"}
+        </h1>
       </div>
 
       {/* Alerts */}
@@ -960,6 +900,123 @@ export default function JobWorkInvoice() {
             style={{ background: isSaving ? "#aaa" : SC.orange }}>
             {isSaving && <Loader2 size={14} className="animate-spin" />}
             Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Job Work Invoice List (default export) ────────────────────────────────────
+export default function JobWorkInvoice() {
+  const [view, setView] = useState<"list" | "form">("list");
+  const [editId, setEditId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const { data: records = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/job-work-invoice"] });
+
+  const filtered = records.filter((r: any) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      r.voucher_no?.toLowerCase().includes(q) ||
+      r.party_name_db?.toLowerCase().includes(q) ||
+      r.invoice_date?.includes(q)
+    );
+  });
+
+  if (view === "form") {
+    return <InvoiceForm editId={editId} onBackToList={() => { setEditId(null); setView("list"); }} />;
+  }
+
+  return (
+    <div className="p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
+      <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h1 className="font-semibold text-gray-800 text-base">Job Work Invoice</h1>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search by voucher / party / date..."
+                className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded w-64 outline-none focus:border-[#027fa5]"
+                data-testid="input-search" />
+            </div>
+            <button onClick={() => { setEditId(null); setView("form"); }}
+              className="px-6 py-2 rounded text-sm font-semibold text-white"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              + New
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: SC.tonal }}>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700 w-12">S.No</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Voucher No</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Date</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Party</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Type</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Tax</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Status</th>
+              <th className="px-3 py-2.5 w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && (
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400 text-sm">Loading...</td></tr>
+            )}
+            {!isLoading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-5 py-12 text-center">
+                  <div className="flex flex-col items-center gap-2 text-gray-400">
+                    <div className="text-sm font-medium">No invoices yet</div>
+                    <div className="text-xs">Click "+ New" to create your first Job Work Invoice</div>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {filtered.map((r: any, i: number) => (
+              <tr key={r.id} className={`border-t border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
+                data-testid={`row-invoice-${r.id}`}>
+                <td className="px-5 py-2.5 text-gray-500">{i + 1}</td>
+                <td className="px-5 py-2.5 font-semibold" style={{ color: SC.primary }}>{r.voucher_no}</td>
+                <td className="px-5 py-2.5 text-gray-600 text-xs">{r.invoice_date ? new Date(r.invoice_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</td>
+                <td className="px-5 py-2.5 font-medium text-gray-700">{r.party_name_db || r.party_name_manual || <span className="text-gray-300">—</span>}</td>
+                <td className="px-5 py-2.5 text-xs text-gray-600">
+                  {r.invoice_type === "direct_invoice" ? "Direct" : "Despatch"}
+                </td>
+                <td className="px-5 py-2.5 text-xs">
+                  <span className={`px-2 py-0.5 rounded font-semibold ${r.is_inter_state ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"}`}>
+                    {r.is_inter_state ? "Inter-State" : "Within State"}
+                  </span>
+                </td>
+                <td className="px-5 py-2.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.status === "Saved" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
+                    {r.status || "Draft"}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <button onClick={() => { setEditId(r.id); setView("form"); }}
+                    className="p-1.5 rounded hover:bg-blue-50 transition-colors" style={{ color: SC.primary }}
+                    data-testid={`btn-edit-${r.id}`}>
+                    <PencilLine size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
+          <button onClick={() => { setEditId(null); setView("form"); }}
+            className="px-8 py-2 rounded text-sm font-semibold text-white"
+            style={{ background: SC.orange }} data-testid="btn-new">
+            + New Invoice
           </button>
         </div>
       </div>
