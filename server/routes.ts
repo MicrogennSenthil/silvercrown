@@ -1843,5 +1843,166 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Returnable Outward ──────────────────────────────────────────────────────
+
+  // Returns which returnable_inward IDs are already covered by an outward
+  app.get("/api/returnable-outward/outward-inward-ids", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const excludeId = (req.query.exclude_outward_id as string) || null;
+      const r = await pool.query(`
+        SELECT DISTINCT oi.inward_id
+        FROM returnable_outward_items oi
+        JOIN returnable_outward o ON o.id = oi.outward_id
+        WHERE oi.inward_id IS NOT NULL
+          ${excludeId ? "AND o.id <> $1" : ""}
+      `, excludeId ? [excludeId] : []);
+      res.json({ inward_ids: r.rows.map((row: any) => row.inward_id) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/returnable-outward", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT ro.*, c.name AS party_name_db
+        FROM returnable_outward ro
+        LEFT JOIN customers c ON c.id = ro.party_id
+        ORDER BY ro.created_at DESC
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/returnable-outward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [header] = (await pool.query(`
+        SELECT ro.*, c.name AS party_name_db
+        FROM returnable_outward ro
+        LEFT JOIN customers c ON c.id = ro.party_id
+        WHERE ro.id = $1
+      `, [req.params.id])).rows;
+      if (!header) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(
+        `SELECT * FROM returnable_outward_items WHERE outward_id=$1 ORDER BY seq_no`,
+        [req.params.id]
+      )).rows;
+      res.json({ ...header, items });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/returnable-outward", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucher_no = await generateVoucherNo("returnable_outward", client);
+      const hRes = await client.query(`
+        INSERT INTO returnable_outward
+          (voucher_no, party_id, party_name_manual, outward_date, vehicle_no,
+           contact_person, mobile_no, email_id, delivery_address, same_as_company, remark)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *
+      `, [voucher_no, b.party_id||null, b.party_name_manual||"",
+          b.outward_date||new Date().toISOString().split("T")[0],
+          b.vehicle_no||"", b.contact_person||"", b.mobile_no||"",
+          b.email_id||"", b.delivery_address||"", b.same_as_company!==false, b.remark||""]);
+      const hdr = hRes.rows[0];
+      const items = b.items || [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await client.query(`
+          INSERT INTO returnable_outward_items
+            (outward_id, inward_id, seq_no, item_id, item_code, item_name, hsn,
+             qty_inward, qty_outward, unit, weight, unit_value, total_value)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        `, [hdr.id, it.inward_id||null, i+1, it.item_id||null,
+            it.item_code||"", it.item_name||"", it.hsn||"",
+            parseFloat(it.qty_inward||0), parseFloat(it.qty_outward||0),
+            it.unit||"", parseFloat(it.weight||0),
+            parseFloat(it.unit_value||0), parseFloat(it.total_value||0)]);
+      }
+      // Mark used inward IDs as completed
+      const usedInwardIds = [...new Set(items.map((it: any) => it.inward_id).filter(Boolean))];
+      for (const iid of usedInwardIds) {
+        await client.query(`UPDATE returnable_inward SET outward_status='Completed' WHERE id=$1`, [iid]);
+      }
+      await client.query("COMMIT");
+      res.json({ ...hdr, voucher_no });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.patch("/api/returnable-outward/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      // Reset outward_status on previously linked inwards
+      const prevItems = (await client.query(
+        `SELECT DISTINCT inward_id FROM returnable_outward_items WHERE outward_id=$1 AND inward_id IS NOT NULL`,
+        [req.params.id]
+      )).rows;
+      for (const row of prevItems) {
+        await client.query(`UPDATE returnable_inward SET outward_status='Pending' WHERE id=$1`, [row.inward_id]);
+      }
+      const hRes = await client.query(`
+        UPDATE returnable_outward SET
+          party_id=$1, party_name_manual=$2, outward_date=$3, vehicle_no=$4,
+          contact_person=$5, mobile_no=$6, email_id=$7, delivery_address=$8,
+          same_as_company=$9, remark=$10
+        WHERE id=$11 RETURNING *
+      `, [b.party_id||null, b.party_name_manual||"", b.outward_date,
+          b.vehicle_no||"", b.contact_person||"", b.mobile_no||"",
+          b.email_id||"", b.delivery_address||"", b.same_as_company!==false,
+          b.remark||"", req.params.id]);
+      await client.query(`DELETE FROM returnable_outward_items WHERE outward_id=$1`, [req.params.id]);
+      const items = b.items || [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await client.query(`
+          INSERT INTO returnable_outward_items
+            (outward_id, inward_id, seq_no, item_id, item_code, item_name, hsn,
+             qty_inward, qty_outward, unit, weight, unit_value, total_value)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        `, [req.params.id, it.inward_id||null, i+1, it.item_id||null,
+            it.item_code||"", it.item_name||"", it.hsn||"",
+            parseFloat(it.qty_inward||0), parseFloat(it.qty_outward||0),
+            it.unit||"", parseFloat(it.weight||0),
+            parseFloat(it.unit_value||0), parseFloat(it.total_value||0)]);
+      }
+      const usedInwardIds = [...new Set(items.map((it: any) => it.inward_id).filter(Boolean))];
+      for (const iid of usedInwardIds) {
+        await client.query(`UPDATE returnable_inward SET outward_status='Completed' WHERE id=$1`, [iid]);
+      }
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.delete("/api/returnable-outward/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Reset inward statuses before deleting
+      const prevItems = (await client.query(
+        `SELECT DISTINCT inward_id FROM returnable_outward_items WHERE outward_id=$1 AND inward_id IS NOT NULL`,
+        [req.params.id]
+      )).rows;
+      await client.query(`DELETE FROM returnable_outward WHERE id=$1`, [req.params.id]);
+      for (const row of prevItems) {
+        await client.query(`UPDATE returnable_inward SET outward_status='Pending' WHERE id=$1`, [row.inward_id]);
+      }
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
   return httpServer;
 }
