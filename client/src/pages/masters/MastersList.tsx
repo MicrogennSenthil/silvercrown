@@ -508,9 +508,154 @@ export function Categories() {
   );
 }
 
-// --- Voucher Types ---
+// ─── Voucher Type Modal ───────────────────────────────────────────────────────
+function VoucherTypeModal({ item, onClose }: { item?: any; onClose: () => void }) {
+  const [name,      setName]      = useState(item?.name || "");
+  const [prefix,    setPrefix]    = useState(item?.prefix || "");
+  const [narration, setNarration] = useState(item?.defaultNarration || "");
+  const qc = useQueryClient();
+  const isEdit = !!item?.id;
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const code   = item?.code || name.trim().toUpperCase().replace(/\s+/g, "_") || `VT-${Date.now()}`;
+      const url    = isEdit ? `/api/voucher-types/${item.id}` : "/api/voucher-types";
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method, credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: name.trim(), prefix: prefix.trim(), defaultNarration: narration.trim(), isActive: true }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/voucher-types"] }); onClose(); },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-md shadow-2xl">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-800">{isEdit ? "Edit Voucher Name" : "Create New Voucher Name"}</h2>
+        </div>
+        <div className="px-6 py-6 space-y-5">
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Voucher Name</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter New Voucher name...."
+                className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5]"
+                data-testid="input-voucher-name" autoFocus />
+            </div>
+            <div className="relative w-28">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Prefix</label>
+              <input value={prefix} onChange={e => setPrefix(e.target.value)} placeholder="Eg: PRe"
+                className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5]"
+                data-testid="input-prefix" />
+            </div>
+          </div>
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Default Narration</label>
+            <input value={narration} onChange={e => setNarration(e.target.value)} placeholder="Type here..."
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5]"
+              data-testid="input-narration" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose}
+            className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
+          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()}
+            className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="btn-add">
+            {saveMut.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}
+            {isEdit ? "Save" : "Add"}
+          </button>
+        </div>
+        {saveMut.isError && <p className="px-6 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function VoucherTypes() {
-  return <MasterPage config={{ title: "Voucher Types", apiBase: "/api/voucher-types", queryKey: "/api/voucher-types", fields: baseFields(), columns: baseCols() }} />;
+  const [search, setSearch]   = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+
+  const { data: rows = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/voucher-types"] });
+
+  const filtered = rows.filter((r: any) =>
+    !search ||
+    r.name.toLowerCase().includes(search.toLowerCase()) ||
+    (r.prefix || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="flex justify-center p-6 bg-[#f5f0ed] min-h-screen">
+      <div className="w-full max-w-2xl">
+        <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
+            <span className="font-semibold text-gray-800 text-base whitespace-nowrap">Voucher type</span>
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search by Voucher name and Prefix ..."
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
+                data-testid="input-search" />
+            </div>
+          </div>
+
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: "#d2f1fa" }}>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Voucher Name</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Prefix</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Default Narrations</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Status</th>
+                <th className="w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {isLoading ? (
+                <tr><td colSpan={6} className="px-5 py-8 text-center text-gray-400">Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-400">No voucher types yet.</td></tr>
+              ) : filtered.map((r: any, i: number) => (
+                <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-vt-${r.id}`}>
+                  <td className="px-5 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="px-5 py-2.5 font-medium text-gray-800">{r.name}</td>
+                  <td className="px-5 py-2.5 text-gray-600">{r.prefix || "—"}</td>
+                  <td className="px-5 py-2.5 text-gray-600">{r.defaultNarration || "—"}</td>
+                  <td className="px-5 py-2.5 text-sm" style={{ color: r.isActive ? "#16a34a" : "#9ca3af" }}>
+                    {r.isActive ? "Active" : "Inactive"}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <button onClick={() => setEditing(r)}
+                      className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
+                      data-testid={`btn-edit-${r.id}`}>
+                      <PencilLine size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
+            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
+            <button onClick={() => setShowAdd(true)}
+              className="px-8 py-2 rounded text-sm font-semibold text-white"
+              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
+          </div>
+        </div>
+      </div>
+
+      {showAdd && <VoucherTypeModal onClose={() => setShowAdd(false)} />}
+      {editing && <VoucherTypeModal item={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
 }
 
 // ─── Pay Mode Type Modal ──────────────────────────────────────────────────────

@@ -537,6 +537,8 @@ export const voucherTypes = pgTable("voucher_types", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
+  prefix: text("prefix").notNull().default(""),
+  defaultNarration: text("default_narration").notNull().default(""),
   description: text("description").default(""),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
