@@ -3281,6 +3281,118 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Physical Inventory Reconciliation ────────────────────────────────────────
+  app.get("/api/phy-reconciliations", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT p.*, w.name AS store_name_db
+        FROM phy_reconciliations p
+        LEFT JOIN warehouses w ON w.id = p.store_id
+        ORDER BY p.created_at DESC
+      `);
+      res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db || "" })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/phy-reconciliations/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hRes, iRes] = await Promise.all([
+        pool.query(`SELECT p.*, w.name AS store_name_db FROM phy_reconciliations p LEFT JOIN warehouses w ON w.id=p.store_id WHERE p.id=$1`, [req.params.id]),
+        pool.query(`SELECT * FROM phy_reconciliation_items WHERE rec_id=$1 ORDER BY sno`, [req.params.id]),
+      ]);
+      if (!hRes.rows[0]) return res.status(404).json({ message: "Not found" });
+      const hdr = hRes.rows[0];
+      res.json({ ...hdr, store_name: hdr.store_name_db || "", items: iRes.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/phy-reconciliations", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucherNo = await generateVoucherNo("phy_reconciliation", pool);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const hdrRes = await client.query(`
+          INSERT INTO phy_reconciliations(id,voucher_no,rec_date,store_id,status,remark,created_by)
+          VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6) RETURNING *
+        `, [voucherNo, b.rec_date||new Date().toISOString().slice(0,10), b.store_id||null, b.status||"Draft", b.remark||"", (req as any).user?.id||null]);
+        const hdr = hdrRes.rows[0];
+        for (const it of (b.items||[])) {
+          const diff = +(it.physical_qty||0) - +(it.system_qty||0);
+          const adjType = diff < 0 ? "Shortage" : diff > 0 ? "Surplus" : "Match";
+          await client.query(`
+            INSERT INTO phy_reconciliation_items(id,rec_id,sno,item_code,item_name,uom,system_qty,physical_qty,difference,adj_type,reason)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          `, [hdr.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos", +(it.system_qty||0), +(it.physical_qty||0), diff, adjType, it.reason||""]);
+          // Update product current_stock to physical count
+          if (it.item_code) {
+            await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(it.physical_qty||0), it.item_code]);
+          }
+        }
+        await client.query("COMMIT");
+        res.status(201).json({ ...hdr, items: b.items||[] });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/phy-reconciliations/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Restore old stock (set back to system_qty captured at time of reconciliation)
+        const oldItems = await client.query(`SELECT item_code, system_qty FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
+        for (const oi of oldItems.rows) {
+          if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.system_qty||0), oi.item_code]);
+        }
+        await client.query(`UPDATE phy_reconciliations SET rec_date=$1,store_id=$2,status=$3,remark=$4,updated_at=NOW() WHERE id=$5`,
+          [b.rec_date, b.store_id||null, b.status||"Draft", b.remark||"", req.params.id]);
+        await client.query(`DELETE FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
+        for (const it of (b.items||[])) {
+          const diff = +(it.physical_qty||0) - +(it.system_qty||0);
+          const adjType = diff < 0 ? "Shortage" : diff > 0 ? "Surplus" : "Match";
+          await client.query(`
+            INSERT INTO phy_reconciliation_items(id,rec_id,sno,item_code,item_name,uom,system_qty,physical_qty,difference,adj_type,reason)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          `, [req.params.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos", +(it.system_qty||0), +(it.physical_qty||0), diff, adjType, it.reason||""]);
+          if (it.item_code) {
+            await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(it.physical_qty||0), it.item_code]);
+          }
+        }
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/phy-reconciliations/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Restore stock to pre-reconciliation values
+        const oldItems = await client.query(`SELECT item_code, system_qty FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
+        for (const oi of oldItems.rows) {
+          if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.system_qty||0), oi.item_code]);
+        }
+        await client.query(`DELETE FROM phy_reconciliations WHERE id=$1`, [req.params.id]);
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Store Request Notes ──────────────────────────────────────────────────────
   app.get("/api/store-request-notes", requireAuth, async (req, res) => {
     try {
