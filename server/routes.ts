@@ -3281,6 +3281,124 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Goods Receipt Returns ────────────────────────────────────────────────────
+  app.get("/api/goods-receipt-returns", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT g.*, w.name AS store_name_db
+        FROM goods_receipt_returns g
+        LEFT JOIN warehouses w ON w.id = g.store_id
+        ORDER BY g.created_at DESC
+      `);
+      res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db || "" })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/goods-receipt-returns/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hRes, iRes] = await Promise.all([
+        pool.query(`SELECT g.*, w.name AS store_name_db FROM goods_receipt_returns g LEFT JOIN warehouses w ON w.id=g.store_id WHERE g.id=$1`, [req.params.id]),
+        pool.query(`SELECT * FROM goods_receipt_return_items WHERE grr_id=$1 ORDER BY sno`, [req.params.id]),
+      ]);
+      if (!hRes.rows[0]) return res.status(404).json({ message: "Not found" });
+      const hdr = hRes.rows[0];
+      res.json({ ...hdr, store_name: hdr.store_name_db || "", items: iRes.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/goods-receipt-returns", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucherNo = await generateVoucherNo("goods_receipt_return", pool);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const hdrRes = await client.query(`
+          INSERT INTO goods_receipt_returns(id,voucher_no,return_date,store_id,supplier_id,supplier_name,grn_id,grn_no,grn_date,total_qty,taxable_amount,cgst_amount,sgst_amount,igst_amount,grand_total,remark,status,created_by)
+          VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *
+        `, [voucherNo, b.return_date||new Date().toISOString().slice(0,10), b.store_id||null,
+            b.supplier_id||null, b.supplier_name||"", b.grn_id||null, b.grn_no||"", b.grn_date||null,
+            +(b.total_qty||0), +(b.taxable_amount||0), +(b.cgst_amount||0), +(b.sgst_amount||0), +(b.igst_amount||0),
+            +(b.grand_total||0), b.remark||"", b.status||"Draft", (req as any).user?.id||null]);
+        const hdr = hdrRes.rows[0];
+        for (const it of (b.items||[])) {
+          await client.query(`
+            INSERT INTO goods_receipt_return_items(id,grr_id,sno,item_code,item_name,stock,grn_qty,return_qty,unit,rate,taxable_amt,cgst_pct,cgst_amt,sgst_pct,sgst_amt,igst_pct,igst_amt,total)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          `, [hdr.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.grn_qty||0), +(it.return_qty||0),
+              it.unit||"Nos", +(it.rate||0), +(it.taxable_amt||0), +(it.cgst_pct||0), +(it.cgst_amt||0),
+              +(it.sgst_pct||0), +(it.sgst_amt||0), +(it.igst_pct||0), +(it.igst_amt||0), +(it.total||0)]);
+          // Reduce stock — goods returned to supplier
+          if (it.item_code && +(it.return_qty||0) > 0) {
+            await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`,
+              [+(it.return_qty||0), it.item_code]);
+          }
+        }
+        await client.query("COMMIT");
+        res.status(201).json({ ...hdr, items: b.items||[] });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/goods-receipt-returns/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Restore old stock (reverse old returns)
+        const oldItems = await client.query(`SELECT item_code, return_qty FROM goods_receipt_return_items WHERE grr_id=$1`, [req.params.id]);
+        for (const oi of oldItems.rows) {
+          if (oi.item_code && +(oi.return_qty||0) > 0)
+            await client.query(`UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`, [+(oi.return_qty||0), oi.item_code]);
+        }
+        await client.query(`UPDATE goods_receipt_returns SET return_date=$1,store_id=$2,supplier_id=$3,supplier_name=$4,grn_id=$5,grn_no=$6,grn_date=$7,total_qty=$8,taxable_amount=$9,cgst_amount=$10,sgst_amount=$11,igst_amount=$12,grand_total=$13,remark=$14,status=$15,updated_at=NOW() WHERE id=$16`,
+          [b.return_date, b.store_id||null, b.supplier_id||null, b.supplier_name||"", b.grn_id||null, b.grn_no||"", b.grn_date||null,
+           +(b.total_qty||0), +(b.taxable_amount||0), +(b.cgst_amount||0), +(b.sgst_amount||0), +(b.igst_amount||0),
+           +(b.grand_total||0), b.remark||"", b.status||"Draft", req.params.id]);
+        await client.query(`DELETE FROM goods_receipt_return_items WHERE grr_id=$1`, [req.params.id]);
+        for (const it of (b.items||[])) {
+          await client.query(`
+            INSERT INTO goods_receipt_return_items(id,grr_id,sno,item_code,item_name,stock,grn_qty,return_qty,unit,rate,taxable_amt,cgst_pct,cgst_amt,sgst_pct,sgst_amt,igst_pct,igst_amt,total)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          `, [req.params.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.grn_qty||0), +(it.return_qty||0),
+              it.unit||"Nos", +(it.rate||0), +(it.taxable_amt||0), +(it.cgst_pct||0), +(it.cgst_amt||0),
+              +(it.sgst_pct||0), +(it.sgst_amt||0), +(it.igst_pct||0), +(it.igst_amt||0), +(it.total||0)]);
+          if (it.item_code && +(it.return_qty||0) > 0)
+            await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+(it.return_qty||0), it.item_code]);
+        }
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/goods-receipt-returns/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const oldItems = await client.query(`SELECT item_code, return_qty FROM goods_receipt_return_items WHERE grr_id=$1`, [req.params.id]);
+        for (const oi of oldItems.rows) {
+          if (oi.item_code && +(oi.return_qty||0) > 0)
+            await client.query(`UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`, [+(oi.return_qty||0), oi.item_code]);
+        }
+        await client.query(`DELETE FROM goods_receipt_returns WHERE id=$1`, [req.params.id]);
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Physical Inventory Reconciliation ────────────────────────────────────────
   app.get("/api/phy-reconciliations", requireAuth, async (req, res) => {
     try {
