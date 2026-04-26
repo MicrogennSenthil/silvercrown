@@ -112,8 +112,8 @@ export function Countries() {
   const filtered = rows.filter((r: any) => r.name?.toLowerCase().includes(search.toLowerCase()));
 
   const FIELDS = [
-    { key: "code",  label: "Code"         },
-    { key: "name",  label: "Country Name" },
+    { key: "name", label: "Country Name" },
+    { key: "code", label: "Code (e.g. IN)" },
   ];
 
   return (
@@ -124,11 +124,10 @@ export function Countries() {
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10">
             <tr style={{ background: SC.tonal }}>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600 w-24">Code</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Country</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Status</th>
-              <th className="px-4 py-2.5 w-20"></th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700 w-20">S.no</th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700">Country</th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700">Status</th>
+              <th className="px-4 py-2.5 w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -136,31 +135,28 @@ export function Countries() {
               <EditRow fields={FIELDS} onSave={(v: any) => saveMut.mutate({ ...v, isActive: true })} onCancel={() => setAddRow(false)} />
             )}
             {isLoading ? (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+              <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400 text-sm">No countries found</td></tr>
+              <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400 text-sm">No countries found</td></tr>
             ) : filtered.map((r: any, i: number) => (
               editId === r.id ? (
                 <EditRow key={r.id} fields={FIELDS} initial={r}
                   onSave={(v: any) => saveMut.mutate({ id: r.id, ...v })} onCancel={() => setEditId(null)} />
               ) : (
                 <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-country-${r.id}`}>
-                  <td className="px-4 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
-                  <td className="px-4 py-2.5">
-                    <span className="text-xs font-bold px-2 py-0.5 rounded font-mono" style={{ background: SC.tonal, color: SC.primary }}>{r.code}</span>
-                  </td>
-                  <td className="px-4 py-2.5 font-medium text-gray-800">{r.name}</td>
-                  <td className="px-4 py-2.5">
+                  <td className="px-5 py-3 text-gray-600">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="px-5 py-3 font-medium text-gray-800">{r.name}</td>
+                  <td className="px-5 py-3">
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-700">{r.isActive !== false ? "Active" : "Inactive"}</span>
                       <button onClick={() => { setEditId(r.id); setAddRow(false); }}
                         className="p-1 rounded hover:bg-blue-50" style={{ color: SC.primary }}
                         data-testid={`button-edit-${r.id}`}>
-                        <PencilLine size={13} />
+                        <PencilLine size={14} />
                       </button>
                     </div>
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td className="px-4 py-3">
                     <button onClick={() => { if (confirm("Delete this country?")) delMut.mutate(r.id); }}
                       className="p-1.5 rounded hover:bg-red-50 text-red-400" data-testid={`button-delete-${r.id}`}>
                       <Trash2 size={13} />
@@ -209,9 +205,9 @@ export function States() {
   const filtered = rows.filter((r: any) => r.name?.toLowerCase().includes(search.toLowerCase()));
 
   const FIELDS = [
-    { key: "code",      label: "Code" },
     { key: "name",      label: "State Name" },
     { key: "countryId", label: "Country", type: "select", options: countries.map((c: any) => ({ value: c.id, label: c.name })) },
+    { key: "code",      label: "Code (e.g. TN)" },
   ];
 
   return (
@@ -222,12 +218,10 @@ export function States() {
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10">
             <tr style={{ background: SC.tonal }}>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600 w-20">Code</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">State</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Country</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Status</th>
-              <th className="px-4 py-2.5 w-16"></th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700 w-20">S.no</th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700">State</th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700">Country</th>
+              <th className="px-4 py-2.5 w-20"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -235,36 +229,30 @@ export function States() {
               <EditRow fields={FIELDS} onSave={(v: any) => saveMut.mutate({ ...v, isActive: true })} onCancel={() => setAddRow(false)} />
             )}
             {isLoading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+              <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">No states found</td></tr>
+              <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400 text-sm">No states found</td></tr>
             ) : filtered.map((r: any, i: number) => (
               editId === r.id ? (
                 <EditRow key={r.id} fields={FIELDS} initial={r}
                   onSave={(v: any) => saveMut.mutate({ id: r.id, ...v })} onCancel={() => setEditId(null)} />
               ) : (
                 <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-state-${r.id}`}>
-                  <td className="px-4 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
-                  <td className="px-4 py-2.5">
-                    <span className="text-xs font-bold px-2 py-0.5 rounded font-mono" style={{ background: SC.tonal, color: SC.primary }}>{r.code}</span>
-                  </td>
-                  <td className="px-4 py-2.5 font-medium text-gray-800">{r.name}</td>
-                  <td className="px-4 py-2.5 text-gray-500 text-xs">{getCountryName(r.countryId)}</td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-700">{r.isActive !== false ? "Active" : "Inactive"}</span>
+                  <td className="px-5 py-3 text-gray-600">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="px-5 py-3 font-medium text-gray-800">{r.name}</td>
+                  <td className="px-5 py-3 text-gray-600">{getCountryName(r.countryId)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1 justify-end">
                       <button onClick={() => { setEditId(r.id); setAddRow(false); }}
-                        className="p-1 rounded hover:bg-blue-50" style={{ color: SC.primary }}
+                        className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
                         data-testid={`button-edit-${r.id}`}>
-                        <PencilLine size={13} />
+                        <PencilLine size={14} />
+                      </button>
+                      <button onClick={() => { if (confirm("Delete this state?")) delMut.mutate(r.id); }}
+                        className="p-1.5 rounded hover:bg-red-50 text-red-400" data-testid={`button-delete-${r.id}`}>
+                        <Trash2 size={13} />
                       </button>
                     </div>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <button onClick={() => { if (confirm("Delete this state?")) delMut.mutate(r.id); }}
-                      className="p-1.5 rounded hover:bg-red-50 text-red-400" data-testid={`button-delete-${r.id}`}>
-                      <Trash2 size={13} />
-                    </button>
                   </td>
                 </tr>
               )
@@ -325,13 +313,11 @@ export function Cities() {
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10">
             <tr style={{ background: SC.tonal }}>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">City</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">State</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Country</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600 w-24">PIN</th>
-              <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Status</th>
-              <th className="px-4 py-2.5 w-16"></th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700 w-20">S.no</th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700">City</th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700">State</th>
+              <th className="text-left px-5 py-2.5 font-semibold text-gray-700">Country</th>
+              <th className="px-4 py-2.5 w-20"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -339,35 +325,31 @@ export function Cities() {
               <EditRow fields={FIELDS} onSave={(v: any) => saveMut.mutate({ ...v, isActive: true })} onCancel={() => setAddRow(false)} />
             )}
             {isLoading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
+              <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400 text-sm">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400 text-sm">No cities found</td></tr>
+              <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-400 text-sm">No cities found</td></tr>
             ) : filtered.map((r: any, i: number) => (
               editId === r.id ? (
                 <EditRow key={r.id} fields={FIELDS} initial={r}
                   onSave={(v: any) => saveMut.mutate({ id: r.id, ...v })} onCancel={() => setEditId(null)} />
               ) : (
                 <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-city-${r.id}`}>
-                  <td className="px-4 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
-                  <td className="px-4 py-2.5 font-medium text-gray-800">{r.name}</td>
-                  <td className="px-4 py-2.5 text-gray-500 text-xs">{getStateName(r.stateId)}</td>
-                  <td className="px-4 py-2.5 text-gray-500 text-xs">{getCountryName(r.countryId)}</td>
-                  <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{r.pinCode || "—"}</td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-700">{r.isActive !== false ? "Active" : "Inactive"}</span>
+                  <td className="px-5 py-3 text-gray-600">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="px-5 py-3 font-medium text-gray-800">{r.name}</td>
+                  <td className="px-5 py-3 text-gray-600">{getStateName(r.stateId)}</td>
+                  <td className="px-5 py-3 text-gray-600">{getCountryName(r.countryId)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1 justify-end">
                       <button onClick={() => { setEditId(r.id); setAddRow(false); }}
-                        className="p-1 rounded hover:bg-blue-50" style={{ color: SC.primary }}
+                        className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
                         data-testid={`button-edit-${r.id}`}>
-                        <PencilLine size={13} />
+                        <PencilLine size={14} />
+                      </button>
+                      <button onClick={() => { if (confirm("Delete this city?")) delMut.mutate(r.id); }}
+                        className="p-1.5 rounded hover:bg-red-50 text-red-400" data-testid={`button-delete-${r.id}`}>
+                        <Trash2 size={13} />
                       </button>
                     </div>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <button onClick={() => { if (confirm("Delete this city?")) delMut.mutate(r.id); }}
-                      className="p-1.5 rounded hover:bg-red-50 text-red-400" data-testid={`button-delete-${r.id}`}>
-                      <Trash2 size={13} />
-                    </button>
                   </td>
                 </tr>
               )
