@@ -750,50 +750,182 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       res.json({ ...header, items });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+  // ── Shared helper: resolve or auto-create UOM + item in masters ──────────────
+  async function resolveItemMasters(client: any, it: any): Promise<{ itemId: string | null }> {
+    if (!it.item_name?.trim()) return { itemId: null };
+
+    // 1. Resolve UOM — find or create in units_of_measure
+    let uomCode = (it.unit || "").trim();
+    if (uomCode) {
+      const uomChk = await client.query(
+        `SELECT id FROM units_of_measure WHERE LOWER(code)=LOWER($1) OR LOWER(name)=LOWER($1) LIMIT 1`,
+        [uomCode]
+      );
+      if (uomChk.rows.length === 0) {
+        await client.query(
+          `INSERT INTO units_of_measure (id, code, name, short_form, is_active)
+           VALUES (gen_random_uuid(), $1, $1, $1, true)
+           ON CONFLICT DO NOTHING`,
+          [uomCode.toUpperCase()]
+        );
+      }
+    }
+
+    // 2. Resolve Item — find or create in purchase_store_items
+    let itemId: string | null = it.item_id || null;
+    if (!itemId) {
+      const nameChk = await client.query(
+        `SELECT id FROM purchase_store_items WHERE LOWER(name)=LOWER($1) LIMIT 1`,
+        [it.item_name.trim()]
+      );
+      if (nameChk.rows.length > 0) {
+        itemId = nameChk.rows[0].id;
+      } else {
+        const code = (it.item_code || it.item_name.substring(0, 20).toUpperCase().replace(/\s+/g, "-")).trim();
+        const ins = await client.query(
+          `INSERT INTO purchase_store_items (id, code, name, uom, hsn_code, is_active)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, true)
+           ON CONFLICT (id) DO NOTHING
+           RETURNING id`,
+          [code, it.item_name.trim(), uomCode.toUpperCase() || "", it.hsn || ""]
+        );
+        itemId = ins.rows[0]?.id || null;
+        // If code conflict, fetch existing
+        if (!itemId) {
+          const retry = await client.query(`SELECT id FROM purchase_store_items WHERE code=$1 LIMIT 1`, [code]);
+          itemId = retry.rows[0]?.id || null;
+        }
+      }
+    }
+    return { itemId };
+  }
+
   app.post("/api/job-work-inward", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
     try {
-      const { db } = await import("./db");
-      const { sql } = await import("drizzle-orm");
+      await client.query("BEGIN");
       const { items = [], ...data } = req.body;
-      // Auto-generate voucher_no if not provided
+
+      // Auto-generate voucher number
       if (!data.voucher_no) {
         const { generateVoucherNo } = await import("./voucher");
         data.voucher_no = await generateVoucherNo("job_work_inward");
       }
-      const [header] = (await db.execute(sql`
-        INSERT INTO job_work_inward (id, voucher_no, inward_date, party_id, party_name_manual, party_dc_no, party_dc_date, delivery_date, work_order_no, party_po_no, vehicle_no, notes, status)
-        VALUES (gen_random_uuid(), ${data.voucher_no}, ${data.inward_date || new Date().toISOString().split("T")[0]}, ${data.party_id || null}, ${data.party_name_manual || ""}, ${data.party_dc_no || ""}, ${data.party_dc_date || null}, ${data.delivery_date || null}, ${data.work_order_no || ""}, ${data.party_po_no || ""}, ${data.vehicle_no || ""}, ${data.notes || ""}, 'Saved')
-        RETURNING *
-      `)).rows;
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        await db.execute(sql`INSERT INTO job_work_inward_items (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, hsn, remark) VALUES (gen_random_uuid(), ${header.id}, ${i + 1}, ${it.item_code || ""}, ${it.item_id || null}, ${it.item_name || ""}, ${it.qty || 0}, ${it.unit || ""}, ${it.process || ""}, ${it.hsn || ""}, ${it.remark || ""})`);
+
+      // Insert inward header
+      const hRes = await client.query(
+        `INSERT INTO job_work_inward
+           (id, voucher_no, inward_date, party_id, party_name_manual, party_dc_no,
+            party_dc_date, delivery_date, work_order_no, party_po_no, vehicle_no, notes, status)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Saved')
+         RETURNING *`,
+        [
+          data.voucher_no,
+          data.inward_date || new Date().toISOString().split("T")[0],
+          data.party_id || null,
+          data.party_name_manual || "",
+          data.party_dc_no || "",
+          data.party_dc_date || null,
+          data.delivery_date || null,
+          data.work_order_no || "",
+          data.party_po_no || "",
+          (data.vehicle_no || "").toUpperCase(),
+          data.notes || "",
+        ]
+      );
+      const inwardId = hRes.rows[0].id;
+
+      // Insert items — auto-create masters as needed
+      let seq = 1;
+      for (const it of items) {
+        if (!it.item_name?.trim() && !it.item_code?.trim()) continue;
+        const { itemId } = await resolveItemMasters(client, it);
+        await client.query(
+          `INSERT INTO job_work_inward_items
+             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, hsn, remark)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [inwardId, seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
+           (it.unit || "").toUpperCase(), it.process || "", it.hsn || "", it.remark || ""]
+        );
       }
-      res.json(header);
-    } catch (e: any) { console.error(e); res.status(400).json({ message: e.message }); }
+
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Inward save error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally {
+      client.release();
+    }
   });
+
   app.patch("/api/job-work-inward/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
     try {
-      const { db } = await import("./db");
-      const { sql } = await import("drizzle-orm");
+      await client.query("BEGIN");
       const { items = [], ...data } = req.body;
-      await db.execute(sql`UPDATE job_work_inward SET inward_date=${data.inward_date}, party_id=${data.party_id || null}, party_name_manual=${data.party_name_manual || ""}, party_dc_no=${data.party_dc_no || ""}, party_dc_date=${data.party_dc_date || null}, delivery_date=${data.delivery_date || null}, work_order_no=${data.work_order_no || ""}, party_po_no=${data.party_po_no || ""}, vehicle_no=${data.vehicle_no || ""}, notes=${data.notes || ""}, status='Saved' WHERE id=${req.params.id}`);
-      await db.execute(sql`DELETE FROM job_work_inward_items WHERE inward_id = ${req.params.id}`);
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        await db.execute(sql`INSERT INTO job_work_inward_items (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, hsn, remark) VALUES (gen_random_uuid(), ${req.params.id}, ${i + 1}, ${it.item_code || ""}, ${it.item_id || null}, ${it.item_name || ""}, ${it.qty || 0}, ${it.unit || ""}, ${it.process || ""}, ${it.hsn || ""}, ${it.remark || ""})`);
+
+      // Update header
+      await client.query(
+        `UPDATE job_work_inward SET
+           inward_date=$1, party_id=$2, party_name_manual=$3, party_dc_no=$4,
+           party_dc_date=$5, delivery_date=$6, work_order_no=$7, party_po_no=$8,
+           vehicle_no=$9, notes=$10, status='Saved'
+         WHERE id=$11`,
+        [
+          data.inward_date, data.party_id || null, data.party_name_manual || "",
+          data.party_dc_no || "", data.party_dc_date || null, data.delivery_date || null,
+          data.work_order_no || "", data.party_po_no || "",
+          (data.vehicle_no || "").toUpperCase(), data.notes || "",
+          req.params.id,
+        ]
+      );
+
+      // Replace items atomically
+      await client.query(`DELETE FROM job_work_inward_items WHERE inward_id=$1`, [req.params.id]);
+      let seq = 1;
+      for (const it of items) {
+        if (!it.item_name?.trim() && !it.item_code?.trim()) continue;
+        const { itemId } = await resolveItemMasters(client, it);
+        await client.query(
+          `INSERT INTO job_work_inward_items
+             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, hsn, remark)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [req.params.id, seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
+           (it.unit || "").toUpperCase(), it.process || "", it.hsn || "", it.remark || ""]
+        );
       }
-      const [header] = (await db.execute(sql`SELECT * FROM job_work_inward WHERE id = ${req.params.id}`)).rows;
-      res.json(header);
-    } catch (e: any) { res.status(400).json({ message: e.message }); }
+
+      await client.query("COMMIT");
+      const hRes = await client.query(`SELECT * FROM job_work_inward WHERE id=$1`, [req.params.id]);
+      res.json(hRes.rows[0]);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Inward update error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally {
+      client.release();
+    }
   });
+
   app.delete("/api/job-work-inward/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
     try {
-      const { db } = await import("./db");
-      const { sql } = await import("drizzle-orm");
-      await db.execute(sql`DELETE FROM job_work_inward WHERE id = ${req.params.id}`);
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM job_work_inward_items WHERE inward_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM job_work_inward WHERE id=$1`, [req.params.id]);
+      await client.query("COMMIT");
       res.json({ ok: true });
-    } catch (e: any) { res.status(400).json({ message: e.message }); }
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally {
+      client.release();
+    }
   });
 
   // App Settings
@@ -824,6 +956,188 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       }
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─── Job Work Despatch ────────────────────────────────────────────────────────
+  // Helper: recalculate despatch_status on inward after any despatch change
+  async function recalcInwardDespatchStatus(client: any, inwardId: string) {
+    // For each item in inward, compare total despatched vs inward qty
+    const res = await client.query(`
+      SELECT
+        i.id,
+        i.qty,
+        COALESCE(SUM(di.qty_despatched),0) AS total_despatched
+      FROM job_work_inward_items i
+      LEFT JOIN job_work_despatch_items di ON di.inward_item_id = i.id
+      WHERE i.inward_id = $1
+      GROUP BY i.id, i.qty
+    `, [inwardId]);
+    const rows = res.rows;
+    if (!rows.length) { await client.query(`UPDATE job_work_inward SET despatch_status='Pending' WHERE id=$1`, [inwardId]); return; }
+    const allDone = rows.every((r: any) => parseFloat(r.total_despatched) >= parseFloat(r.qty));
+    const anyDone = rows.some((r: any) => parseFloat(r.total_despatched) > 0);
+    const status = allDone ? "Completed" : anyDone ? "Partial" : "Pending";
+    await client.query(`UPDATE job_work_inward SET despatch_status=$1 WHERE id=$2`, [status, inwardId]);
+  }
+
+  // GET /api/job-work-despatch — list all
+  app.get("/api/job-work-despatch", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT d.*, c.name AS party_name_db,
+               j.voucher_no AS inward_voucher_no, j.party_dc_no
+        FROM job_work_despatch d
+        LEFT JOIN customers c ON c.id = d.party_id
+        LEFT JOIN job_work_inward j ON j.id = d.inward_id
+        ORDER BY d.created_at DESC
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/job-work-despatch/:id — single with items
+  app.get("/api/job-work-despatch/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [header] = (await pool.query(`
+        SELECT d.*, c.name AS party_name_db,
+               j.voucher_no AS inward_voucher_no, j.party_dc_no
+        FROM job_work_despatch d
+        LEFT JOIN customers c ON c.id = d.party_id
+        LEFT JOIN job_work_inward j ON j.id = d.inward_id
+        WHERE d.id=$1
+      `, [req.params.id])).rows;
+      if (!header) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(`SELECT * FROM job_work_despatch_items WHERE despatch_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+      res.json({ ...header, items });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/job-work-inward/:id/despatch-items — items with balance for a specific inward
+  app.get("/api/job-work-inward/:id/despatch-items", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const rows = (await pool.query(`
+        SELECT
+          i.id AS inward_item_id,
+          i.item_id, i.item_code, i.item_name, i.unit, i.process, i.hsn, i.remark,
+          i.qty AS qty_inward,
+          COALESCE(SUM(di.qty_despatched),0) AS qty_prev_despatched,
+          i.qty - COALESCE(SUM(di.qty_despatched),0) AS qty_balance
+        FROM job_work_inward_items i
+        LEFT JOIN job_work_despatch_items di ON di.inward_item_id = i.id
+        WHERE i.inward_id = $1
+        GROUP BY i.id, i.item_id, i.item_code, i.item_name, i.unit, i.process, i.hsn, i.remark, i.qty
+        ORDER BY i.seq_no
+      `, [req.params.id])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/job-work-despatch — create (atomic)
+  app.post("/api/job-work-despatch", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { items = [], ...data } = req.body;
+
+      const { generateVoucherNo } = await import("./voucher");
+      const voucherNo = data.voucher_no || await generateVoucherNo("job_work_despatch");
+
+      const hRes = await client.query(`
+        INSERT INTO job_work_despatch
+          (id, voucher_no, despatch_date, inward_id, party_id, party_name_manual, vehicle_no, driver_name, lr_no, notes, status)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,'Saved')
+        RETURNING *
+      `, [voucherNo, data.despatch_date || new Date().toISOString().split("T")[0],
+          data.inward_id || null, data.party_id || null, data.party_name_manual || "",
+          (data.vehicle_no || "").toUpperCase(), data.driver_name || "", data.lr_no || "", data.notes || ""]);
+
+      const despatchId = hRes.rows[0].id;
+      let seq = 1;
+      for (const it of items) {
+        if (!it.item_name?.trim() || parseFloat(it.qty_despatched || 0) <= 0) continue;
+        await client.query(`
+          INSERT INTO job_work_despatch_items
+            (id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code, item_name,
+             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        `, [despatchId, data.inward_id, it.inward_item_id || null, seq++,
+            it.item_id || null, it.item_code || "", it.item_name,
+            (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
+            it.qty_inward || 0, it.qty_prev_despatched || 0, it.qty_despatched || 0, it.remark || ""]);
+      }
+
+      if (data.inward_id) await recalcInwardDespatchStatus(client, data.inward_id);
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Despatch save error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
+  });
+
+  // PATCH /api/job-work-despatch/:id — update (atomic)
+  app.patch("/api/job-work-despatch/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { items = [], ...data } = req.body;
+
+      await client.query(`
+        UPDATE job_work_despatch SET
+          despatch_date=$1, inward_id=$2, party_id=$3, party_name_manual=$4,
+          vehicle_no=$5, driver_name=$6, lr_no=$7, notes=$8, status='Saved'
+        WHERE id=$9
+      `, [data.despatch_date, data.inward_id || null, data.party_id || null,
+          data.party_name_manual || "", (data.vehicle_no || "").toUpperCase(),
+          data.driver_name || "", data.lr_no || "", data.notes || "", req.params.id]);
+
+      await client.query(`DELETE FROM job_work_despatch_items WHERE despatch_id=$1`, [req.params.id]);
+      let seq = 1;
+      for (const it of items) {
+        if (!it.item_name?.trim() || parseFloat(it.qty_despatched || 0) <= 0) continue;
+        await client.query(`
+          INSERT INTO job_work_despatch_items
+            (id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code, item_name,
+             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        `, [req.params.id, data.inward_id, it.inward_item_id || null, seq++,
+            it.item_id || null, it.item_code || "", it.item_name,
+            (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
+            it.qty_inward || 0, it.qty_prev_despatched || 0, it.qty_despatched || 0, it.remark || ""]);
+      }
+
+      if (data.inward_id) await recalcInwardDespatchStatus(client, data.inward_id);
+      await client.query("COMMIT");
+      const hRes = await client.query(`SELECT * FROM job_work_despatch WHERE id=$1`, [req.params.id]);
+      res.json(hRes.rows[0]);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
+  });
+
+  // DELETE /api/job-work-despatch/:id
+  app.delete("/api/job-work-despatch/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const [d] = (await client.query(`SELECT inward_id FROM job_work_despatch WHERE id=$1`, [req.params.id])).rows;
+      await client.query(`DELETE FROM job_work_despatch_items WHERE despatch_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM job_work_despatch WHERE id=$1`, [req.params.id]);
+      if (d?.inward_id) await recalcInwardDespatchStatus(client, d.inward_id);
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
   });
 
   // Approval Authority

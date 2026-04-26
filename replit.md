@@ -7,7 +7,7 @@ A full-stack **Progressive Web App (PWA)** ERP system for **Silver Crown Metals*
 - **Frontend**: React 18 + TypeScript, Tailwind CSS, Radix UI (shadcn), TanStack Query, wouter
 - **Backend**: Express.js (v5), Node.js, Passport.js (local auth)
 - **Database**: PostgreSQL with Drizzle ORM
-- **AI**: Google Gemini 1.5 Flash for purchase invoice scanning
+- **AI**: Groq (meta-llama/llama-4-scout-17b-16e-instruct) for document scanning
 - **Auth**: Passport.js local strategy + express-session + pg-session store
 - **Build**: Vite (frontend), tsx (dev), ESBuild (prod)
 - **PWA**: Service worker + Web App Manifest
