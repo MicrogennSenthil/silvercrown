@@ -518,7 +518,15 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                         {/* Item Type */}
                         <div className="px-1 py-1">
                           <select value={row.item_type}
-                            onChange={e => updateRow(row._key, "item_type", e.target.value)}
+                            onChange={e => {
+                              const newType = e.target.value;
+                              setItems(prev => prev.map(r => r._key !== row._key ? r : {
+                                ...r, item_type: newType, item_id: "", item_code: "", item_name: "",
+                                hsn: "", unit: "", rate: "", total_value: "",
+                              }));
+                              setItemSearch(prev => ({ ...prev, [row._key]: "" }));
+                              setItemDropOpen(row._key);
+                            }}
                             className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none focus:border-[#027fa5] bg-white"
                             data-testid={`sel-item-type-${idx}`}>
                             <option value="">Select</option>
