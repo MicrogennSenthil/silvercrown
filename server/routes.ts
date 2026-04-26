@@ -557,6 +557,76 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/purchase-approval-config/:id", requireAuth, async (req, res) => { res.json(await storage.updatePurchaseApprovalConfig(req.params.id, req.body)); });
   app.delete("/api/purchase-approval-config/:id", requireAuth, async (req, res) => { await storage.deletePurchaseApprovalConfig(req.params.id); res.json({ ok: true }); });
 
+  // ─── Financial Years ─────────────────────────────────────────────────────────
+  app.get("/api/financial-years", requireAuth, async (_req, res) => {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+    const rows = await db.execute(sql`SELECT * FROM financial_years ORDER BY start_date DESC`);
+    res.json(rows.rows);
+  });
+  app.post("/api/financial-years", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const { label, start_date, end_date, is_current } = req.body;
+      if (is_current) await db.execute(sql`UPDATE financial_years SET is_current = false`);
+      const [row] = (await db.execute(sql`INSERT INTO financial_years (label,start_date,end_date,is_current) VALUES (${label},${start_date},${end_date},${!!is_current}) RETURNING *`)).rows;
+      res.json(row);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/financial-years/:id", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const { label, start_date, end_date, is_current } = req.body;
+      if (is_current) await db.execute(sql`UPDATE financial_years SET is_current = false`);
+      const [row] = (await db.execute(sql`UPDATE financial_years SET label=${label},start_date=${start_date},end_date=${end_date},is_current=${!!is_current} WHERE id=${req.params.id} RETURNING *`)).rows;
+      res.json(row);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.delete("/api/financial-years/:id", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`DELETE FROM financial_years WHERE id = ${req.params.id}`);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  // ─── Voucher Series ───────────────────────────────────────────────────────────
+  app.get("/api/voucher-series", requireAuth, async (_req, res) => {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+    const rows = await db.execute(sql`SELECT vs.*, fy.label as fy_label FROM voucher_series vs LEFT JOIN financial_years fy ON fy.id = vs.financial_year_id ORDER BY vs.transaction_label`);
+    res.json(rows.rows);
+  });
+  app.post("/api/voucher-series", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const { transaction_type, transaction_label, prefix, digits, starting_number, financial_year_id, is_active } = req.body;
+      const [row] = (await db.execute(sql`INSERT INTO voucher_series (transaction_type,transaction_label,prefix,digits,starting_number,current_number,financial_year_id,is_active) VALUES (${transaction_type},${transaction_label},${prefix},${digits||5},${starting_number||1},${starting_number||1},${financial_year_id||null},${is_active!==false}) RETURNING *`)).rows;
+      res.json(row);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/voucher-series/:id", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      const { prefix, digits, starting_number, current_number, financial_year_id, is_active, transaction_label } = req.body;
+      const [row] = (await db.execute(sql`UPDATE voucher_series SET prefix=${prefix},digits=${digits||5},starting_number=${starting_number||1},current_number=${current_number!=null?current_number:starting_number},financial_year_id=${financial_year_id||null},is_active=${is_active!==false},transaction_label=${transaction_label} WHERE id=${req.params.id} RETURNING *`)).rows;
+      res.json(row);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.delete("/api/voucher-series/:id", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`DELETE FROM voucher_series WHERE id = ${req.params.id}`);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   // ─── AI: Extract DC from image ──────────────────────────────────────────────
   app.post("/api/ai/extract-dc", requireAuth, upload.single("file"), async (req, res) => {
     try {
@@ -657,10 +727,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { items = [], ...data } = req.body;
       // Auto-generate voucher_no if not provided
       if (!data.voucher_no) {
-        const settings = (await db.execute(sql`SELECT value FROM app_settings WHERE key = 'voucher_prefix_inward'`)).rows[0] as any;
-        const prefix = settings?.value || "INW";
-        const count = (await db.execute(sql`SELECT COUNT(*) as c FROM job_work_inward`)).rows[0] as any;
-        data.voucher_no = `${prefix}${String(parseInt(count.c) + 1).padStart(4, "0")}`;
+        const { generateVoucherNo } = await import("./voucher");
+        data.voucher_no = await generateVoucherNo("job_work_inward");
       }
       const [header] = (await db.execute(sql`
         INSERT INTO job_work_inward (id, voucher_no, inward_date, party_id, party_name_manual, party_dc_no, party_dc_date, delivery_date, work_order_no, party_po_no, vehicle_no, notes, status)

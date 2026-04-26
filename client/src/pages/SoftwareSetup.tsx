@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bot, Building2, Hash, Plug, CheckCircle2, Eye, EyeOff,
-  Save, RefreshCw, AlertCircle
+  Save, RefreshCw, AlertCircle, ExternalLink
 } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
@@ -146,6 +147,117 @@ function SettingInput({
   );
 }
 
+// ── Inline Voucher Series for Software Setup ─────────────────────────────────
+function VoucherSeriesInline() {
+  const qc = useQueryClient();
+  const { data: series = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/voucher-series"] });
+  const { data: fys = [] } = useQuery<any[]>({ queryKey: ["/api/financial-years"] });
+  const [editing, setEditing] = useState<Record<string, any>>({});
+  const [saved, setSaved] = useState<Record<string, boolean>>({});
+
+  const currentFy = (fys as any[]).find((f: any) => f.is_current);
+  const filtered = (series as any[]).filter((s: any) => !currentFy || s.financial_year_id === currentFy.id || !s.financial_year_id);
+
+  const patchMut = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await fetch(`/api/voucher-series/${id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      return res.json();
+    },
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ["/api/voucher-series"] });
+      setEditing(prev => { const n = { ...prev }; delete n[id]; return n; });
+      setSaved(prev => ({ ...prev, [id]: true }));
+      setTimeout(() => setSaved(prev => { const n = { ...prev }; delete n[id]; return n; }), 2000);
+    },
+  });
+
+  function getVal(row: any, field: string) {
+    return editing[row.id]?.[field] !== undefined ? editing[row.id][field] : row[field];
+  }
+  function setVal(row: any, field: string, val: any) {
+    setEditing(prev => ({ ...prev, [row.id]: { ...prev[row.id], [field]: val } }));
+  }
+  function save(row: any) {
+    const updates = editing[row.id] || {};
+    patchMut.mutate({ id: row.id, data: { ...row, ...updates, financial_year_id: row.financial_year_id } });
+  }
+
+  if (isLoading) return <div className="py-6 text-center text-gray-400 text-sm"><RefreshCw size={16} className="inline animate-spin mr-2" />Loading...</div>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-50">
+        <span className="text-xs text-gray-500">
+          {currentFy ? <>Showing series for <b>{currentFy.label}</b></> : "No current financial year set"}
+        </span>
+        <Link href="/masters/voucher-series">
+          <span className="flex items-center gap-1 text-xs font-semibold cursor-pointer" style={{ color: SC.primary }}>
+            <ExternalLink size={12} /> Manage Full Series
+          </span>
+        </Link>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: SC.tonal }}>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Transaction</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Prefix</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Digits</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Start No</th>
+              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Next Voucher</th>
+              <th className="px-4 py-2 w-16"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((row: any, i: number) => {
+              const prefix = getVal(row, "prefix") || "";
+              const digits = getVal(row, "digits") || 5;
+              const startNo = getVal(row, "starting_number") || 1;
+              const nextVoucher = `${prefix}${String(row.current_number || startNo).padStart(digits, "0")}`;
+              const isDirty = !!editing[row.id];
+              return (
+                <tr key={row.id} className={`border-t border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
+                  <td className="px-4 py-2 text-xs font-medium text-gray-700">{row.transaction_label}</td>
+                  <td className="px-4 py-2">
+                    <input value={prefix} onChange={e => setVal(row, "prefix", e.target.value.toUpperCase())}
+                      className="w-20 border border-gray-200 rounded px-2 py-1 text-xs font-mono outline-none focus:border-[#027fa5]"
+                      data-testid={`input-prefix-${row.id}`} />
+                  </td>
+                  <td className="px-4 py-2 text-center">
+                    <input type="number" min={1} max={10} value={digits}
+                      onChange={e => setVal(row, "digits", parseInt(e.target.value) || 5)}
+                      className="w-14 border border-gray-200 rounded px-2 py-1 text-xs text-center outline-none focus:border-[#027fa5]"
+                      data-testid={`input-digits-${row.id}`} />
+                  </td>
+                  <td className="px-4 py-2 text-center">
+                    <input type="number" min={1} value={startNo}
+                      onChange={e => setVal(row, "starting_number", parseInt(e.target.value) || 1)}
+                      className="w-16 border border-gray-200 rounded px-2 py-1 text-xs text-center outline-none focus:border-[#027fa5]"
+                      data-testid={`input-start-${row.id}`} />
+                  </td>
+                  <td className="px-4 py-2 text-center">
+                    <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: SC.tonal, color: SC.primary }}>{nextVoucher}</span>
+                  </td>
+                  <td className="px-4 py-2 text-center">
+                    {saved[row.id] ? (
+                      <CheckCircle2 size={14} className="text-green-500 mx-auto" />
+                    ) : (
+                      <button onClick={() => save(row)} disabled={!isDirty || patchMut.isPending}
+                        className="text-xs font-semibold px-3 py-1 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                        style={{ background: isDirty ? SC.orange : "#e5e7eb", color: isDirty ? "white" : "#9ca3af" }}
+                        data-testid={`btn-save-series-${row.id}`}>Save</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function SoftwareSetup() {
   const qc = useQueryClient();
   const { data: rawSettings = [], isLoading } = useQuery<Setting[]>({
@@ -255,27 +367,32 @@ export default function SoftwareSetup() {
                 )}
               </div>
 
-              {/* Fields */}
-              <div className="divide-y divide-gray-50">
-                {(byCategory[cat] || []).map(setting => (
-                  <div key={setting.key} className="px-6 py-4 flex gap-6">
-                    <div className="w-48 flex-shrink-0 pt-0.5">
-                      <div className="text-sm font-medium text-gray-700">{setting.label}</div>
-                      {setting.description && (
-                        <div className="text-xs text-gray-400 mt-0.5 leading-relaxed">{setting.description}</div>
-                      )}
+              {/* Voucher Numbering — inline series editor */}
+              {cat === "Voucher Numbering" && <VoucherSeriesInline />}
+
+              {/* All other categories — key-value settings */}
+              {cat !== "Voucher Numbering" && (
+                <div className="divide-y divide-gray-50">
+                  {(byCategory[cat] || []).map(setting => (
+                    <div key={setting.key} className="px-6 py-4 flex gap-6">
+                      <div className="w-48 flex-shrink-0 pt-0.5">
+                        <div className="text-sm font-medium text-gray-700">{setting.label}</div>
+                        {setting.description && (
+                          <div className="text-xs text-gray-400 mt-0.5 leading-relaxed">{setting.description}</div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <SettingInput
+                          setting={setting}
+                          value={values[setting.key] ?? ""}
+                          onChange={v => setValues(prev => ({ ...prev, [setting.key]: v }))}
+                          allValues={values}
+                        />
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <SettingInput
-                        setting={setting}
-                        value={values[setting.key] ?? ""}
-                        onChange={v => setValues(prev => ({ ...prev, [setting.key]: v }))}
-                        allValues={values}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
 
               {/* AI info banner */}
               {cat === "AI Configuration" && (
@@ -296,19 +413,21 @@ export default function SoftwareSetup() {
                 </div>
               )}
 
-              {/* Save button */}
-              <div className="flex justify-end px-6 py-4 border-t border-gray-100 bg-gray-50/50">
-                <button
-                  onClick={() => saveMut.mutate(cat)}
-                  disabled={saveMut.isPending}
-                  className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60 transition-colors"
-                  style={{ background: SC.orange }}
-                  data-testid={`btn-save-${cat.toLowerCase().replace(/\s/g, "-")}`}
-                >
-                  <Save size={14} />
-                  {saveMut.isPending ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
+              {/* Save button — only for non-voucher-numbering tabs */}
+              {cat !== "Voucher Numbering" && (
+                <div className="flex justify-end px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+                  <button
+                    onClick={() => saveMut.mutate(cat)}
+                    disabled={saveMut.isPending}
+                    className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60 transition-colors"
+                    style={{ background: SC.orange }}
+                    data-testid={`btn-save-${cat.toLowerCase().replace(/\s/g, "-")}`}
+                  >
+                    <Save size={14} />
+                    {saveMut.isPending ? "Saving..." : "Save Changes"}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

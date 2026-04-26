@@ -27,6 +27,8 @@ import ApprovalAuthority from "@/pages/masters/ApprovalAuthority";
 import SubLedgerMaster from "@/pages/masters/SubLedger";
 import SoftwareSetup from "@/pages/SoftwareSetup";
 import JobWorkInward from "@/pages/transactions/JobWorkInward";
+import FinancialYears from "@/pages/masters/FinancialYears";
+import VoucherSeries from "@/pages/masters/VoucherSeries";
 // User Management
 import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
@@ -94,6 +96,8 @@ function Router() {
       <Route path="/masters/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>
       <Route path="/setup"><ProtectedRoute component={SoftwareSetup} /></Route>
       <Route path="/engineering/job-work-inward"><ProtectedRoute component={JobWorkInward} /></Route>
+      <Route path="/masters/financial-years"><ProtectedRoute component={FinancialYears} /></Route>
+      <Route path="/masters/voucher-series"><ProtectedRoute component={VoucherSeries} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>

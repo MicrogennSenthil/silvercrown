@@ -5,7 +5,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, TrendingUp, BookOpen,
   CheckSquare, RefreshCw, LogOut, Menu, Bell, User, Settings,
   Users, Database, ChevronDown, ChevronRight, Cpu, Printer,
-  BarChart2, Handshake, IndianRupee, Warehouse, Wrench
+  BarChart2, Handshake, IndianRupee, Warehouse, Wrench, Shield
 } from "lucide-react";
 
 // ─── Navigation Structure ─────────────────────────────────────────────────────
@@ -52,6 +52,12 @@ const NAV: any[] = [
           { label: "Ledger Categories", href: "/masters/ledger-categories" },
           { label: "General Ledger", href: "/masters/general-ledgers" },
           { label: "Ledger", href: "/masters/ledger" },
+        ]
+      },
+      {
+        label: "Administration", icon: Shield, subChildren: [
+          { label: "Financial Years", href: "/masters/financial-years" },
+          { label: "Voucher Numbering", href: "/masters/voucher-series" },
         ]
       },
     ]
