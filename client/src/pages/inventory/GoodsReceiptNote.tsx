@@ -192,6 +192,7 @@ export default function GoodsReceiptNote() {
   const [showScan, setShowScan] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [grnNo, setGrnNo] = useState("");
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
@@ -213,8 +214,13 @@ export default function GoodsReceiptNote() {
   const grandRounded  = Math.round(grandTotal);
   const computedRoundOff = +(grandRounded - grandTotal).toFixed(2);
 
-  function openNew() { setForm(blankForm()); setEditId(null); setErr(""); setMode("form"); }
+  function openNew() {
+    setForm(blankForm()); setEditId(null); setErr(""); setGrnNo(""); setMode("form");
+    fetch("/api/voucher-series/next/purchase_receipt", { credentials: "include" })
+      .then(r => r.json()).then(d => { if (d.voucher_no) setGrnNo(d.voucher_no); });
+  }
   function openEdit(grn: any) {
+    setGrnNo(grn.voucher_no || "");
     setForm({
       grn_date: grn.grn_date?.slice(0,10)||"", store_id: grn.store_id||"", store_name: grn.store_name||"",
       supplier_id: grn.supplier_id||"", supplier_name_manual: grn.supplier_name||grn.supplier_name_manual||"",
@@ -435,7 +441,10 @@ export default function GoodsReceiptNote() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 font-medium">GRN No</label>
-                  <input readOnly value={editId ? "(saved)" : "Auto"} className="w-full border border-gray-200 bg-gray-50 rounded px-3 py-2.5 text-sm text-gray-500"/>
+                  <input readOnly value={grnNo || "Loading…"}
+                    className="w-full border border-gray-200 bg-gray-50 rounded px-3 py-2.5 text-sm font-semibold"
+                    style={{ color: grnNo ? "#027fa5" : "#9ca3af" }}
+                    data-testid="input-grn-no"/>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 font-medium">GRN Date</label>
