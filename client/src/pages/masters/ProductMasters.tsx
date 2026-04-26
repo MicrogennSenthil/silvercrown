@@ -202,7 +202,12 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
       const auto = data.code || data.sapNo || data.drgNo || `PRD-${Date.now()}`;
-      const payload = { ...data, code: auto };
+      const payload = {
+        ...data,
+        code: auto,
+        categoryId:    data.categoryId    || null,
+        subCategoryId: data.subCategoryId || null,
+      };
       const url = initial?.id ? `/api/products/${initial.id}` : "/api/products";
       const method = initial?.id ? "PATCH" : "POST";
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), credentials: "include" });
