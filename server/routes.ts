@@ -2004,5 +2004,146 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     finally { client.release(); }
   });
 
+  // ── Gate Pass ───────────────────────────────────────────────────────────────
+
+  // Returns which source IDs are already linked to a gate pass
+  app.get("/api/gate-pass/linked-source-ids", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const excludeId = (req.query.exclude_gate_pass_id as string) || null;
+      const cond = excludeId ? "AND gp.id <> $1" : "";
+      const params = excludeId ? [excludeId] : [];
+      const riRes = await pool.query(`
+        SELECT DISTINCT source_inward_id FROM gate_pass gp
+        WHERE source_inward_id IS NOT NULL ${cond}
+      `, params);
+      const roRes = await pool.query(`
+        SELECT DISTINCT source_outward_id FROM gate_pass gp
+        WHERE source_outward_id IS NOT NULL ${cond}
+      `, params);
+      res.json({
+        returnable_inward_ids:  riRes.rows.map((r: any) => r.source_inward_id),
+        returnable_outward_ids: roRes.rows.map((r: any) => r.source_outward_id),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/gate-pass", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT gp.*, c.name AS party_name_db
+        FROM gate_pass gp
+        LEFT JOIN customers c ON c.id = gp.party_id
+        ORDER BY gp.created_at DESC
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/gate-pass/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [header] = (await pool.query(`
+        SELECT gp.*, c.name AS party_name_db
+        FROM gate_pass gp
+        LEFT JOIN customers c ON c.id = gp.party_id
+        WHERE gp.id = $1
+      `, [req.params.id])).rows;
+      if (!header) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(
+        `SELECT * FROM gate_pass_items WHERE gate_pass_id=$1 ORDER BY seq_no`,
+        [req.params.id]
+      )).rows;
+      res.json({ ...header, items });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/gate-pass", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucher_no = await generateVoucherNo("gate_pass", client);
+      const hRes = await client.query(`
+        INSERT INTO gate_pass
+          (voucher_no, entry_type, party_id, party_name_manual, outward_date, due_date,
+           vehicle_no, contact_person, mobile_no, email_id, delivery_address,
+           same_as_company, source_inward_id, source_outward_id, remark)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *
+      `, [voucher_no, b.entry_type||"non_returnable_outward",
+          b.party_id||null, b.party_name_manual||"",
+          b.outward_date||new Date().toISOString().split("T")[0],
+          b.due_date||null, b.vehicle_no||"",
+          b.contact_person||"", b.mobile_no||"", b.email_id||"",
+          b.delivery_address||"", b.same_as_company!==false,
+          b.source_inward_id||null, b.source_outward_id||null, b.remark||""]);
+      const hdr = hRes.rows[0];
+      for (let i = 0; i < (b.items||[]).length; i++) {
+        const it = b.items[i];
+        await client.query(`
+          INSERT INTO gate_pass_items
+            (gate_pass_id, seq_no, item_type, item_id, item_code, item_name,
+             hsn, out_qty, unit, rate, purpose, total_value)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `, [hdr.id, i+1, it.item_type||"", it.item_id||null, it.item_code||"",
+            it.item_name||"", it.hsn||"", parseFloat(it.out_qty||0),
+            it.unit||"", parseFloat(it.rate||0), it.purpose||"",
+            parseFloat(it.total_value||0)]);
+      }
+      await client.query("COMMIT");
+      res.json({ ...hdr, voucher_no });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.patch("/api/gate-pass/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      const hRes = await client.query(`
+        UPDATE gate_pass SET
+          entry_type=$1, party_id=$2, party_name_manual=$3, outward_date=$4,
+          due_date=$5, vehicle_no=$6, contact_person=$7, mobile_no=$8,
+          email_id=$9, delivery_address=$10, same_as_company=$11,
+          source_inward_id=$12, source_outward_id=$13, remark=$14
+        WHERE id=$15 RETURNING *
+      `, [b.entry_type, b.party_id||null, b.party_name_manual||"",
+          b.outward_date, b.due_date||null, b.vehicle_no||"",
+          b.contact_person||"", b.mobile_no||"", b.email_id||"",
+          b.delivery_address||"", b.same_as_company!==false,
+          b.source_inward_id||null, b.source_outward_id||null, b.remark||"",
+          req.params.id]);
+      await client.query(`DELETE FROM gate_pass_items WHERE gate_pass_id=$1`, [req.params.id]);
+      for (let i = 0; i < (b.items||[]).length; i++) {
+        const it = b.items[i];
+        await client.query(`
+          INSERT INTO gate_pass_items
+            (gate_pass_id, seq_no, item_type, item_id, item_code, item_name,
+             hsn, out_qty, unit, rate, purpose, total_value)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `, [req.params.id, i+1, it.item_type||"", it.item_id||null, it.item_code||"",
+            it.item_name||"", it.hsn||"", parseFloat(it.out_qty||0),
+            it.unit||"", parseFloat(it.rate||0), it.purpose||"",
+            parseFloat(it.total_value||0)]);
+      }
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.delete("/api/gate-pass/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM gate_pass WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }

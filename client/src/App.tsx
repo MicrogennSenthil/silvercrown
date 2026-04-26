@@ -32,6 +32,7 @@ import JobWorkDespatch from "@/pages/transactions/JobWorkDespatch";
 import JobWorkInvoice from "@/pages/transactions/JobWorkInvoice";
 import ReturnableInward from "@/pages/transactions/ReturnableInward";
 import ReturnableOutward from "@/pages/transactions/ReturnableOutward";
+import GatePass from "@/pages/transactions/GatePass";
 import FinancialYears from "@/pages/masters/FinancialYears";
 import VoucherSeries from "@/pages/masters/VoucherSeries";
 // User Management
@@ -106,6 +107,7 @@ function Router() {
       <Route path="/engineering/job-work-invoice"><ProtectedRoute component={JobWorkInvoice} /></Route>
       <Route path="/engineering/returnable-inward"><ProtectedRoute component={ReturnableInward} /></Route>
       <Route path="/engineering/returnable-outward"><ProtectedRoute component={ReturnableOutward} /></Route>
+      <Route path="/engineering/gate-pass"><ProtectedRoute component={GatePass} /></Route>
       <Route path="/masters/financial-years"><ProtectedRoute component={FinancialYears} /></Route>
       <Route path="/masters/voucher-series"><ProtectedRoute component={VoucherSeries} /></Route>
       {/* Keep old routes for backwards compatibility */}
