@@ -303,7 +303,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   const [deliveryDate, setDeliveryDate] = useState(editData?.delivery_date?.split("T")[0] || "");
   const [workOrderNo, setWorkOrderNo] = useState(editData?.work_order_no || "");
   const [partyPoNo, setPartyPoNo] = useState(editData?.party_po_no || "");
-  const [vehicleNo, setVehicleNo] = useState(editData?.vehicle_no || "");
+  const [vehicleNo, setVehicleNo] = useState((editData?.vehicle_no || "").toUpperCase());
   const [notes, setNotes] = useState(editData?.notes || "");
 
   const [items, setItems] = useState<ItemRow[]>(
@@ -351,7 +351,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     if (data.dcNo) setPartyDcNo(data.dcNo);
     if (data.dcDate) setPartyDcDate(data.dcDate);
     if (data.deliveryDate) setDeliveryDate(data.deliveryDate);
-    if (data.vehicleNo) setVehicleNo(data.vehicleNo);
+    if (data.vehicleNo) setVehicleNo(String(data.vehicleNo).toUpperCase());
     if (data.items?.length) {
       setItems(data.items.map((it: any) => {
         const match = storeItems.find((s: any) => s.code?.toLowerCase() === it.itemCode?.toLowerCase() || s.name?.toLowerCase() === it.itemName?.toLowerCase());
@@ -524,7 +524,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
             </div>
             <div className="relative col-span-1">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Vehicle No</label>
-              <input value={vehicleNo} onChange={e => setVehicleNo(e.target.value)} placeholder="TN 00 AB 1234"
+              <input value={vehicleNo} onChange={e => setVehicleNo(e.target.value.toUpperCase())} placeholder="TN 00 AB 1234"
                 className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
                 data-testid="input-vehicle-no" />
             </div>
@@ -737,11 +737,17 @@ export default function JobWorkInward() {
     setView("edit");
   }
 
-  const filtered = records.filter(r =>
-    !search || r.voucher_no?.toLowerCase().includes(search.toLowerCase()) ||
-    r.party_name_db?.toLowerCase().includes(search.toLowerCase()) ||
-    r.party_name_manual?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = records.filter(r => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      r.voucher_no?.toLowerCase().includes(q) ||
+      r.party_name_db?.toLowerCase().includes(q) ||
+      r.party_name_manual?.toLowerCase().includes(q) ||
+      r.vehicle_no?.toLowerCase().includes(q) ||
+      r.party_dc_no?.toLowerCase().includes(q)
+    );
+  });
 
   if (view === "add") return <InwardForm onBack={() => setView("list")} />;
   if (view === "edit") return <InwardForm editData={editData} onBack={() => { setEditData(null); setView("list"); }} />;
@@ -756,7 +762,7 @@ export default function JobWorkInward() {
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search by voucher / party..."
+                placeholder="Search by voucher / party / vehicle..."
                 className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded w-56 outline-none focus:border-[#027fa5]"
                 data-testid="input-search" />
             </div>
@@ -800,7 +806,7 @@ export default function JobWorkInward() {
                 <td className="px-5 py-2.5 text-gray-600 text-xs">{r.inward_date ? new Date(r.inward_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</td>
                 <td className="px-5 py-2.5 font-medium text-gray-700">{r.party_name_db || r.party_name_manual || <span className="text-gray-300">—</span>}</td>
                 <td className="px-5 py-2.5 text-gray-600 text-xs">{r.party_dc_no || <span className="text-gray-300">—</span>}</td>
-                <td className="px-5 py-2.5 text-gray-600 text-xs">{r.vehicle_no || <span className="text-gray-300">—</span>}</td>
+                <td className="px-5 py-2.5 text-gray-600 text-xs font-mono tracking-wide">{r.vehicle_no ? String(r.vehicle_no).toUpperCase() : <span className="text-gray-300">—</span>}</td>
                 <td className="px-5 py-2.5">
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.status === "Saved" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
                     {r.status || "Draft"}
