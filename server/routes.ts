@@ -107,30 +107,95 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ...inv, items });
   });
   app.post("/api/purchase/invoices", requireAuth, async (req, res) => {
-    const { items, ...invData } = req.body;
-    const data = insertPurchaseInvoiceSchema.parse(invData);
-    const inv = await storage.createPurchaseInvoice(data);
-    if (items?.length) {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { items = [], ...invData } = req.body;
+      const invRes = await client.query(`
+        INSERT INTO purchase_invoices
+          (id, invoice_number, supplier_id, supplier_name, invoice_date, due_date,
+           subtotal, tax_amount, total_amount, paid_amount, status, notes, scanned_image_url)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        RETURNING *
+      `, [invData.invoiceNumber || invData.invoice_number,
+          invData.supplierId || invData.supplier_id || null,
+          invData.supplierName || invData.supplier_name || "",
+          invData.invoiceDate || invData.invoice_date || null,
+          invData.dueDate || invData.due_date || null,
+          invData.subtotal || 0, invData.taxAmount || invData.tax_amount || 0,
+          invData.totalAmount || invData.total_amount || 0,
+          invData.paidAmount || invData.paid_amount || 0,
+          invData.status || "pending", invData.notes || "",
+          invData.scannedImageUrl || invData.scanned_image_url || null]);
+      const inv = invRes.rows[0];
       for (const item of items) {
-        await storage.createPurchaseInvoiceItem({ ...item, invoiceId: inv.id });
+        await client.query(`
+          INSERT INTO purchase_invoice_items
+            (id, invoice_id, item_id, description, quantity, unit, unit_price, tax_rate, tax_amount, amount)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `, [inv.id, item.itemId || null, item.description || "",
+            item.quantity || 0, item.unit || "", item.unitPrice || 0,
+            item.taxRate || 0, item.taxAmount || 0, item.amount || 0]);
       }
-    }
-    res.json(inv);
+      await client.query("COMMIT");
+      res.json(inv);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Purchase invoice create error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
   });
   app.patch("/api/purchase/invoices/:id", requireAuth, async (req, res) => {
-    const { items, ...invData } = req.body;
-    const inv = await storage.updatePurchaseInvoice(req.params.id, invData);
-    if (items) {
-      await storage.deletePurchaseInvoiceItems(req.params.id);
-      for (const item of items) {
-        await storage.createPurchaseInvoiceItem({ ...item, invoiceId: req.params.id });
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { items, ...invData } = req.body;
+      const invRes = await client.query(`
+        UPDATE purchase_invoices SET
+          invoice_number=$1, supplier_id=$2, supplier_name=$3, invoice_date=$4, due_date=$5,
+          subtotal=$6, tax_amount=$7, total_amount=$8, paid_amount=$9, status=$10, notes=$11,
+          updated_at=NOW()
+        WHERE id=$12 RETURNING *
+      `, [invData.invoiceNumber, invData.supplierId || null, invData.supplierName || "",
+          invData.invoiceDate || null, invData.dueDate || null,
+          invData.subtotal || 0, invData.taxAmount || 0, invData.totalAmount || 0,
+          invData.paidAmount || 0, invData.status || "Pending", invData.notes || "",
+          req.params.id]);
+      if (items !== undefined) {
+        await client.query(`DELETE FROM purchase_invoice_items WHERE invoice_id=$1`, [req.params.id]);
+        for (const item of items || []) {
+          await client.query(`
+            INSERT INTO purchase_invoice_items
+              (id, invoice_id, item_id, description, quantity, unit, unit_price, tax_rate, tax_amount, amount)
+            VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+          `, [req.params.id, item.itemId || null, item.description || "",
+              item.quantity || 0, item.unit || "", item.unitPrice || 0,
+              item.taxRate || 0, item.taxAmount || 0, item.amount || 0]);
+        }
       }
-    }
-    res.json(inv);
+      await client.query("COMMIT");
+      res.json(invRes.rows[0]);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Purchase invoice update error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
   });
   app.delete("/api/purchase/invoices/:id", requireAuth, async (req, res) => {
-    await storage.deletePurchaseInvoice(req.params.id);
-    res.json({ ok: true });
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM purchase_invoice_items WHERE invoice_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM purchase_invoices WHERE id=$1`, [req.params.id]);
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
   });
 
   // Gemini Invoice Scanning
@@ -183,30 +248,94 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ...inv, items });
   });
   app.post("/api/sales/invoices", requireAuth, async (req, res) => {
-    const { items, ...invData } = req.body;
-    const data = insertSalesInvoiceSchema.parse(invData);
-    const inv = await storage.createSalesInvoice(data);
-    if (items?.length) {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { items = [], ...invData } = req.body;
+      const invRes = await client.query(`
+        INSERT INTO sales_invoices
+          (id, invoice_number, customer_id, customer_name, invoice_date, due_date,
+           subtotal, tax_amount, total_amount, paid_amount, status, notes)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        RETURNING *
+      `, [invData.invoiceNumber || invData.invoice_number,
+          invData.customerId || invData.customer_id || null,
+          invData.customerName || invData.customer_name || "",
+          invData.invoiceDate || invData.invoice_date || null,
+          invData.dueDate || invData.due_date || null,
+          invData.subtotal || 0, invData.taxAmount || invData.tax_amount || 0,
+          invData.totalAmount || invData.total_amount || 0,
+          invData.paidAmount || invData.paid_amount || 0,
+          invData.status || "pending", invData.notes || ""]);
+      const inv = invRes.rows[0];
       for (const item of items) {
-        await storage.createSalesInvoiceItem({ ...item, invoiceId: inv.id });
+        await client.query(`
+          INSERT INTO sales_invoice_items
+            (id, invoice_id, item_id, description, quantity, unit, unit_price, tax_rate, tax_amount, amount)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `, [inv.id, item.itemId || null, item.description || "",
+            item.quantity || 0, item.unit || "", item.unitPrice || 0,
+            item.taxRate || 0, item.taxAmount || 0, item.amount || 0]);
       }
-    }
-    res.json(inv);
+      await client.query("COMMIT");
+      res.json(inv);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Sales invoice create error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
   });
   app.patch("/api/sales/invoices/:id", requireAuth, async (req, res) => {
-    const { items, ...invData } = req.body;
-    const inv = await storage.updateSalesInvoice(req.params.id, invData);
-    if (items) {
-      await storage.deleteSalesInvoiceItems(req.params.id);
-      for (const item of items) {
-        await storage.createSalesInvoiceItem({ ...item, invoiceId: req.params.id });
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { items, ...invData } = req.body;
+      const invRes = await client.query(`
+        UPDATE sales_invoices SET
+          invoice_number=$1, customer_id=$2, customer_name=$3, invoice_date=$4, due_date=$5,
+          subtotal=$6, tax_amount=$7, total_amount=$8, paid_amount=$9, status=$10, notes=$11,
+          updated_at=NOW()
+        WHERE id=$12 RETURNING *
+      `, [invData.invoiceNumber, invData.customerId || null, invData.customerName || "",
+          invData.invoiceDate || null, invData.dueDate || null,
+          invData.subtotal || 0, invData.taxAmount || 0, invData.totalAmount || 0,
+          invData.paidAmount || 0, invData.status || "Pending", invData.notes || "",
+          req.params.id]);
+      if (items !== undefined) {
+        await client.query(`DELETE FROM sales_invoice_items WHERE invoice_id=$1`, [req.params.id]);
+        for (const item of items || []) {
+          await client.query(`
+            INSERT INTO sales_invoice_items
+              (id, invoice_id, item_id, description, quantity, unit, unit_price, tax_rate, tax_amount, amount)
+            VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+          `, [req.params.id, item.itemId || null, item.description || "",
+              item.quantity || 0, item.unit || "", item.unitPrice || 0,
+              item.taxRate || 0, item.taxAmount || 0, item.amount || 0]);
+        }
       }
-    }
-    res.json(inv);
+      await client.query("COMMIT");
+      res.json(invRes.rows[0]);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Sales invoice update error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
   });
   app.delete("/api/sales/invoices/:id", requireAuth, async (req, res) => {
-    await storage.deleteSalesInvoice(req.params.id);
-    res.json({ ok: true });
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM sales_invoice_items WHERE invoice_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM sales_invoices WHERE id=$1`, [req.params.id]);
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
   });
 
   // Accounts
@@ -232,15 +361,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ...entry, lines });
   });
   app.post("/api/journal", requireAuth, async (req, res) => {
-    const { lines, ...entryData } = req.body;
-    const data = insertJournalEntrySchema.parse(entryData);
-    const entry = await storage.createJournalEntry(data);
-    if (lines?.length) {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { lines = [], ...entryData } = req.body;
+      const entryRes = await client.query(`
+        INSERT INTO journal_entries
+          (id, entry_number, date, description, reference, total_debit, total_credit)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6)
+        RETURNING *
+      `, [entryData.entryNumber || entryData.entry_number,
+          entryData.date || null,
+          entryData.description || "",
+          entryData.reference || "",
+          entryData.totalDebit || entryData.total_debit || 0,
+          entryData.totalCredit || entryData.total_credit || 0]);
+      const entry = entryRes.rows[0];
       for (const line of lines) {
-        await storage.createJournalEntryLine({ ...line, entryId: entry.id });
+        await client.query(`
+          INSERT INTO journal_entry_lines
+            (id, entry_id, account_id, account_name, description, debit, credit)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6)
+        `, [entry.id, line.accountId || null, line.accountName || "",
+            line.description || "", line.debit || 0, line.credit || 0]);
       }
-    }
-    res.json(entry);
+      await client.query("COMMIT");
+      res.json(entry);
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      console.error("Journal entry create error:", e.message);
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
   });
 
   // Tasks
