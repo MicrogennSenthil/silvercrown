@@ -3185,6 +3185,18 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Helper: adjust current_stock on products by delta (negative = reduce)
+  async function adjustSiiStock(client: any, items: any[], delta: number) {
+    for (const it of items) {
+      if (it.item_code && +(it.issued_qty || 0) !== 0) {
+        await client.query(
+          `UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) + $1) WHERE code = $2`,
+          [delta * +(it.issued_qty || 0), it.item_code]
+        );
+      }
+    }
+  }
+
   app.post("/api/store-issue-indents", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
@@ -3210,6 +3222,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             VALUES(gen_random_uuid()::text,$1,$2,$3,$4)`,
             [hdr.id, sr.srn_id, sr.srn_no, sr.srn_date||null]);
         }
+        // Reduce stock for each issued item
+        await adjustSiiStock(client, b.items||[], -1);
         await client.query("COMMIT");
         res.status(201).json({ ...hdr, items: b.items||[], linked_srns: b.linked_srns||[] });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
@@ -3224,6 +3238,9 @@ Return ONLY valid JSON (no markdown, no explanation):
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
+        // Reverse old stock before overwriting
+        const oldItems = await client.query(`SELECT item_code, issued_qty FROM store_issue_indent_items WHERE sii_id=$1`, [req.params.id]);
+        await adjustSiiStock(client, oldItems.rows, +1); // restore old qty back to stock
         await client.query(`UPDATE store_issue_indents SET issue_date=$1,store_id=$2,department_id=$3,issue_type=$4,status=$5,remark=$6,total_qty=$7,grand_total=$8,updated_at=NOW() WHERE id=$9`,
           [b.issue_date, b.store_id||null, b.department_id||null, b.issue_type||"Goods Request", b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.grand_total||0), req.params.id]);
         await client.query(`DELETE FROM store_issue_indent_items WHERE sii_id=$1`, [req.params.id]);
@@ -3238,6 +3255,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             VALUES(gen_random_uuid()::text,$1,$2,$3,$4)`,
             [req.params.id, sr.srn_id, sr.srn_no, sr.srn_date||null]);
         }
+        // Apply new stock reduction
+        await adjustSiiStock(client, b.items||[], -1);
         await client.query("COMMIT");
         res.json({ ok: true });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
@@ -3248,8 +3267,17 @@ Return ONLY valid JSON (no markdown, no explanation):
   app.delete("/api/store-issue-indents/:id", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
-      await pool.query(`DELETE FROM store_issue_indents WHERE id=$1`, [req.params.id]);
-      res.json({ ok: true });
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Restore stock before deleting
+        const oldItems = await client.query(`SELECT item_code, issued_qty FROM store_issue_indent_items WHERE sii_id=$1`, [req.params.id]);
+        await adjustSiiStock(client, oldItems.rows, +1);
+        await client.query(`DELETE FROM store_issue_indents WHERE id=$1`, [req.params.id]);
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
