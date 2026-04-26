@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Search, Edit2, Upload, Scan, X, ChevronDown, FileText, CheckCircle } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
@@ -193,9 +193,28 @@ export default function GoodsReceiptNote() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [grnNo, setGrnNo] = useState("");
+  const [grnInterState, setGrnInterState] = useState(false); // Within State by default
+  const [itemSearch, setItemSearch] = useState<Record<number, string>>({});
+  const [itemDropOpen, setItemDropOpen] = useState<number | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
+  const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
+
+  // Filter only Raw Material category products
+  const rawMaterials = (allProducts as any[]).filter((p: any) =>
+    p.category_name?.toLowerCase().includes("raw") || p.category_name?.toLowerCase() === "raw material"
+  );
+
+  // Close item dropdown on outside click
+  useEffect(() => {
+    function h(e: MouseEvent) {
+      if (!tableRef.current?.contains(e.target as Node)) setItemDropOpen(null);
+    }
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
 
   const filtered = (grns as any[]).filter((g: any) => {
     if (!search) return true;
@@ -306,6 +325,24 @@ export default function GoodsReceiptNote() {
   }
   function removeItem(i: number) {
     setForm(f => ({ ...f, items: f.items.filter((_,idx) => idx !== i).map((it,idx) => ({ ...it, sno:idx+1 })) }));
+  }
+
+  function pickProductForGrn(i: number, prod: any) {
+    const rate = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
+    const cgst = grnInterState ? 0 : parseFloat(prod.cgst_rate) || 0;
+    const sgst = grnInterState ? 0 : parseFloat(prod.sgst_rate) || 0;
+    const igst = grnInterState ? parseFloat(prod.igst_rate) || 0 : 0;
+    setForm(f => {
+      const items = [...f.items];
+      items[i] = calcItem({ ...items[i],
+        item_code: prod.code || "", item_name: prod.name || "",
+        unit: prod.uom || prod.unit || "Nos", rate,
+        cgst_pct: cgst, sgst_pct: sgst, igst_pct: igst,
+      });
+      return { ...f, items };
+    });
+    setItemSearch(p => ({ ...p, [i]: prod.name }));
+    setItemDropOpen(null);
   }
 
   async function handleSave() {
@@ -533,12 +570,25 @@ export default function GoodsReceiptNote() {
                   <CheckCircle size={12}/> PO <span className="font-semibold">{form.po_no}</span> selected — items loaded
                 </div>
               )}
+
+              {/* Within / Inter State toggle */}
+              <div className="mt-3 flex items-center gap-4 border-t border-gray-100 pt-3">
+                <span className="text-xs text-gray-500 font-medium">Tax Type:</span>
+                {[{v:false,l:"Within State"},{v:true,l:"Inter State"}].map(opt => (
+                  <label key={String(opt.v)} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" checked={grnInterState === opt.v}
+                      onChange={() => setGrnInterState(opt.v)}
+                      className="accent-[#027fa5]" data-testid={`radio-taxtype-${opt.l.replace(" ","")}`}/>
+                    <span className={grnInterState === opt.v ? "font-semibold" : "text-gray-500"}>{opt.l}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* Items Table */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" ref={tableRef}>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b" style={{ background:"#e8f6fb" }}>
@@ -552,13 +602,43 @@ export default function GoodsReceiptNote() {
                     <tr key={i} className="border-b hover:bg-[#f0f9ff]">
                       <td className="px-2 py-1.5 text-gray-500 text-center w-8">{it.sno}</td>
                       <td className="px-1 py-1">
-                        <input value={it.item_code} onChange={e => updItem(i,"item_code",e.target.value)}
-                          className="border border-gray-200 rounded px-2 py-1.5 w-20 outline-none focus:border-[#027fa5] text-xs"/>
+                        <input readOnly value={it.item_code}
+                          className="border border-gray-200 bg-gray-50 rounded px-2 py-1.5 w-20 text-xs text-gray-600"/>
                       </td>
-                      <td className="px-1 py-1">
-                        <input value={it.item_name} onChange={e => updItem(i,"item_name",e.target.value)}
-                          className="border border-gray-200 rounded px-2 py-1.5 w-32 outline-none focus:border-[#027fa5] text-xs"
-                          placeholder="Item name"/>
+                      <td className="px-1 py-1 relative">
+                        <div className="relative w-40">
+                          <input
+                            value={itemDropOpen === i ? (itemSearch[i] ?? it.item_name) : it.item_name}
+                            onFocus={() => { setItemDropOpen(i); setItemSearch(p => ({...p,[i]: it.item_name})); }}
+                            onChange={e => { setItemSearch(p => ({...p,[i]:e.target.value})); setItemDropOpen(i); }}
+                            className="w-full border border-gray-300 rounded px-2 py-1.5 outline-none focus:border-[#027fa5] text-xs pr-6"
+                            placeholder="Search item…"
+                            data-testid={`input-itemname-${i}`}
+                          />
+                          <Search size={10} className="absolute right-1.5 top-2.5 text-gray-400 pointer-events-none"/>
+                        </div>
+                        {itemDropOpen === i && (() => {
+                          const q = (itemSearch[i] ?? "").toLowerCase();
+                          const opts = rawMaterials.filter((p: any) =>
+                            !q || p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q)
+                          );
+                          return opts.length > 0 ? (
+                            <div className="absolute z-50 left-1 top-full mt-0.5 w-64 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto text-xs">
+                              {opts.map((p: any) => (
+                                <div key={p.id}
+                                  onMouseDown={() => pickProductForGrn(i, p)}
+                                  className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center">
+                                  <span className="font-medium text-gray-800">{p.name}</span>
+                                  <span className="text-gray-400 text-[10px]">{p.code}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="absolute z-50 left-1 top-full mt-0.5 w-56 bg-white border border-gray-200 rounded shadow-lg px-3 py-2 text-xs text-gray-400">
+                              No raw material items found
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-1 py-1">
                         <input value={it.batch_no} onChange={e => updItem(i,"batch_no",e.target.value)}
