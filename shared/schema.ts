@@ -624,6 +624,18 @@ export const insertCitySchema = createInsertSchema(cities).omit({ id: true, crea
 export type InsertCity = z.infer<typeof insertCitySchema>;
 export type City = typeof cities.$inferSelect;
 
+// Purchase Approval Config
+export const purchaseApprovalConfig = pgTable("purchase_approval_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  transactionType: text("transaction_type").notNull().default(""),
+  typeCode: text("type_code").notNull().default(""),
+  levels: json("levels").$type<{ level: string; selected: boolean; procedure: string }[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertPurchaseApprovalConfigSchema = createInsertSchema(purchaseApprovalConfig).omit({ id: true, createdAt: true });
+export type InsertPurchaseApprovalConfig = z.infer<typeof insertPurchaseApprovalConfigSchema>;
+export type PurchaseApprovalConfig = typeof purchaseApprovalConfig.$inferSelect;
+
 // Approval Authority
 export const approvalAuthority = pgTable("approval_authority", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

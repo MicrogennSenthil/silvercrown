@@ -384,50 +384,187 @@ function PurchaseApprovalForm({ initial, onClose }: any) {
   );
 }
 
+const DEFAULT_LEVELS = [
+  { level: "Level - 1", selected: false, procedure: "" },
+  { level: "Level - 2", selected: false, procedure: "" },
+  { level: "Level - 3", selected: false, procedure: "" },
+  { level: "Level - 4", selected: false, procedure: "" },
+  { level: "Level - 5", selected: false, procedure: "" },
+];
+
 export function PurchaseApprovals() {
-  const [search, setSearch] = useState(""); const [showForm, setShowForm] = useState(false); const [editing, setEditing] = useState<any>(null);
-  const { rows, isLoading, del } = useSimpleCRUD("/api/purchase-approvals", "/api/purchase-approvals");
-  const filtered = rows.filter((r: any) => [r.name, r.approverRole].some(v => String(v || "").toLowerCase().includes(search.toLowerCase())));
+  const qc = useQueryClient();
+  const { data: configs = [] } = useQuery<any[]>({ queryKey: ["/api/purchase-approval-config"] });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [transactionType, setTransactionType] = useState("");
+  const [typeCode, setTypeCode] = useState("");
+  const [levels, setLevels] = useState(DEFAULT_LEVELS.map(l => ({ ...l })));
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) => editingId
+      ? apiReq(`/api/purchase-approval-config/${editingId}`, "PATCH", payload)
+      : apiReq("/api/purchase-approval-config", "POST", payload),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/purchase-approval-config"] }); },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiReq(`/api/purchase-approval-config/${id}`, "DELETE", undefined),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/purchase-approval-config"] }); handleCancel(); },
+  });
+
+  function handleCancel() {
+    setEditingId(null);
+    setTransactionType("");
+    setTypeCode("");
+    setLevels(DEFAULT_LEVELS.map(l => ({ ...l })));
+  }
+
+  function loadConfig(cfg: any) {
+    setEditingId(cfg.id);
+    setTransactionType(cfg.transactionType);
+    setTypeCode(cfg.typeCode);
+    const loaded = DEFAULT_LEVELS.map(dl => {
+      const found = (cfg.levels || []).find((l: any) => l.level === dl.level);
+      return found ? { ...found } : { ...dl };
+    });
+    setLevels(loaded);
+  }
+
+  function toggleLevel(idx: number) {
+    setLevels(ls => ls.map((l, i) => i === idx ? { ...l, selected: !l.selected } : l));
+  }
+
+  function setProcedure(idx: number, val: string) {
+    setLevels(ls => ls.map((l, i) => i === idx ? { ...l, procedure: val } : l));
+  }
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-bold text-gray-800">Purchase Approval</h1><p className="text-sm text-gray-500 mt-0.5">Approval level configuration</p></div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded text-white text-sm font-medium" style={{ background: SC.orange }} data-testid="button-new">
-          <Plus size={16} /> New Level
-        </button>
+    <div className="p-6 bg-[#f5f0ed] min-h-screen">
+      <div className="flex items-center gap-3 mb-5">
+        <h1 className="text-xl font-bold text-[#027fa5]">Purchase Approval</h1>
       </div>
-      <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 2px 2px rgba(0,0,0,0.1)" }}>
-        <div className="px-5 py-3 border-b border-gray-100">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search approval levels..."
-            className="border rounded px-3 py-2 text-sm focus:outline-none w-52" style={{ borderColor: "#00000030" }} data-testid="input-search" />
+
+      <div className="max-w-2xl bg-white rounded-lg shadow-sm border border-gray-200">
+        {/* Card Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <span className="font-semibold text-base text-gray-800">Approval Settings</span>
+          <Info size={17} className="text-gray-400" />
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr style={{ background: SC.tonal }}>
-              {["Level", "Name", "Approver Role", "Min Amount", "Max Amount", "Status", ""].map(h => <th key={h} className="text-left px-5 py-3 font-semibold text-gray-600">{h}</th>)}
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {isLoading ? [...Array(3)].map((_, i) => <tr key={i}><td colSpan={7} className="px-5 py-4"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td></tr>) :
-                filtered.length ? filtered.map((r: any) => (
-                  <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="px-5 py-3"><span className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: SC.primary }}>{r.approvalLevel}</span></td>
-                    <td className="px-5 py-3 font-medium">{r.name}</td>
-                    <td className="px-5 py-3 text-gray-600">{r.approverRole || "—"}</td>
-                    <td className="px-5 py-3 text-right font-mono">{Number(r.minAmount || 0).toLocaleString("en-IN")}</td>
-                    <td className="px-5 py-3 text-right font-mono">{Number(r.maxAmount || 0).toLocaleString("en-IN")}</td>
-                    <td className="px-5 py-3"><StatusBadge v={r.isActive} /></td>
-                    <td className="px-5 py-3"><div className="flex gap-2 justify-end">
-                      <button onClick={() => { setEditing(r); setShowForm(true); }} className="p-1.5 rounded hover:bg-blue-50 text-blue-500" data-testid={`button-edit-${r.id}`}><Edit size={15} /></button>
-                      <button onClick={() => { if (confirm("Delete this approval level?")) del.mutate(r.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-400" data-testid={`button-delete-${r.id}`}><Trash2 size={15} /></button>
-                    </div></td>
+
+        <div className="px-5 pb-4 space-y-4">
+          {/* Row: Transaction Type + Type */}
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <label className="absolute -top-2.5 left-3 bg-white px-1 text-xs text-gray-500">Transaction Type</label>
+              <input
+                data-testid="input-transaction-type"
+                value={transactionType}
+                onChange={e => setTransactionType(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 pt-3 pb-2 text-sm focus:outline-none focus:border-[#027fa5]"
+                placeholder="e.g. Purchase Order"
+              />
+            </div>
+            <div className="relative w-40">
+              <label className="absolute -top-2.5 left-3 bg-white px-1 text-xs text-gray-500">Type</label>
+              <input
+                data-testid="input-type-code"
+                value={typeCode}
+                onChange={e => setTypeCode(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 pt-3 pb-2 text-sm focus:outline-none focus:border-[#027fa5]"
+                placeholder="e.g. P.O"
+              />
+            </div>
+          </div>
+
+          {/* Levels Table */}
+          <div className="border border-gray-200 rounded overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#b8d9e8] text-gray-700">
+                  <th className="px-4 py-2 text-left font-medium w-14">S.no</th>
+                  <th className="px-4 py-2 text-left font-medium">Approval Level</th>
+                  <th className="px-4 py-2 text-center font-medium w-16">Select</th>
+                  <th className="px-4 py-2 text-left font-medium">Approval Procedure</th>
+                </tr>
+              </thead>
+              <tbody>
+                {levels.map((lv, idx) => (
+                  <tr key={lv.level} className="border-t border-gray-100">
+                    <td className="px-4 py-2.5 text-gray-600">{String(idx + 1).padStart(2, "0")}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-700">{lv.level}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={lv.selected}
+                        onChange={() => toggleLevel(idx)}
+                        data-testid={`checkbox-level-${idx}`}
+                        className="w-4 h-4 accent-[#027fa5] cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-4 py-2 pr-4">
+                      <input
+                        value={lv.procedure}
+                        onChange={e => setProcedure(idx, e.target.value)}
+                        placeholder="Enter"
+                        data-testid={`input-procedure-${idx}`}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:outline-none focus:border-[#027fa5]"
+                      />
+                    </td>
                   </tr>
-                )) : <tr><td colSpan={7} className="px-5 py-12 text-center text-gray-400">No approval levels configured</td></tr>}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Saved configs list */}
+          {configs.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1 font-medium">Saved configurations:</p>
+              <div className="flex flex-wrap gap-2">
+                {configs.map((cfg: any) => (
+                  <button
+                    key={cfg.id}
+                    onClick={() => loadConfig(cfg)}
+                    data-testid={`btn-load-config-${cfg.id}`}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                      editingId === cfg.id
+                        ? "bg-[#027fa5] text-white border-[#027fa5]"
+                        : "bg-white text-gray-600 border-gray-300 hover:border-[#027fa5] hover:text-[#027fa5]"
+                    }`}
+                  >
+                    {cfg.transactionType || "Untitled"} ({cfg.typeCode})
+                    {editingId === cfg.id && (
+                      <span
+                        onClick={e => { e.stopPropagation(); deleteMutation.mutate(cfg.id); }}
+                        className="ml-2 text-red-300 hover:text-red-500"
+                      >✕</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-center gap-4 px-5 py-4 border-t border-gray-100">
+          <button
+            onClick={handleCancel}
+            data-testid="btn-cancel"
+            className="px-8 py-2 border border-gray-300 rounded text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => saveMutation.mutate({ transactionType, typeCode, levels })}
+            disabled={saveMutation.isPending}
+            data-testid="btn-save"
+            className="px-8 py-2 bg-[#d74700] hover:bg-[#b83c00] text-white rounded text-sm font-medium transition-colors disabled:opacity-60"
+          >
+            {saveMutation.isPending ? "Saving…" : "Save"}
+          </button>
         </div>
       </div>
-      {showForm && <PurchaseApprovalForm initial={editing} onClose={() => setShowForm(false)} />}
     </div>
   );
 }

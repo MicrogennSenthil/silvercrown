@@ -11,7 +11,7 @@ import {
   categories, subCategories, products, machineMaster,
   storeItemGroups, purchaseStoreItems, purchaseApprovalLevels,
   voucherTypes, payModeTypes, ledgerCategories,
-  termTypes, terms, departments, approvalAuthority,
+  termTypes, terms, departments, approvalAuthority, purchaseApprovalConfig,
   type User, type InsertUser,
   type Supplier, type InsertSupplier,
   type Customer, type InsertCustomer,
@@ -49,6 +49,7 @@ import {
   type Term, type InsertTerm,
   type Department, type InsertDepartment,
   type ApprovalAuthority, type InsertApprovalAuthority,
+  type PurchaseApprovalConfig, type InsertPurchaseApprovalConfig,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -260,6 +261,12 @@ export interface IStorage {
   createApprovalAuthority(a: InsertApprovalAuthority): Promise<ApprovalAuthority>;
   updateApprovalAuthority(id: string, a: Partial<InsertApprovalAuthority>): Promise<ApprovalAuthority>;
   deleteApprovalAuthority(id: string): Promise<void>;
+
+  // Purchase Approval Config
+  listPurchaseApprovalConfig(): Promise<PurchaseApprovalConfig[]>;
+  createPurchaseApprovalConfig(a: InsertPurchaseApprovalConfig): Promise<PurchaseApprovalConfig>;
+  updatePurchaseApprovalConfig(id: string, a: Partial<InsertPurchaseApprovalConfig>): Promise<PurchaseApprovalConfig>;
+  deletePurchaseApprovalConfig(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -528,6 +535,12 @@ export class DatabaseStorage implements IStorage {
   async createApprovalAuthority(a: InsertApprovalAuthority) { const [r] = await db.insert(approvalAuthority).values({ ...a, id: randomUUID() }).returning(); return r; }
   async updateApprovalAuthority(id: string, a: Partial<InsertApprovalAuthority>) { const [r] = await db.update(approvalAuthority).set(a).where(eq(approvalAuthority.id, id)).returning(); return r; }
   async deleteApprovalAuthority(id: string) { await db.delete(approvalAuthority).where(eq(approvalAuthority.id, id)); }
+
+  // Purchase Approval Config
+  async listPurchaseApprovalConfig() { return db.select().from(purchaseApprovalConfig).orderBy(purchaseApprovalConfig.transactionType); }
+  async createPurchaseApprovalConfig(a: InsertPurchaseApprovalConfig) { const [r] = await db.insert(purchaseApprovalConfig).values({ ...a, id: randomUUID() }).returning(); return r; }
+  async updatePurchaseApprovalConfig(id: string, a: Partial<InsertPurchaseApprovalConfig>) { const [r] = await db.update(purchaseApprovalConfig).set(a).where(eq(purchaseApprovalConfig.id, id)).returning(); return r; }
+  async deletePurchaseApprovalConfig(id: string) { await db.delete(purchaseApprovalConfig).where(eq(purchaseApprovalConfig.id, id)); }
 }
 
 export const storage = new DatabaseStorage();

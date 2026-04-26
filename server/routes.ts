@@ -508,6 +508,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/departments/:id", requireAuth, async (req, res) => { res.json(await storage.updateDepartment(req.params.id, req.body)); });
   app.delete("/api/departments/:id", requireAuth, async (req, res) => { await storage.deleteDepartment(req.params.id); res.json({ ok: true }); });
 
+  // Purchase Approval Config
+  app.get("/api/purchase-approval-config", requireAuth, async (req, res) => { res.json(await storage.listPurchaseApprovalConfig()); });
+  app.post("/api/purchase-approval-config", requireAuth, async (req, res) => {
+    try { res.json(await storage.createPurchaseApprovalConfig(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/purchase-approval-config/:id", requireAuth, async (req, res) => { res.json(await storage.updatePurchaseApprovalConfig(req.params.id, req.body)); });
+  app.delete("/api/purchase-approval-config/:id", requireAuth, async (req, res) => { await storage.deletePurchaseApprovalConfig(req.params.id); res.json({ ok: true }); });
+
   // Approval Authority
   app.get("/api/approval-authority", requireAuth, async (req, res) => { res.json(await storage.listApprovalAuthority()); });
   app.post("/api/approval-authority", requireAuth, async (req, res) => {
