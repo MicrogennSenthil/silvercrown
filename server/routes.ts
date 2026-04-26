@@ -608,7 +608,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/sub-categories/:id", requireAuth, async (req, res) => { await storage.deleteSubCategory(req.params.id); res.json({ ok: true }); });
 
   // Products
-  app.get("/api/products", requireAuth, async (req, res) => { res.json(await storage.listProducts()); });
+  app.get("/api/products", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT p.*, c.name AS category_name
+        FROM products p
+        LEFT JOIN categories c ON c.id = p.category_id
+        ORDER BY p.name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
   app.post("/api/products", requireAuth, async (req, res) => {
     try { res.json(await storage.createProduct(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
@@ -1720,6 +1731,117 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   });
   app.patch("/api/approval-authority/:id", requireAuth, async (req, res) => { res.json(await storage.updateApprovalAuthority(req.params.id, req.body)); });
   app.delete("/api/approval-authority/:id", requireAuth, async (req, res) => { await storage.deleteApprovalAuthority(req.params.id); res.json({ ok: true }); });
+
+  // ── Returnable Inward ───────────────────────────────────────────────────────
+  app.get("/api/returnable-inward", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT ri.*, c.name AS party_name_db
+        FROM returnable_inward ri
+        LEFT JOIN customers c ON c.id = ri.party_id
+        ORDER BY ri.created_at DESC
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/returnable-inward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [header] = (await pool.query(`
+        SELECT ri.*, c.name AS party_name_db
+        FROM returnable_inward ri
+        LEFT JOIN customers c ON c.id = ri.party_id
+        WHERE ri.id = $1
+      `, [req.params.id])).rows;
+      if (!header) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(
+        `SELECT * FROM returnable_inward_items WHERE inward_id=$1 ORDER BY seq_no`,
+        [req.params.id]
+      )).rows;
+      res.json({ ...header, items });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/returnable-inward", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      // Auto voucher number
+      const voucher_no = await generateVoucherNo("returnable_inward", client);
+      const hRes = await client.query(`
+        INSERT INTO returnable_inward
+          (voucher_no, party_id, party_name_manual, party_dc_no, party_dc_date,
+           inward_date, due_date, vehicle_no, contact_person, mobile_no, email_id,
+           delivery_address, same_as_company, remark)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        RETURNING *
+      `, [voucher_no, b.party_id||null, b.party_name_manual||"", b.party_dc_no||"",
+          b.party_dc_date||null, b.inward_date||new Date().toISOString().split("T")[0],
+          b.due_date||null, b.vehicle_no||"", b.contact_person||"", b.mobile_no||"",
+          b.email_id||"", b.delivery_address||"", b.same_as_company!==false, b.remark||""]);
+      const hdr = hRes.rows[0];
+      const items = b.items || [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await client.query(`
+          INSERT INTO returnable_inward_items
+            (inward_id, seq_no, item_id, item_code, item_name, hsn, qty, unit, unit_value, total_value)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        `, [hdr.id, i+1, it.item_id||null, it.item_code||"", it.item_name||"",
+            it.hsn||"", parseFloat(it.qty||0), it.unit||"",
+            parseFloat(it.unit_value||0), parseFloat(it.total_value||0)]);
+      }
+      await client.query("COMMIT");
+      res.json({ ...hdr, voucher_no });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.patch("/api/returnable-inward/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      const hRes = await client.query(`
+        UPDATE returnable_inward SET
+          party_id=$1, party_name_manual=$2, party_dc_no=$3, party_dc_date=$4,
+          inward_date=$5, due_date=$6, vehicle_no=$7, contact_person=$8, mobile_no=$9,
+          email_id=$10, delivery_address=$11, same_as_company=$12, remark=$13
+        WHERE id=$14 RETURNING *
+      `, [b.party_id||null, b.party_name_manual||"", b.party_dc_no||"", b.party_dc_date||null,
+          b.inward_date, b.due_date||null, b.vehicle_no||"", b.contact_person||"",
+          b.mobile_no||"", b.email_id||"", b.delivery_address||"",
+          b.same_as_company!==false, b.remark||"", req.params.id]);
+      await client.query(`DELETE FROM returnable_inward_items WHERE inward_id=$1`, [req.params.id]);
+      const items = b.items || [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        await client.query(`
+          INSERT INTO returnable_inward_items
+            (inward_id, seq_no, item_id, item_code, item_name, hsn, qty, unit, unit_value, total_value)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        `, [req.params.id, i+1, it.item_id||null, it.item_code||"", it.item_name||"",
+            it.hsn||"", parseFloat(it.qty||0), it.unit||"",
+            parseFloat(it.unit_value||0), parseFloat(it.total_value||0)]);
+      }
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.delete("/api/returnable-inward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM returnable_inward WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
 
   return httpServer;
 }

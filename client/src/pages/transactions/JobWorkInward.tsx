@@ -280,8 +280,12 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   const isEdit = !!editData?.id;
 
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
-  const { data: storeItems = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: processes = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
+  // Engineering screens: exclude Raw Material category items
+  const storeItems = (allProducts as any[]).filter(
+    (p: any) => p.category_name?.toLowerCase() !== "raw material"
+  );
 
   const [partyId, setPartyId] = useState(editData?.party_id || "");
   const [partySearch, setPartySearch] = useState(editData?.party_name_db || editData?.party_name_manual || "");
