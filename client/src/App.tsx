@@ -35,6 +35,7 @@ import ReturnableOutward from "@/pages/transactions/ReturnableOutward";
 import GatePass from "@/pages/transactions/GatePass";
 import PurchaseOrder from "@/pages/inventory/PurchaseOrder";
 import PurchaseAmendment from "@/pages/inventory/PurchaseAmendment";
+import PurchaseOrderApproval from "@/pages/inventory/PurchaseOrderApproval";
 import FinancialYears from "@/pages/masters/FinancialYears";
 import VoucherSeries from "@/pages/masters/VoucherSeries";
 // User Management
@@ -67,6 +68,7 @@ function Router() {
       <Route path="/purchase/invoices"><ProtectedRoute component={PurchaseInvoices} /></Route>
       <Route path="/inventory/purchase-order"><ProtectedRoute component={PurchaseOrder} /></Route>
       <Route path="/inventory/purchase-amendment"><ProtectedRoute component={PurchaseAmendment} /></Route>
+      <Route path="/inventory/purchase-order-approval"><ProtectedRoute component={PurchaseOrderApproval} /></Route>
       <Route path="/inventory/items"><ProtectedRoute component={Inventory} /></Route>
       <Route path="/inventory/categories"><ProtectedRoute component={Inventory} /></Route>
       <Route path="/sales/invoices"><ProtectedRoute component={Sales} /></Route>

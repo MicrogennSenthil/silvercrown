@@ -2263,6 +2263,197 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Purchase Order Approval ──────────────────────────────────────────────────
+
+  // Get approval levels config
+  app.get("/api/purchase-order-approval/levels", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`SELECT * FROM purchase_approval_levels WHERE is_active=true ORDER BY approval_level`);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // List POs pending/approved with full-text search + approval status per level
+  app.get("/api/purchase-order-approval", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const search = (req.query.search as string || "").toLowerCase();
+
+      // Fetch all POs with supplier, grand total, and approval decisions
+      const r = await pool.query(`
+        SELECT
+          po.id, po.voucher_no, po.po_date, po.status, po.payment_mode, po.priority,
+          po.supplier_id, po.supplier_name_manual,
+          c.name AS supplier_name_db,
+          COALESCE(
+            (SELECT SUM(poi.total) FROM purchase_order_items poi WHERE poi.po_id = po.id), 0
+          ) +
+          COALESCE(
+            (SELECT SUM(poc.amount) FROM purchase_order_charges poc WHERE poc.po_id = po.id), 0
+          ) AS bill_value,
+          COALESCE(
+            (SELECT json_agg(json_build_object(
+              'id', pad.id, 'level', pad.approval_level, 'level_name', pad.level_name,
+              'status', pad.status, 'approver_name', pad.approver_name,
+              'comments', pad.comments, 'decided_at', pad.decided_at
+            ) ORDER BY pad.approval_level),
+            '[]'::json
+          ) AS decisions,
+          COALESCE(
+            (SELECT string_agg(poi.item_name, ' ') FROM purchase_order_items poi WHERE poi.po_id = po.id), ''
+          ) AS item_names,
+          COALESCE(
+            (SELECT string_agg(poi.qty::text, ' ') FROM purchase_order_items poi WHERE poi.po_id = po.id), ''
+          ) AS item_qtys,
+          COALESCE(
+            (SELECT string_agg(poi.rate::text, ' ') FROM purchase_order_items poi WHERE poi.po_id = po.id), ''
+          ) AS item_rates
+        FROM purchase_orders po
+        LEFT JOIN customers c ON c.id = po.supplier_id
+        WHERE po.status != 'Cancelled'
+        ORDER BY po.created_at DESC
+      `);
+
+      let rows = r.rows;
+
+      // Apply universal search
+      if (search) {
+        rows = rows.filter((row: any) => {
+          const haystack = [
+            row.voucher_no, row.supplier_name_db, row.supplier_name_manual,
+            row.status, row.item_names, row.item_qtys, row.item_rates,
+            row.payment_mode, row.priority, String(row.bill_value||""),
+            new Date(row.po_date).toLocaleDateString("en-IN", { day:"2-digit", month:"long", year:"numeric" })
+          ].join(" ").toLowerCase();
+          return haystack.includes(search);
+        });
+      }
+
+      res.json(rows.map((r: any) => ({
+        id: r.id, voucher_no: r.voucher_no, po_date: r.po_date,
+        status: r.status, payment_mode: r.payment_mode, priority: r.priority,
+        supplier_name: r.supplier_name_db || r.supplier_name_manual || "",
+        bill_value: parseFloat(r.bill_value)||0,
+        decisions: r.decisions || [],
+      })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Approve one or multiple POs at current level
+  app.post("/api/purchase-order-approval/approve", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { po_ids, comments = "" } = req.body as { po_ids: string[]; comments?: string };
+      const user = (req as any).user;
+
+      // Get all active approval levels
+      const levelsRes = await client.query(`SELECT * FROM purchase_approval_levels WHERE is_active=true ORDER BY approval_level`);
+      const levels = levelsRes.rows;
+      const totalLevels = levels.length || 1;
+
+      const results: any[] = [];
+
+      for (const po_id of po_ids) {
+        // Get existing decisions for this PO
+        const decisionsRes = await client.query(
+          `SELECT * FROM po_approval_decisions WHERE po_id=$1 ORDER BY approval_level`,
+          [po_id]
+        );
+        const decisions = decisionsRes.rows;
+        const approvedLevels = decisions.filter((d: any) => d.status === "Approved").map((d: any) => d.approval_level);
+
+        // Find the next level to approve
+        let nextLevel = 1;
+        for (let i = 1; i <= totalLevels; i++) {
+          if (!approvedLevels.includes(i)) { nextLevel = i; break; }
+        }
+        const levelConfig = levels.find((l: any) => l.approval_level === nextLevel) || levels[0];
+
+        // Upsert the decision for this level
+        const existingDec = decisions.find((d: any) => d.approval_level === nextLevel);
+        if (existingDec) {
+          await client.query(`
+            UPDATE po_approval_decisions SET status='Approved', approver_user_id=$1,
+              approver_name=$2, comments=$3, decided_at=now() WHERE id=$4
+          `, [user?.id||null, user?.name||user?.username||"Admin", comments, existingDec.id]);
+        } else {
+          await client.query(`
+            INSERT INTO po_approval_decisions
+              (po_id, approval_level, level_name, approver_user_id, approver_name, status, comments, decided_at)
+            VALUES ($1,$2,$3,$4,$5,'Approved',$6,now())
+          `, [po_id, nextLevel, levelConfig?.name||`Level ${nextLevel}`,
+              user?.id||null, user?.name||user?.username||"Admin", comments]);
+        }
+
+        // Check if all levels are now approved
+        const allApprovedRes = await client.query(
+          `SELECT COUNT(*) FROM po_approval_decisions WHERE po_id=$1 AND status='Approved'`,
+          [po_id]
+        );
+        const approvedCount = parseInt(allApprovedRes.rows[0].count);
+
+        let newStatus = "Pending Approval";
+        if (approvedCount >= totalLevels) {
+          newStatus = "Approved";
+          await client.query(`UPDATE purchase_orders SET status='Approved' WHERE id=$1`, [po_id]);
+        } else {
+          await client.query(`UPDATE purchase_orders SET status='Pending Approval' WHERE id=$1`, [po_id]);
+        }
+
+        results.push({ po_id, approved_level: nextLevel, status: newStatus });
+      }
+
+      await client.query("COMMIT");
+      res.json({ ok: true, results });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  // Reject one or multiple POs
+  app.post("/api/purchase-order-approval/reject", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { po_ids, comments = "" } = req.body as { po_ids: string[]; comments?: string };
+      const user = (req as any).user;
+
+      const levelsRes = await client.query(`SELECT * FROM purchase_approval_levels WHERE is_active=true ORDER BY approval_level LIMIT 1`);
+      const level = levelsRes.rows[0] || { approval_level: 1, name: "Level 1" };
+
+      for (const po_id of po_ids) {
+        await client.query(`
+          INSERT INTO po_approval_decisions
+            (po_id, approval_level, level_name, approver_user_id, approver_name, status, comments, decided_at)
+          VALUES ($1,$2,$3,$4,$5,'Rejected',$6,now())
+          ON CONFLICT DO NOTHING
+        `, [po_id, level.approval_level, level.name,
+            user?.id||null, user?.name||user?.username||"Admin", comments]);
+        await client.query(`UPDATE purchase_orders SET status='Rejected' WHERE id=$1`, [po_id]);
+      }
+
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  // Reset PO approval (move back to Draft)
+  app.post("/api/purchase-order-approval/reset", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { po_ids } = req.body as { po_ids: string[] };
+      for (const po_id of po_ids) {
+        await pool.query(`DELETE FROM po_approval_decisions WHERE po_id=$1`, [po_id]);
+        await pool.query(`UPDATE purchase_orders SET status='Draft' WHERE id=$1`, [po_id]);
+      }
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Purchase Order Amendments ────────────────────────────────────────────────
 
   app.get("/api/purchase-order-amendments", requireAuth, async (req, res) => {
