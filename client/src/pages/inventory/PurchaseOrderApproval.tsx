@@ -172,11 +172,14 @@ export default function PurchaseOrderApproval() {
 
   const { data: pos = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/purchase-order-approval", debouncedSearch],
-    queryFn: () => {
+    queryFn: async () => {
       const url = debouncedSearch
         ? `/api/purchase-order-approval?search=${encodeURIComponent(debouncedSearch)}`
         : "/api/purchase-order-approval";
-      return fetch(url, { credentials: "include" }).then(r => r.json());
+      const r = await fetch(url, { credentials: "include" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || "Failed to load");
+      return Array.isArray(j) ? j : [];
     },
   });
 

@@ -2192,7 +2192,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
               'id', pad.id, 'level', pad.approval_level, 'level_name', pad.level_name,
               'status', pad.status, 'approver_name', pad.approver_name,
               'comments', pad.comments, 'decided_at', pad.decided_at
-            ) ORDER BY pad.approval_level),
+            ) ORDER BY pad.approval_level)
+            FROM po_approval_decisions pad WHERE pad.po_id = po.id),
             '[]'::json
           ) AS decisions,
           COALESCE(
