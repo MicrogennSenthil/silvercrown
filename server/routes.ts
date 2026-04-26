@@ -766,6 +766,49 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Sub Ledgers
   app.get("/api/sub-ledgers", requireAuth, async (req, res) => { res.json(await storage.listSubLedgers()); });
+
+  // Named sub-ledger filters — MUST be before /:id wildcard
+  app.get("/api/sub-ledgers/debtors", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name
+        FROM sub_ledgers sl
+        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+        WHERE gl.name ILIKE '%debtor%' AND sl.is_active = true
+        ORDER BY sl.name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/sub-ledgers/creditors", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name
+        FROM sub_ledgers sl
+        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+        WHERE gl.name ILIKE '%creditor%' AND sl.is_active = true
+        ORDER BY sl.name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.get("/api/sub-ledgers/expense", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT sl.id, sl.name, gl.name AS gl_name
+        FROM sub_ledgers sl
+        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+        JOIN ledger_categories lc ON lc.id = gl.category_id
+        WHERE lc.name = 'Expense' AND sl.is_active = true
+        ORDER BY sl.name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/sub-ledgers/:id", requireAuth, async (req, res) => {
     const s = await storage.getSubLedger(req.params.id);
     if (!s) return res.status(404).json({ message: "Not found" });
@@ -2078,52 +2121,6 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       res.json({ ok: true });
     } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
     finally { client.release(); }
-  });
-
-  // ── Debtor sub-ledgers (for Customer ledger mapping) ────────────────────────
-  app.get("/api/sub-ledgers/debtors", requireAuth, async (req, res) => {
-    try {
-      const { pool } = await import("./db");
-      const r = await pool.query(`
-        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name
-        FROM sub_ledgers sl
-        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
-        WHERE gl.name ILIKE '%debtor%' AND sl.is_active = true
-        ORDER BY sl.name
-      `);
-      res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
-  });
-
-  // ── Creditor sub-ledgers (for Purchase supplier dropdowns) ──────────────────
-  app.get("/api/sub-ledgers/creditors", requireAuth, async (req, res) => {
-    try {
-      const { pool } = await import("./db");
-      const r = await pool.query(`
-        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name
-        FROM sub_ledgers sl
-        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
-        WHERE gl.name ILIKE '%creditor%' AND sl.is_active = true
-        ORDER BY sl.name
-      `);
-      res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
-  });
-
-  // ── Expense sub-ledgers (for PO Other Charges) ──────────────────────────────
-  app.get("/api/sub-ledgers/expense", requireAuth, async (req, res) => {
-    try {
-      const { pool } = await import("./db");
-      const r = await pool.query(`
-        SELECT sl.id, sl.name, gl.name AS gl_name
-        FROM sub_ledgers sl
-        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
-        JOIN ledger_categories lc ON lc.id = gl.category_id
-        WHERE lc.name = 'Expense' AND sl.is_active = true
-        ORDER BY sl.name
-      `);
-      res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ── Purchase Orders ─────────────────────────────────────────────────────────
