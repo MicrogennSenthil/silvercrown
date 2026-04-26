@@ -58,29 +58,37 @@ const NAV: any[] = [
   },
   {
     label: "Engineering", icon: Cpu, children: [
-      { label: "Departments", href: "/masters/departments" },
-      { label: "Purchase Approval", href: "/masters/purchase-approvals" },
-    ]
-  },
-  {
-    label: "Purchase", icon: ShoppingCart, children: [
-      { label: "Invoices", href: "/purchase/invoices" },
+      { label: "Job Work", href: "/engineering/job-work" },
+      { label: "Work Orders", href: "/engineering/work-orders" },
+      { label: "BOM", href: "/engineering/bom" },
     ]
   },
   {
     label: "Inventory", icon: Warehouse, children: [
       { label: "Stock Items", href: "/inventory/items" },
+      { label: "Stock Transfer", href: "/inventory/transfer" },
+      { label: "Stock Adjustment", href: "/inventory/adjustment" },
+    ]
+  },
+  {
+    label: "Purchase", icon: ShoppingCart, children: [
+      { label: "Purchase Order", href: "/purchase/orders" },
+      { label: "Purchase Invoice", href: "/purchase/invoices" },
+      { label: "Purchase Return", href: "/purchase/returns" },
     ]
   },
   {
     label: "Sales", icon: TrendingUp, children: [
-      { label: "Invoices", href: "/sales/invoices" },
+      { label: "Sales Order", href: "/sales/orders" },
+      { label: "Sales Invoice", href: "/sales/invoices" },
+      { label: "Sales Return", href: "/sales/returns" },
     ]
   },
   {
     label: "Accounts", icon: BookOpen, children: [
-      { label: "Journal Entries", href: "/journal" },
-      { label: "Reports", href: "/reports" },
+      { label: "Journal Entries", href: "/accounts/journal" },
+      { label: "Ledger", href: "/accounts/ledger" },
+      { label: "Reports", href: "/accounts/reports" },
     ]
   },
   { label: "Tasks & Reminders", icon: CheckSquare, href: "/tasks" },
