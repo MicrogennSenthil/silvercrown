@@ -482,7 +482,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/pay-mode-types/:id", requireAuth, async (req, res) => { res.json(await storage.updatePayModeType(req.params.id, req.body)); });
   app.delete("/api/pay-mode-types/:id", requireAuth, async (req, res) => { await storage.deletePayModeType(req.params.id); res.json({ ok: true }); });
 
-  // Ledger Categories
+  // General Ledgers
+  app.get("/api/general-ledgers", requireAuth, async (req, res) => { res.json(await storage.listGeneralLedgers()); });
+  app.post("/api/general-ledgers", requireAuth, async (req, res) => {
+    try { res.json(await storage.createGeneralLedger(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/general-ledgers/:id", requireAuth, async (req, res) => { res.json(await storage.updateGeneralLedger(req.params.id, req.body)); });
+  app.delete("/api/general-ledgers/:id", requireAuth, async (req, res) => { await storage.deleteGeneralLedger(req.params.id); res.json({ ok: true }); });
+
   app.get("/api/ledger-categories", requireAuth, async (req, res) => { res.json(await storage.listLedgerCategories()); });
   app.post("/api/ledger-categories", requireAuth, async (req, res) => {
     try { res.json(await storage.createLedgerCategory(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }

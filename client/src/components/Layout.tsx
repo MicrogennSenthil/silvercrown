@@ -47,9 +47,10 @@ const NAV: any[] = [
       {
         label: "Accounts", icon: IndianRupee, subChildren: [
           { label: "Chart of Accounts", href: "/masters/accounts" },
-          { label: "Ledger Categories", href: "/masters/ledger-categories" },
           { label: "Voucher Types", href: "/masters/voucher-types" },
           { label: "Pay Mode Types", href: "/masters/pay-mode-types" },
+          { label: "Ledger Categories", href: "/masters/ledger-categories" },
+          { label: "General Ledger", href: "/masters/general-ledgers" },
         ]
       },
     ]

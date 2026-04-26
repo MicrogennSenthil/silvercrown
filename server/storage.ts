@@ -46,6 +46,8 @@ import {
   type VoucherType, type InsertVoucherType,
   type PayModeType, type InsertPayModeType,
   type LedgerCategory, type InsertLedgerCategory,
+  type GeneralLedger, type InsertGeneralLedger,
+  generalLedgers,
   type TermType, type InsertTermType,
   type Term, type InsertTerm,
   type Department, type InsertDepartment,
@@ -243,6 +245,11 @@ export interface IStorage {
   createLedgerCategory(l: InsertLedgerCategory): Promise<LedgerCategory>;
   updateLedgerCategory(id: string, l: Partial<InsertLedgerCategory>): Promise<LedgerCategory>;
   deleteLedgerCategory(id: string): Promise<void>;
+
+  listGeneralLedgers(): Promise<GeneralLedger[]>;
+  createGeneralLedger(g: InsertGeneralLedger): Promise<GeneralLedger>;
+  updateGeneralLedger(id: string, g: Partial<InsertGeneralLedger>): Promise<GeneralLedger>;
+  deleteGeneralLedger(id: string): Promise<void>;
 
   // Term Types
   listTermTypes(): Promise<TermType[]>;
@@ -499,6 +506,11 @@ export class DatabaseStorage implements IStorage {
   async createLedgerCategory(l: InsertLedgerCategory) { const [r] = await db.insert(ledgerCategories).values({ ...l, id: randomUUID() }).returning(); return r; }
   async updateLedgerCategory(id: string, l: Partial<InsertLedgerCategory>) { const [r] = await db.update(ledgerCategories).set(l).where(eq(ledgerCategories.id, id)).returning(); return r; }
   async deleteLedgerCategory(id: string) { await db.delete(ledgerCategories).where(eq(ledgerCategories.id, id)); }
+
+  async listGeneralLedgers() { return db.select().from(generalLedgers).orderBy(generalLedgers.name); }
+  async createGeneralLedger(g: InsertGeneralLedger) { const [r] = await db.insert(generalLedgers).values({ ...g, id: randomUUID() }).returning(); return r; }
+  async updateGeneralLedger(id: string, g: Partial<InsertGeneralLedger>) { const [r] = await db.update(generalLedgers).set(g).where(eq(generalLedgers.id, id)).returning(); return r; }
+  async deleteGeneralLedger(id: string) { await db.delete(generalLedgers).where(eq(generalLedgers.id, id)); }
 
   // Term Types
   async listTermTypes() { return db.select().from(termTypes).orderBy(termTypes.name); }

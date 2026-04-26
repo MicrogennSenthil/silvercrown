@@ -1367,3 +1367,212 @@ export function StoreItemSubGroups() {
     </div>
   );
 }
+
+// ─── General Ledger Modal ──────────────────────────────────────────────────────
+function GeneralLedgerModal({ item, categories, onClose }: { item?: any; categories: any[]; onClose: () => void }) {
+  const isEdit = !!item?.id;
+  const qc = useQueryClient();
+
+  const [name, setName]       = useState(item?.name || "");
+  const [catId, setCatId]     = useState(item?.categoryId || "");
+  const [opening, setOpening] = useState(item?.openingBalance ?? "0");
+  const [balType, setBalType] = useState(item?.balanceType || "Dr");
+  const [desc, setDesc]       = useState(item?.description || "");
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const code = item?.code || `GL-${Date.now()}`;
+      const url    = isEdit ? `/api/general-ledgers/${item.id}` : "/api/general-ledgers";
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method, credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code, name: name.trim(),
+          categoryId: catId || null,
+          openingBalance: opening,
+          balanceType: balType,
+          description: desc,
+          isActive: true,
+        }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] }); onClose(); },
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.35)" }}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4" style={{ fontFamily: "Source Sans Pro, sans-serif" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-semibold text-gray-800 text-base">{isEdit ? "Edit Ledger" : "Create New Ledger"}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none" data-testid="btn-modal-close">✕</button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+          {/* Ledger Name */}
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Ledger Name *</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              placeholder="Enter Ledger Name..."
+              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+              data-testid="input-ledger-name" />
+          </div>
+
+          {/* Category */}
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Ledger Category</label>
+            <select value={catId} onChange={e => setCatId(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm bg-white outline-none focus:border-[#027fa5] appearance-none"
+              data-testid="select-category">
+              <option value="">-- Select Category --</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          {/* Opening Balance + Balance Type */}
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Opening Balance</label>
+              <input type="number" value={opening} onChange={e => setOpening(e.target.value)}
+                placeholder="0.00"
+                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+                data-testid="input-opening-balance" />
+            </div>
+            <div className="relative w-32">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Type</label>
+              <select value={balType} onChange={e => setBalType(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm bg-white outline-none focus:border-[#027fa5] appearance-none"
+                data-testid="select-balance-type">
+                <option value="Dr">Dr (Debit)</option>
+                <option value="Cr">Cr (Credit)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Description */}
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Description</label>
+            <textarea value={desc} onChange={e => setDesc(e.target.value)}
+              rows={2} placeholder="Optional description..."
+              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] resize-none"
+              data-testid="input-description" />
+          </div>
+
+          {saveMut.isError && <p className="text-red-500 text-xs">{(saveMut.error as any)?.message}</p>}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose}
+            className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
+          <button onClick={() => saveMut.mutate()} disabled={!name.trim() || saveMut.isPending}
+            className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="btn-save">
+            {saveMut.isPending ? "Saving..." : isEdit ? "Save" : "Add"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── General Ledgers List ──────────────────────────────────────────────────────
+export function GeneralLedgers() {
+  const [search, setSearch] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+
+  const { data: ledgers = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
+  const { data: categories = [] } = useQuery<any[]>({ queryKey: ["/api/ledger-categories"] });
+
+  const catMap: Record<string, string> = {};
+  categories.forEach((c: any) => { catMap[c.id] = c.name; });
+
+  const filtered = ledgers.filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h1 className="font-semibold text-gray-800 text-base">General Ledger</h1>
+          <div className="relative w-72">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search Ledger name..."
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded w-full outline-none focus:border-[#027fa5]"
+              data-testid="input-search" />
+          </div>
+        </div>
+
+        {/* Table */}
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: SC.tonal }}>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700 w-12">S.no</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Ledger Name</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Category</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Opening Balance</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Type</th>
+              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Status</th>
+              <th className="px-3 py-2.5 w-10"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && (
+              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400 text-sm">Loading...</td></tr>
+            )}
+            {!isLoading && filtered.length === 0 && (
+              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400 text-sm">No ledgers found</td></tr>
+            )}
+            {filtered.map((r, i) => (
+              <tr key={r.id} className={`border-t border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
+                data-testid={`row-ledger-${r.id}`}>
+                <td className="px-5 py-2.5 text-gray-500">{i + 1}</td>
+                <td className="px-5 py-2.5 font-medium text-gray-800">{r.name}</td>
+                <td className="px-5 py-2.5 text-gray-600">{catMap[r.categoryId] || <span className="text-gray-300">—</span>}</td>
+                <td className="px-5 py-2.5 text-gray-700 font-mono text-xs">
+                  {parseFloat(r.openingBalance || "0").toFixed(2)}
+                </td>
+                <td className="px-5 py-2.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.balanceType === "Cr" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700"}`}>
+                    {r.balanceType}
+                  </span>
+                </td>
+                <td className="px-5 py-2.5">
+                  <span className={`text-xs font-semibold ${r.isActive ? "text-green-600" : "text-red-400"}`}>
+                    {r.isActive ? "Active" : "Inactive"}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <button onClick={() => setEditing(r)}
+                    className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
+                    data-testid={`btn-edit-${r.id}`}>
+                    <PencilLine size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
+          <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
+          <button onClick={() => setShowAdd(true)}
+            className="px-8 py-2 rounded text-sm font-semibold text-white"
+            style={{ background: SC.orange }} data-testid="btn-add">Add</button>
+        </div>
+      </div>
+
+      {showAdd && <GeneralLedgerModal categories={categories} onClose={() => setShowAdd(false)} />}
+      {editing && <GeneralLedgerModal item={editing} categories={categories} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}

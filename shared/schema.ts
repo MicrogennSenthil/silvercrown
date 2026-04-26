@@ -575,6 +575,22 @@ export const insertLedgerCategorySchema = createInsertSchema(ledgerCategories).o
 export type InsertLedgerCategory = z.infer<typeof insertLedgerCategorySchema>;
 export type LedgerCategory = typeof ledgerCategories.$inferSelect;
 
+// General Ledgers (linked to Ledger Categories)
+export const generalLedgers = pgTable("general_ledgers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  categoryId: varchar("category_id").references(() => ledgerCategories.id),
+  openingBalance: decimal("opening_balance", { precision: 15, scale: 2 }).notNull().default("0"),
+  balanceType: text("balance_type").notNull().default("Dr"),
+  description: text("description").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertGeneralLedgerSchema = createInsertSchema(generalLedgers).omit({ id: true, createdAt: true });
+export type InsertGeneralLedger = z.infer<typeof insertGeneralLedgerSchema>;
+export type GeneralLedger = typeof generalLedgers.$inferSelect;
+
 // Term Types
 export const termTypes = pgTable("term_types", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

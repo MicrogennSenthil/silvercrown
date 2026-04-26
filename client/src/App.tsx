@@ -19,7 +19,7 @@ import Customers from "@/pages/Customers";
 import NotFound from "@/pages/not-found";
 // Masters
 import Employees from "@/pages/masters/Employees";
-import { Warehouses, UnitsOfMeasure, TaxRates, Categories, VoucherTypes, PayModeTypes, LedgerCategories, TermTypes, Departments, StoreItemGroups, StoreItemSubGroups } from "@/pages/masters/MastersList";
+import { Warehouses, UnitsOfMeasure, TaxRates, Categories, VoucherTypes, PayModeTypes, LedgerCategories, GeneralLedgers, TermTypes, Departments, StoreItemGroups, StoreItemSubGroups } from "@/pages/masters/MastersList";
 import { Countries, States, Cities } from "@/pages/masters/Geography";
 import { SubCategories, Products } from "@/pages/masters/ProductMasters";
 import { MachineMaster, PurchaseStoreItems, PurchaseApprovals, Terms } from "@/pages/masters/OperationMasters";
@@ -87,6 +87,7 @@ function Router() {
       <Route path="/masters/departments"><ProtectedRoute component={Departments} /></Route>
       <Route path="/masters/approval-authority"><ProtectedRoute component={ApprovalAuthority} /></Route>
       <Route path="/masters/store-item-sub-groups"><ProtectedRoute component={StoreItemSubGroups} /></Route>
+      <Route path="/masters/general-ledgers"><ProtectedRoute component={GeneralLedgers} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>
