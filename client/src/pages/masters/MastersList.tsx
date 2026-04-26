@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Edit, X, Loader2, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Trash2, Edit, X, Loader2, CheckCircle, XCircle, Search, PencilLine } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700" };
 
@@ -205,9 +205,174 @@ const baseCols = (extra?: any[]) => [
   { label: "Status", key: "isActive", render: StatusBadge },
 ];
 
-// --- Categories ---
+// --- Categories (Figma-matched compact card) ---
+function NewCategoryModal({ onClose }: any) {
+  const [name, setName] = useState("");
+  const qc = useQueryClient();
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const code = name.trim().toUpperCase().replace(/\s+/g, "_") || `CAT-${Date.now()}`;
+      const res = await fetch("/api/categories", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: name.trim(), description: "", isActive: true }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/categories"] }); onClose(); },
+  });
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-800">New Category</h2>
+        </div>
+        <div className="px-6 py-6">
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category type</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Type Category..."
+              onKeyDown={e => e.key === "Enter" && name.trim() && saveMut.mutate()}
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
+              data-testid="input-category-name" autoFocus />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
+          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()}
+            className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="button-add">
+            {saveMut.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}Add
+          </button>
+        </div>
+        {saveMut.isError && <p className="px-6 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>}
+      </div>
+    </div>
+  );
+}
+
+function EditCategoryModal({ item, onClose }: any) {
+  const [name, setName] = useState(item.name || "");
+  const qc = useQueryClient();
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/categories/${item.id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), code: item.code }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/categories"] }); onClose(); },
+  });
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-800">Edit Category</h2>
+        </div>
+        <div className="px-6 py-6">
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category type</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Type Category..."
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
+              data-testid="input-category-name" autoFocus />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }}>Cancel</button>
+          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()}
+            className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }}>
+            {saveMut.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Categories() {
-  return <MasterPage config={{ title: "Categories", apiBase: "/api/categories", queryKey: "/api/categories", fields: baseFields(), columns: baseCols() }} />;
+  const [search, setSearch]    = useState("");
+  const [showAdd, setShowAdd]  = useState(false);
+  const [editing, setEditing]  = useState<any>(null);
+  const qc = useQueryClient();
+
+  const { data: rows = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const delMut = useMutation({
+    mutationFn: (id: string) => fetch(`/api/categories/${id}`, { method: "DELETE", credentials: "include" }).then(r => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/categories"] }),
+  });
+
+  const filtered = rows.filter((r: any) => !search || r.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="flex justify-center">
+      <div className="w-full max-w-lg">
+        <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
+            <span className="font-semibold text-gray-800 text-base whitespace-nowrap">Category</span>
+            <div className="relative flex-1">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search Category...."
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
+                data-testid="input-search" />
+            </div>
+          </div>
+
+          {/* Table */}
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: "#d2f1fa" }}>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Category</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Status</th>
+                <th className="w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {isLoading ? (
+                <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400">No categories yet.</td></tr>
+              ) : filtered.map((r: any, i: number) => (
+                <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-category-${r.id}`}>
+                  <td className="px-5 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="px-5 py-2.5 font-medium text-gray-800 uppercase tracking-wide">{r.name}</td>
+                  <td className="px-5 py-2.5 text-sm" style={{ color: r.isActive ? "#16a34a" : "#9ca3af" }}>
+                    {r.isActive ? "Active" : "Inactive"}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <button onClick={() => setEditing(r)}
+                      className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
+                      data-testid={`button-edit-${r.id}`}>
+                      <PencilLine size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
+            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+              style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
+            <button onClick={() => setShowAdd(true)}
+              className="px-8 py-2 rounded text-sm font-semibold text-white"
+              style={{ background: SC.orange }} data-testid="button-add">Add</button>
+          </div>
+        </div>
+      </div>
+
+      {showAdd  && <NewCategoryModal onClose={() => setShowAdd(false)} />}
+      {editing  && <EditCategoryModal item={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
 }
 
 // --- Voucher Types ---
