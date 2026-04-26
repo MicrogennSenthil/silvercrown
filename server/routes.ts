@@ -962,32 +962,50 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       }
     }
 
-    // 2. Resolve Item — find or create in products master
-    let itemId: string | null = it.item_id || null;
+    // 2. Resolve Item — always look up in products master by name first
+    //    (item_id from frontend may reference purchase_store_items, not products)
+    let itemId: string | null = null;
+    const itemName = it.item_name.trim();
+
+    // 2a. If item_id provided, check if it actually exists in products table
+    if (it.item_id) {
+      const idChk = await client.query(`SELECT id FROM products WHERE id=$1 LIMIT 1`, [it.item_id]);
+      if (idChk.rows.length > 0) itemId = idChk.rows[0].id;
+    }
+
+    // 2b. Search by name in products
     if (!itemId) {
       const nameChk = await client.query(
         `SELECT id FROM products WHERE LOWER(name)=LOWER($1) LIMIT 1`,
-        [it.item_name.trim()]
+        [itemName]
       );
-      if (nameChk.rows.length > 0) {
-        itemId = nameChk.rows[0].id;
-      } else {
-        const code = (it.item_code || it.item_name.substring(0, 20).toUpperCase().replace(/\s+/g, "-")).trim();
-        const ins = await client.query(
-          `INSERT INTO products (id, code, name, uom, hsn_code, is_active)
-           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, true)
-           ON CONFLICT DO NOTHING
-           RETURNING id`,
-          [code, it.item_name.trim(), uomCode.toUpperCase() || "", it.hsn || ""]
-        );
-        itemId = ins.rows[0]?.id || null;
-        // If code conflict, fetch by code
-        if (!itemId) {
-          const retry = await client.query(`SELECT id FROM products WHERE LOWER(code)=LOWER($1) LIMIT 1`, [code]);
-          itemId = retry.rows[0]?.id || null;
-        }
-      }
+      if (nameChk.rows.length > 0) itemId = nameChk.rows[0].id;
     }
+
+    // 2c. Search by code in products
+    if (!itemId && it.item_code?.trim()) {
+      const codeChk = await client.query(
+        `SELECT id FROM products WHERE LOWER(code)=LOWER($1) LIMIT 1`,
+        [it.item_code.trim()]
+      );
+      if (codeChk.rows.length > 0) itemId = codeChk.rows[0].id;
+    }
+
+    // 2d. Not found — auto-create in products master with available data
+    if (!itemId) {
+      const code = (it.item_code?.trim() || itemName.substring(0, 20).toUpperCase().replace(/\s+/g, "-")).toUpperCase();
+      const ins = await client.query(
+        `INSERT INTO products (id, code, name, uom, hsn_code, is_active)
+         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, true)
+         ON CONFLICT (code) DO UPDATE
+           SET uom = COALESCE(NULLIF(EXCLUDED.uom,''), products.uom),
+               hsn_code = COALESCE(NULLIF(EXCLUDED.hsn_code,''), products.hsn_code)
+         RETURNING id`,
+        [code, itemName, uomCode.toUpperCase() || null, it.hsn?.trim() || null]
+      );
+      itemId = ins.rows[0]?.id || null;
+    }
+
     return { itemId };
   }
 

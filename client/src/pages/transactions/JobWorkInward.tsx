@@ -66,13 +66,13 @@ function QuickAddItemModal({ defaultName, onCreated, onClose }: { defaultName: s
     setSaving(true);
     try {
       const autoCode = code.trim() || `ITEM-${Date.now()}`;
-      const res = await fetch("/api/purchase-store-items", {
+      const res = await fetch("/api/products", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: autoCode, name: name.trim(), hsn_code: hsn, uom, isActive: true }),
       });
       const item = await res.json();
-      qc.invalidateQueries({ queryKey: ["/api/purchase-store-items"] });
+      qc.invalidateQueries({ queryKey: ["/api/products"] });
       onCreated(item);
     } finally { setSaving(false); }
   }
@@ -280,7 +280,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   const isEdit = !!editData?.id;
 
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
-  const { data: storeItems = [] } = useQuery<any[]>({ queryKey: ["/api/purchase-store-items"] });
+  const { data: storeItems = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: processes = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
 
   const [partyId, setPartyId] = useState(editData?.party_id || "");
