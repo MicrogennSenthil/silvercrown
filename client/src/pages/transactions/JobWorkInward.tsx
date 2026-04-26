@@ -531,14 +531,14 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
           </div>
 
           {/* Item Grid */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden" onClick={() => { setPartyDropOpen(false); }}>
-            <table className="w-full text-sm">
+          <div className="border border-gray-200 rounded-lg overflow-hidden overflow-x-auto" onClick={() => { setPartyDropOpen(false); }}>
+            <table className="w-full text-sm min-w-[800px]">
               <thead>
                 <tr style={{ background: SC.tonal }}>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-10">S.no</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">Item Code</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Item Name</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-16">Qty</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-32">Qty</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-16">Unit</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-24">Process</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-20">HSN</th>
@@ -603,7 +603,8 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
                       <td className="px-2 py-1.5">
                         <input type="number" value={row.qty} onChange={e => updateRow(row._key, "qty", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] text-right"
+                          className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm font-medium outline-none focus:border-[#027fa5] focus:ring-1 focus:ring-[#027fa5]/20 text-right bg-white"
+                          placeholder="0.000"
                           data-testid={`input-qty-${i}`} />
                       </td>
                       <td className="px-2 py-1.5">
