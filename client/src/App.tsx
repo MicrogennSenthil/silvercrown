@@ -24,6 +24,7 @@ import { Countries, States, Cities } from "@/pages/masters/Geography";
 import { SubCategories, Products } from "@/pages/masters/ProductMasters";
 import { MachineMaster, PurchaseStoreItems, PurchaseApprovals, Terms } from "@/pages/masters/OperationMasters";
 import ApprovalAuthority from "@/pages/masters/ApprovalAuthority";
+import ProcessMasters from "@/pages/masters/ProcessMasters";
 import SubLedgerMaster from "@/pages/masters/SubLedger";
 import SoftwareSetup from "@/pages/SoftwareSetup";
 import JobWorkInward from "@/pages/transactions/JobWorkInward";
@@ -92,6 +93,7 @@ function Router() {
       <Route path="/masters/terms"><ProtectedRoute component={Terms} /></Route>
       <Route path="/masters/departments"><ProtectedRoute component={Departments} /></Route>
       <Route path="/masters/approval-authority"><ProtectedRoute component={ApprovalAuthority} /></Route>
+      <Route path="/masters/processes"><ProtectedRoute component={ProcessMasters} /></Route>
       <Route path="/masters/store-item-sub-groups"><ProtectedRoute component={StoreItemSubGroups} /></Route>
       <Route path="/masters/general-ledgers"><ProtectedRoute component={GeneralLedgers} /></Route>
       <Route path="/masters/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>

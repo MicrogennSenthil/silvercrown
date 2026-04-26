@@ -39,6 +39,7 @@ const NAV: any[] = [
           { label: "Store Item Group", href: "/masters/store-item-groups" },
           { label: "Store Item Sub Group", href: "/masters/store-item-sub-groups" },
           { label: "UOM", href: "/masters/uom" },
+          { label: "Process", href: "/masters/processes" },
           { label: "Terms", href: "/masters/terms" },
           { label: "Term types", href: "/masters/term-types" },
           { label: "Department", href: "/masters/departments" },

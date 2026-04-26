@@ -498,6 +498,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.deleteUom(req.params.id); res.json({ ok: true });
   });
 
+  // Processes master
+  app.get("/api/processes", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const rows = (await pool.query(`SELECT * FROM processes ORDER BY name`)).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/processes", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { code, name, price = 0, is_active = true } = req.body;
+      if (!name?.trim()) return res.status(400).json({ message: "Name is required" });
+      const r = await pool.query(
+        `INSERT INTO processes (id, code, name, price, is_active) VALUES (gen_random_uuid()::text, $1, $2, $3, $4) RETURNING *`,
+        [code?.trim().toUpperCase() || name.trim().toUpperCase().replace(/\s+/g, "-"), name.trim(), price, is_active]
+      );
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/processes/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { code, name, price, is_active } = req.body;
+      const r = await pool.query(
+        `UPDATE processes SET code=$1, name=$2, price=$3, is_active=$4 WHERE id=$5 RETURNING *`,
+        [code, name, price ?? 0, is_active ?? true, req.params.id]
+      );
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.delete("/api/processes/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM processes WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   // Tax Rates
   app.get("/api/tax-rates", requireAuth, async (_req, res) => res.json(await storage.listTaxRates()));
   app.post("/api/tax-rates", requireAuth, async (req, res) => {
@@ -1028,10 +1067,10 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         const { itemId } = await resolveItemMasters(client, it);
         await client.query(
           `INSERT INTO job_work_inward_items
-             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, hsn, remark)
-           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, process_id, hsn, remark)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
           [inwardId, seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
-           (it.unit || "").toUpperCase(), it.process || "", it.hsn || "", it.remark || ""]
+           (it.unit || "").toUpperCase(), it.process || "", it.process_id || null, it.hsn || "", it.remark || ""]
         );
       }
 
@@ -1080,10 +1119,10 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         const { itemId } = await resolveItemMasters(client, it);
         await client.query(
           `INSERT INTO job_work_inward_items
-             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, hsn, remark)
-           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, process_id, hsn, remark)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
           [req.params.id, seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
-           (it.unit || "").toUpperCase(), it.process || "", it.hsn || "", it.remark || ""]
+           (it.unit || "").toUpperCase(), it.process || "", it.process_id || null, it.hsn || "", it.remark || ""]
         );
       }
 

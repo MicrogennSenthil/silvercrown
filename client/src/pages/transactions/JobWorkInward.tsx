@@ -265,12 +265,13 @@ type ItemRow = {
   qty: string;
   unit: string;
   process: string;
+  process_id: string;
   hsn: string;
   remark: string;
 };
 
 function newRow(): ItemRow {
-  return { _key: crypto.randomUUID(), item_id: "", item_code: "", item_name: "", qty: "", unit: "", process: "", hsn: "", remark: "" };
+  return { _key: crypto.randomUUID(), item_id: "", item_code: "", item_name: "", qty: "", unit: "", process: "", process_id: "", hsn: "", remark: "" };
 }
 
 // ── Inward Form ──────────────────────────────────────────────────────────────
@@ -280,6 +281,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: storeItems = [] } = useQuery<any[]>({ queryKey: ["/api/purchase-store-items"] });
+  const { data: processes = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
 
   const [partyId, setPartyId] = useState(editData?.party_id || "");
   const [partySearch, setPartySearch] = useState(editData?.party_name_db || editData?.party_name_manual || "");
@@ -308,7 +310,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
   const [items, setItems] = useState<ItemRow[]>(
     editData?.items?.length
-      ? editData.items.map((it: any) => ({ _key: crypto.randomUUID(), item_id: it.item_id || "", item_code: it.item_code || "", item_name: it.item_name || "", qty: String(it.qty || ""), unit: it.unit || "", process: it.process || "", hsn: it.hsn || "", remark: it.remark || "" }))
+      ? editData.items.map((it: any) => ({ _key: crypto.randomUUID(), item_id: it.item_id || "", item_code: it.item_code || "", item_name: it.item_name || "", qty: String(it.qty || ""), unit: it.unit || "", process: it.process || "", process_id: it.process_id || "", hsn: it.hsn || "", remark: it.remark || "" }))
       : [newRow()]
   );
 
@@ -385,7 +387,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
         notes,
         items: items.filter(r => r.item_name || r.qty).map(r => ({
           item_id: r.item_id || null, item_code: r.item_code, item_name: r.item_name,
-          qty: r.qty || "0", unit: r.unit, process: r.process, hsn: r.hsn, remark: r.remark,
+          qty: r.qty || "0", unit: r.unit, process: r.process, process_id: r.process_id || null, hsn: r.hsn, remark: r.remark,
         })),
       };
       const url = isEdit ? `/api/job-work-inward/${editData.id}` : "/api/job-work-inward";
@@ -540,7 +542,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Item Name</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-32">Qty</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-16">Unit</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-24">Process</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-40">Process</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-20">HSN</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Remark</th>
                   <th className="w-8"></th>
@@ -613,9 +615,21 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                           data-testid={`input-unit-${i}`} />
                       </td>
                       <td className="px-2 py-1.5">
-                        <input value={row.process} onChange={e => updateRow(row._key, "process", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
-                          data-testid={`input-process-${i}`} />
+                        <select
+                          value={row.process_id}
+                          onChange={e => {
+                            const sel = (processes as any[]).find((p: any) => p.id === e.target.value);
+                            updateRow(row._key, "process_id", e.target.value);
+                            updateRow(row._key, "process", sel?.name || "");
+                          }}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] bg-white"
+                          data-testid={`select-process-${i}`}
+                        >
+                          <option value="">— Select —</option>
+                          {(processes as any[]).filter((p: any) => p.is_active).map((p: any) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-2 py-1.5">
                         <input value={row.hsn} onChange={e => updateRow(row._key, "hsn", e.target.value)}
