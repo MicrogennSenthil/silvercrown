@@ -189,6 +189,7 @@ const EMPTY_PRODUCT = {
   name: "", unit: "", categoryId: "", subCategoryId: "",
   drgNo: "", sapNo: "", hsnCode: "", location: "",
   rate: "", costPrice: "", minStockLevel: "", maxStockLevel: "",
+  cgstRate: "", sgstRate: "", igstRate: "",
   isActive: true, code: "", description: "",
 };
 
@@ -264,6 +265,13 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
             <FField label="Cost ₹"   value={form.costPrice}     onChange={f("costPrice")}     placeholder="00.00" type="number" />
             <FField label="Min Qty"  value={form.minStockLevel} onChange={f("minStockLevel")} placeholder="00.00" type="number" />
             <FField label="Max Qty"  value={form.maxStockLevel} onChange={f("maxStockLevel")} placeholder="00.00" type="number" />
+          </div>
+
+          {/* Row 5: CGST %, SGST %, IGST % */}
+          <div className="grid grid-cols-3 gap-3">
+            <FField label="CGST %"  value={form.cgstRate} onChange={f("cgstRate")} placeholder="0.00" type="number" />
+            <FField label="SGST %"  value={form.sgstRate} onChange={f("sgstRate")} placeholder="0.00" type="number" />
+            <FField label="IGST %"  value={form.igstRate} onChange={f("igstRate")} placeholder="0.00" type="number" />
           </div>
         </div>
 

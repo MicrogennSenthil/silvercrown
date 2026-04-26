@@ -65,6 +65,7 @@ export default function JobWorkDespatch() {
   const [vehP3, setVehP3] = useState(""); // e.g. AB
   const [vehP4, setVehP4] = useState(""); // e.g. 1234
   const vehicleNo = `${vehP1}${vehP2}${vehP3}${vehP4}`;
+  const [isInterState,   setIsInterState]   = useState(false);
   const [gridSearch,     setGridSearch]     = useState("");
 
   // Party selection
@@ -143,6 +144,9 @@ export default function JobWorkDespatch() {
             qty_inward:      r.qty_inward,
             qty_prev_despatched: r.qty_prev_despatched,
             remark:          r.remark || "",
+            cgst_rate:       r.cgst_rate || 0,
+            sgst_rate:       r.sgst_rate || 0,
+            igst_rate:       r.igst_rate || 0,
           }));
         setItems(prev => [...prev.filter(it => it.inward_id !== inward.id), ...newItems]);
 
@@ -212,7 +216,11 @@ export default function JobWorkDespatch() {
         qty_inward:      it.qty_inward,
         qty_prev_despatched: it.qty_prev_despatched,
         remark:          it.remark || "",
+        cgst_rate:       it.cgst_rate || 0,
+        sgst_rate:       it.sgst_rate || 0,
+        igst_rate:       it.igst_rate || 0,
       })));
+      setIsInterState(data.is_inter_state || false);
 
       setSearchText("");
       setShowSearchDrop(false);
@@ -226,6 +234,7 @@ export default function JobWorkDespatch() {
     setDespatchDate(today());
     setNotes("");
     setVehP1(""); setVehP2(""); setVehP3(""); setVehP4("");
+    setIsInterState(false);
     setGridSearch("");
     setSelectedRows(new Set());
     setPartyId(""); setPartySearch("");
@@ -302,21 +311,31 @@ export default function JobWorkDespatch() {
       party_name_manual: partySearch,
       vehicle_no:   vehicleNo,
       notes,
-      items: activeItems.map(it => ({
-        inward_id:       it.inward_id,
-        inward_item_id:  it.inward_item_id,
-        item_id:         it.item_id,
-        item_code:       it.item_code,
-        item_name:       it.item_name,
-        unit:            it.unit,
-        process:         it.process,
-        hsn:             it.hsn,
-        qty_inward:      it.qty_inward,
-        qty_prev_despatched: it.qty_prev_despatched,
-        qty_despatched:  it.qty,
-        rate:            it.rate || 0,
-        remark:          it.remark || "",
-      })),
+      is_inter_state: isInterState,
+      items: activeItems.map(it => {
+        const tax = rowTax(it);
+        return {
+          inward_id:       it.inward_id,
+          inward_item_id:  it.inward_item_id,
+          item_id:         it.item_id,
+          item_code:       it.item_code,
+          item_name:       it.item_name,
+          unit:            it.unit,
+          process:         it.process,
+          hsn:             it.hsn,
+          qty_inward:      it.qty_inward,
+          qty_prev_despatched: it.qty_prev_despatched,
+          qty_despatched:  it.qty,
+          rate:            it.rate || 0,
+          remark:          it.remark || "",
+          cgst_rate:       isInterState ? 0 : it.cgst_rate || 0,
+          sgst_rate:       isInterState ? 0 : it.sgst_rate || 0,
+          igst_rate:       isInterState ? it.igst_rate || 0 : 0,
+          cgst_amt:        tax.cgst,
+          sgst_amt:        tax.sgst,
+          igst_amt:        tax.igst,
+        };
+      }),
     }, {
       onSuccess: () => { if (isNew) resetForm(); },
     });
@@ -325,6 +344,22 @@ export default function JobWorkDespatch() {
   // ── Computed totals ───────────────────────────────────────────────────────────
   const totalQty    = items.reduce((s, it) => s + parseFloat(it.qty || 0), 0);
   const totalAmount = items.reduce((s, it) => s + parseFloat(it.qty || 0) * parseFloat(it.rate || 0), 0);
+  // Per-row tax calculations (based on Within/Inter-State toggle)
+  function rowTax(row: any) {
+    const base = parseFloat(row.qty || 0) * parseFloat(row.rate || 0);
+    if (isInterState) {
+      return { cgst: 0, sgst: 0, igst: base * parseFloat(row.igst_rate || 0) / 100 };
+    }
+    return {
+      cgst: base * parseFloat(row.cgst_rate || 0) / 100,
+      sgst: base * parseFloat(row.sgst_rate || 0) / 100,
+      igst: 0,
+    };
+  }
+  const totalCgst   = items.reduce((s, it) => s + rowTax(it).cgst, 0);
+  const totalSgst   = items.reduce((s, it) => s + rowTax(it).sgst, 0);
+  const totalIgst   = items.reduce((s, it) => s + rowTax(it).igst, 0);
+  const totalWithTax = totalAmount + totalCgst + totalSgst + totalIgst;
 
   // ── Delete existing despatch ──────────────────────────────────────────────────
   const delMut = useMutation({
@@ -506,6 +541,23 @@ export default function JobWorkDespatch() {
                 ))}
               </div>
             </div>
+            {/* Within State / Inter-State toggle */}
+            <div className="flex items-center gap-0 border border-gray-300 rounded overflow-hidden h-[42px] shrink-0">
+              <button type="button"
+                onClick={() => setIsInterState(false)}
+                className="px-3 py-2 text-xs font-semibold transition-colors"
+                style={{ background: !isInterState ? SC.primary : "#f9fafb", color: !isInterState ? "#fff" : "#374151" }}
+                data-testid="btn-within-state">
+                Within State
+              </button>
+              <button type="button"
+                onClick={() => setIsInterState(true)}
+                className="px-3 py-2 text-xs font-semibold transition-colors border-l border-gray-300"
+                style={{ background: isInterState ? SC.orange : "#f9fafb", color: isInterState ? "#fff" : "#374151" }}
+                data-testid="btn-inter-state">
+                Inter-State
+              </button>
+            </div>
             {/* Grid search box */}
             <div className="relative flex-1">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Search Items</label>
@@ -547,6 +599,9 @@ export default function JobWorkDespatch() {
                     <th className="px-3 py-2.5 text-left min-w-[120px]">Nature Of Process</th>
                     <th className="px-3 py-2.5 text-left w-24">Inward No</th>
                     <th className="px-3 py-2.5 text-right w-24">Tot.Amt ₹</th>
+                    <th className="px-3 py-2.5 text-right w-24" style={{ color: isInterState ? "#9ca3af" : SC.primary }}>CGST Amt</th>
+                    <th className="px-3 py-2.5 text-right w-24" style={{ color: isInterState ? "#9ca3af" : SC.primary }}>SGST Amt</th>
+                    <th className="px-3 py-2.5 text-right w-24" style={{ color: isInterState ? SC.orange : "#9ca3af" }}>IGST Amt</th>
                     <th className="px-3 py-2.5 text-left min-w-[160px]">Remark</th>
                   </tr>
                 </thead>
@@ -562,7 +617,7 @@ export default function JobWorkDespatch() {
                       : items;
                     if (filtered.length === 0) return (
                       <tr>
-                        <td colSpan={14} className="px-4 py-10 text-center text-gray-300 text-sm italic">
+                        <td colSpan={17} className="px-4 py-10 text-center text-gray-300 text-sm italic">
                           {q ? "No items match your search" : partyId ? "Check an inward to load items" : "Select a party and check an inward"}
                         </td>
                       </tr>
@@ -618,6 +673,18 @@ export default function JobWorkDespatch() {
                           ? fmtAmount(parseFloat(row.qty) * parseFloat(row.rate))
                           : "—"}
                       </td>
+                      {/* CGST Amt */}
+                      <td className="px-3 py-1.5 text-right text-xs" style={{ color: isInterState ? "#d1d5db" : SC.primary }}>
+                        {!isInterState && rowTax(row).cgst > 0 ? fmtAmount(rowTax(row).cgst) : "—"}
+                      </td>
+                      {/* SGST Amt */}
+                      <td className="px-3 py-1.5 text-right text-xs" style={{ color: isInterState ? "#d1d5db" : SC.primary }}>
+                        {!isInterState && rowTax(row).sgst > 0 ? fmtAmount(rowTax(row).sgst) : "—"}
+                      </td>
+                      {/* IGST Amt */}
+                      <td className="px-3 py-1.5 text-right text-xs" style={{ color: isInterState ? SC.orange : "#d1d5db" }}>
+                        {isInterState && rowTax(row).igst > 0 ? fmtAmount(rowTax(row).igst) : "—"}
+                      </td>
                       {/* Remark + per-row delete */}
                       <td className="px-1.5 py-1">
                         <div className="flex items-center gap-1">
@@ -656,8 +723,9 @@ export default function JobWorkDespatch() {
             </div>
 
             {/* Footer row */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-200 bg-gray-50">
-              <div className="flex items-center gap-2">
+            <div className="border-t border-gray-200 bg-gray-50">
+              {/* Buttons row */}
+              <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
                 <button onClick={removeAllItems}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-colors"
                   data-testid="btn-remove-all">
@@ -671,18 +739,39 @@ export default function JobWorkDespatch() {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-8 text-sm">
+              {/* Totals row */}
+              <div className="flex items-center justify-end gap-6 px-4 pb-2.5 flex-wrap">
                 <div className="flex items-center gap-2 text-gray-500 text-xs">
-                  Total Quantity :
-                  <span className="font-bold text-gray-700 text-sm min-w-[30px] text-right">
+                  Total Qty :
+                  <span className="font-bold text-gray-700 text-sm min-w-[40px] text-right">
                     {totalQty > 0 ? totalQty.toFixed(3) : "00"}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-gray-600 font-semibold">
-                  Total Amount :
-                  <span className="font-bold text-base ml-1">
-                    {fmtAmount(totalAmount)}
-                  </span>
+                <div className="flex items-center gap-2 text-gray-600 text-xs">
+                  Taxable Amt :
+                  <span className="font-bold text-gray-800 text-sm">{fmtAmount(totalAmount)}</span>
+                </div>
+                {!isInterState && (
+                  <>
+                    <div className="flex items-center gap-2 text-xs" style={{ color: SC.primary }}>
+                      CGST :
+                      <span className="font-bold text-sm">{fmtAmount(totalCgst)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs" style={{ color: SC.primary }}>
+                      SGST :
+                      <span className="font-bold text-sm">{fmtAmount(totalSgst)}</span>
+                    </div>
+                  </>
+                )}
+                {isInterState && (
+                  <div className="flex items-center gap-2 text-xs" style={{ color: SC.orange }}>
+                    IGST :
+                    <span className="font-bold text-sm">{fmtAmount(totalIgst)}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 font-semibold text-gray-700">
+                  Total (with Tax) :
+                  <span className="font-bold text-base ml-1">{fmtAmount(totalWithTax)}</span>
                 </div>
               </div>
             </div>

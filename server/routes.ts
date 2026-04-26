@@ -1277,13 +1277,18 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(p.price, 0) AS process_price,
           i.qty AS qty_inward,
           COALESCE(SUM(di.qty_despatched),0) AS qty_prev_despatched,
-          i.qty - COALESCE(SUM(di.qty_despatched),0) AS qty_balance
+          i.qty - COALESCE(SUM(di.qty_despatched),0) AS qty_balance,
+          COALESCE(prod.cgst_rate, 0) AS cgst_rate,
+          COALESCE(prod.sgst_rate, 0) AS sgst_rate,
+          COALESCE(prod.igst_rate, 0) AS igst_rate
         FROM job_work_inward_items i
         LEFT JOIN processes p ON p.id = i.process_id
         LEFT JOIN job_work_despatch_items di ON di.inward_item_id = i.id
+        LEFT JOIN products prod ON prod.id = i.item_id
         WHERE i.inward_id = $1
         GROUP BY i.id, i.item_id, i.item_code, i.item_name, i.unit,
-                 i.process, i.process_id, i.hsn, i.remark, p.price, i.qty
+                 i.process, i.process_id, i.hsn, i.remark, p.price, i.qty,
+                 prod.cgst_rate, prod.sgst_rate, prod.igst_rate
         ORDER BY i.seq_no
       `, [req.params.id])).rows;
       res.json(rows);
@@ -1306,12 +1311,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
 
       const hRes = await client.query(`
         INSERT INTO job_work_despatch
-          (id, voucher_no, despatch_date, inward_id, party_id, party_name_manual, vehicle_no, driver_name, lr_no, notes, status)
-        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,'Saved')
+          (id, voucher_no, despatch_date, inward_id, party_id, party_name_manual, vehicle_no, driver_name, lr_no, notes, status, is_inter_state)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,'Saved',$10)
         RETURNING *
       `, [voucherNo, data.despatch_date || new Date().toISOString().split("T")[0],
           data.inward_id || null, resolvedPartyId, data.party_name_manual || "",
-          (data.vehicle_no || "").toUpperCase(), data.driver_name || "", data.lr_no || "", data.notes || ""]);
+          (data.vehicle_no || "").toUpperCase(), data.driver_name || "", data.lr_no || "", data.notes || "",
+          data.is_inter_state ? true : false]);
 
       const despatchId = hRes.rows[0].id;
       let seq = 1;
@@ -1320,13 +1326,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         await client.query(`
           INSERT INTO job_work_despatch_items
             (id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code, item_name,
-             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark, rate)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark, rate,
+             cgst_rate, sgst_rate, igst_rate, cgst_amt, sgst_amt, igst_amt)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
         `, [despatchId, it.inward_id || data.inward_id, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
             (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
             it.qty_inward || 0, it.qty_prev_despatched || 0, it.qty_despatched || 0,
-            it.remark || "", it.rate || 0]);
+            it.remark || "", it.rate || 0,
+            it.cgst_rate || 0, it.sgst_rate || 0, it.igst_rate || 0,
+            it.cgst_amt || 0, it.sgst_amt || 0, it.igst_amt || 0]);
       }
 
       const inwardIds = [...new Set(items.map((it: any) => it.inward_id).filter(Boolean))];
@@ -1355,11 +1364,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query(`
         UPDATE job_work_despatch SET
           despatch_date=$1, inward_id=$2, party_id=$3, party_name_manual=$4,
-          vehicle_no=$5, driver_name=$6, lr_no=$7, notes=$8, status='Saved'
-        WHERE id=$9
+          vehicle_no=$5, driver_name=$6, lr_no=$7, notes=$8, status='Saved', is_inter_state=$9
+        WHERE id=$10
       `, [data.despatch_date, data.inward_id || null, resolvedPartyId,
           data.party_name_manual || "", (data.vehicle_no || "").toUpperCase(),
-          data.driver_name || "", data.lr_no || "", data.notes || "", req.params.id]);
+          data.driver_name || "", data.lr_no || "", data.notes || "",
+          data.is_inter_state ? true : false, req.params.id]);
 
       await client.query(`DELETE FROM job_work_despatch_items WHERE despatch_id=$1`, [req.params.id]);
       let seq = 1;
@@ -1368,13 +1378,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         await client.query(`
           INSERT INTO job_work_despatch_items
             (id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code, item_name,
-             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark, rate)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             unit, process, hsn, qty_inward, qty_prev_despatched, qty_despatched, remark, rate,
+             cgst_rate, sgst_rate, igst_rate, cgst_amt, sgst_amt, igst_amt)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
         `, [req.params.id, it.inward_id || data.inward_id, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
             (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
             it.qty_inward || 0, it.qty_prev_despatched || 0, it.qty_despatched || 0,
-            it.remark || "", it.rate || 0]);
+            it.remark || "", it.rate || 0,
+            it.cgst_rate || 0, it.sgst_rate || 0, it.igst_rate || 0,
+            it.cgst_amt || 0, it.sgst_amt || 0, it.igst_amt || 0]);
       }
 
       const inwardIdsP = [...new Set(items.map((it: any) => it.inward_id).filter(Boolean))];
