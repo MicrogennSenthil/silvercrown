@@ -3281,6 +3281,134 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Store Opening ─────────────────────────────────────────────────────────────
+  app.get("/api/store-openings", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT s.*, w.name AS store_name_db
+        FROM store_openings s
+        LEFT JOIN warehouses w ON w.id = s.store_id
+        ORDER BY s.created_at DESC
+      `);
+      res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db || "" })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/store-openings/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hRes, iRes] = await Promise.all([
+        pool.query(`SELECT s.*, w.name AS store_name_db FROM store_openings s LEFT JOIN warehouses w ON w.id=s.store_id WHERE s.id=$1`, [req.params.id]),
+        pool.query(`SELECT * FROM store_opening_items WHERE sop_id=$1 ORDER BY sno`, [req.params.id]),
+      ]);
+      if (!hRes.rows[0]) return res.status(404).json({ message: "Not found" });
+      const hdr = hRes.rows[0];
+      res.json({ ...hdr, store_name: hdr.store_name_db || "", items: iRes.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/store-openings", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucherNo = await generateVoucherNo("store_opening", pool);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const hdrRes = await client.query(`
+          INSERT INTO store_openings(id,voucher_no,opening_date,store_id,financial_year,status,remark,total_qty,total_amount,created_by)
+          VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
+        `, [voucherNo, b.opening_date||new Date().toISOString().slice(0,10), b.store_id||null,
+            b.financial_year||"", b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.total_amount||0), (req as any).user?.id||null]);
+        const hdr = hdrRes.rows[0];
+        for (const it of (b.items||[])) {
+          // Snapshot current stock before update (for reversal)
+          let prevStock = 0;
+          if (it.item_code) {
+            const ps = await client.query(`SELECT COALESCE(current_stock,0) AS cs FROM products WHERE code=$1`, [it.item_code]);
+            if (ps.rows[0]) prevStock = parseFloat(ps.rows[0].cs) || 0;
+          }
+          await client.query(`
+            INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,opening_qty,rate,amount,previous_stock)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+          `, [hdr.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos",
+              +(it.opening_qty||0), +(it.rate||0), +(it.amount||0), prevStock]);
+          // Only update stock if Posted
+          if (b.status === "Posted" && it.item_code) {
+            await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(it.opening_qty||0), it.item_code]);
+          }
+        }
+        await client.query("COMMIT");
+        res.status(201).json({ ...hdr, items: b.items||[] });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/store-openings/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Get old status and items for stock reversal
+        const oldHdr = await client.query(`SELECT status FROM store_openings WHERE id=$1`, [req.params.id]);
+        const wasPosted = oldHdr.rows[0]?.status === "Posted";
+        if (wasPosted) {
+          const oldItems = await client.query(`SELECT item_code, previous_stock FROM store_opening_items WHERE sop_id=$1`, [req.params.id]);
+          for (const oi of oldItems.rows) {
+            if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.previous_stock||0), oi.item_code]);
+          }
+        }
+        await client.query(`UPDATE store_openings SET opening_date=$1,store_id=$2,financial_year=$3,status=$4,remark=$5,total_qty=$6,total_amount=$7,updated_at=NOW() WHERE id=$8`,
+          [b.opening_date, b.store_id||null, b.financial_year||"", b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.total_amount||0), req.params.id]);
+        await client.query(`DELETE FROM store_opening_items WHERE sop_id=$1`, [req.params.id]);
+        for (const it of (b.items||[])) {
+          let prevStock = 0;
+          if (it.item_code) {
+            const ps = await client.query(`SELECT COALESCE(current_stock,0) AS cs FROM products WHERE code=$1`, [it.item_code]);
+            if (ps.rows[0]) prevStock = parseFloat(ps.rows[0].cs) || 0;
+          }
+          await client.query(`
+            INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,opening_qty,rate,amount,previous_stock)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+          `, [req.params.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos",
+              +(it.opening_qty||0), +(it.rate||0), +(it.amount||0), prevStock]);
+          if (b.status === "Posted" && it.item_code)
+            await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(it.opening_qty||0), it.item_code]);
+        }
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/store-openings/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const oldHdr = await client.query(`SELECT status FROM store_openings WHERE id=$1`, [req.params.id]);
+        const wasPosted = oldHdr.rows[0]?.status === "Posted";
+        if (wasPosted) {
+          const oldItems = await client.query(`SELECT item_code, previous_stock FROM store_opening_items WHERE sop_id=$1`, [req.params.id]);
+          for (const oi of oldItems.rows) {
+            if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.previous_stock||0), oi.item_code]);
+          }
+        }
+        await client.query(`DELETE FROM store_openings WHERE id=$1`, [req.params.id]);
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Goods Receipt Returns ────────────────────────────────────────────────────
   app.get("/api/goods-receipt-returns", requireAuth, async (req, res) => {
     try {
