@@ -1432,10 +1432,14 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
                di.qty_despatched, di.rate,
                (di.qty_despatched * di.rate) as amount,
                d.voucher_no as despatch_voucher_no,
-               iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no as inward_voucher_no
+               iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no as inward_voucher_no,
+               COALESCE(prod.cgst_rate,0) AS cgst_rate,
+               COALESCE(prod.sgst_rate,0) AS sgst_rate,
+               COALESCE(prod.igst_rate,0) AS igst_rate
         FROM job_work_despatch_items di
         JOIN job_work_despatch d ON d.id = di.despatch_id
         JOIN job_work_inward iw ON iw.id = di.inward_id
+        LEFT JOIN products prod ON prod.id = di.item_id
         WHERE di.inward_id = $1
         ORDER BY d.voucher_no, di.seq_no
       `, [req.params.id]);
@@ -1451,10 +1455,14 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         SELECT i.id as inward_item_id, i.inward_id, i.item_id, i.item_code, i.item_name,
                i.qty as qty_despatched, i.unit, i.hsn, i.remark,
                COALESCE(p.name,'') as process, COALESCE(p.price,0) as rate,
-               iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no as inward_voucher_no
+               iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no as inward_voucher_no,
+               COALESCE(prod.cgst_rate,0) AS cgst_rate,
+               COALESCE(prod.sgst_rate,0) AS sgst_rate,
+               COALESCE(prod.igst_rate,0) AS igst_rate
         FROM job_work_inward_items i
         JOIN job_work_inward iw ON iw.id = i.inward_id
         LEFT JOIN processes p ON p.id = i.process_id
+        LEFT JOIN products prod ON prod.id = i.item_id
         WHERE i.inward_id = $1
         ORDER BY i.seq_no
       `, [req.params.id]);
@@ -1506,11 +1514,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const hRes = await client.query(`
         INSERT INTO job_work_invoices
           (id, voucher_no, invoice_date, party_id, party_name_manual, vehicle_no, invoice_type,
-           term_of_delivery, transport, freight, delivery_address, same_as_company, remark, status)
-        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Saved') RETURNING *
+           is_inter_state, term_of_delivery, transport, freight, delivery_address, same_as_company, remark, status)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'Saved') RETURNING *
       `, [voucherNo, data.invoice_date || new Date().toISOString().split("T")[0],
           resolvedPartyId, data.party_name_manual || "",
           (data.vehicle_no || "").toUpperCase(), data.invoice_type || "despatch_notes",
+          data.is_inter_state || false,
           data.term_of_delivery || "", data.transport || "",
           data.freight || "to_pay", data.delivery_address || "",
           data.same_as_company || false, data.remark || ""]);
@@ -1518,20 +1527,30 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       let seq = 1;
       for (const it of items) {
         if (!it.item_name?.trim()) continue;
+        const iqty = parseFloat(it.qty_despatched || 0);
+        const irate = parseFloat(it.rate || 0);
+        const itaxable = iqty * irate;
+        const icgst = parseFloat(it.cgst_rate || 0);
+        const isgst = parseFloat(it.sgst_rate || 0);
+        const iigst = parseFloat(it.igst_rate || 0);
+        const icgstAmt = parseFloat(it.cgst_amt ?? (itaxable * icgst / 100));
+        const isgstAmt = parseFloat(it.sgst_amt ?? (itaxable * isgst / 100));
+        const iigstAmt = parseFloat(it.igst_amt ?? (itaxable * iigst / 100));
         await client.query(`
           INSERT INTO job_work_invoice_items
             (id, invoice_id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code,
              item_name, unit, process, hsn, qty_despatched, rate, amount, po_no, party_dc,
-             work_order_no, despatch_voucher_no, inward_voucher_no, no_of_cover, packages)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+             work_order_no, despatch_voucher_no, inward_voucher_no, no_of_cover, packages,
+             cgst_rate, sgst_rate, igst_rate, cgst_amt, sgst_amt, igst_amt)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
         `, [invoiceId, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
             (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
-            parseFloat(it.qty_despatched || 0), parseFloat(it.rate || 0),
-            parseFloat(it.amount || it.qty_despatched || 0) * parseFloat(it.rate || 0),
+            iqty, irate, itaxable,
             it.po_no || "", it.party_dc || "", it.work_order_no || "",
             it.despatch_voucher_no || "", it.inward_voucher_no || "",
-            parseInt(it.no_of_cover || 0), parseInt(it.packages || 0)]);
+            parseInt(it.no_of_cover || 0), parseInt(it.packages || 0),
+            icgst, isgst, iigst, icgstAmt, isgstAmt, iigstAmt]);
       }
       let cseq = 1;
       for (const ch of charges) {
@@ -1561,10 +1580,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query(`
         UPDATE job_work_invoices SET
           invoice_date=$1, party_id=$2, party_name_manual=$3, vehicle_no=$4, invoice_type=$5,
-          term_of_delivery=$6, transport=$7, freight=$8, delivery_address=$9, same_as_company=$10, remark=$11
-        WHERE id=$12
+          is_inter_state=$6, term_of_delivery=$7, transport=$8, freight=$9,
+          delivery_address=$10, same_as_company=$11, remark=$12
+        WHERE id=$13
       `, [data.invoice_date, resolvedPartyId, data.party_name_manual || "",
           (data.vehicle_no || "").toUpperCase(), data.invoice_type || "despatch_notes",
+          data.is_inter_state || false,
           data.term_of_delivery || "", data.transport || "",
           data.freight || "to_pay", data.delivery_address || "",
           data.same_as_company || false, data.remark || "", req.params.id]);
@@ -1573,20 +1594,30 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       let seq = 1;
       for (const it of items) {
         if (!it.item_name?.trim()) continue;
+        const iqty = parseFloat(it.qty_despatched || 0);
+        const irate = parseFloat(it.rate || 0);
+        const itaxable = iqty * irate;
+        const icgst = parseFloat(it.cgst_rate || 0);
+        const isgst = parseFloat(it.sgst_rate || 0);
+        const iigst = parseFloat(it.igst_rate || 0);
+        const icgstAmt = parseFloat(it.cgst_amt ?? (itaxable * icgst / 100));
+        const isgstAmt = parseFloat(it.sgst_amt ?? (itaxable * isgst / 100));
+        const iigstAmt = parseFloat(it.igst_amt ?? (itaxable * iigst / 100));
         await client.query(`
           INSERT INTO job_work_invoice_items
             (id, invoice_id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code,
              item_name, unit, process, hsn, qty_despatched, rate, amount, po_no, party_dc,
-             work_order_no, despatch_voucher_no, inward_voucher_no, no_of_cover, packages)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+             work_order_no, despatch_voucher_no, inward_voucher_no, no_of_cover, packages,
+             cgst_rate, sgst_rate, igst_rate, cgst_amt, sgst_amt, igst_amt)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
         `, [req.params.id, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
             (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
-            parseFloat(it.qty_despatched || 0), parseFloat(it.rate || 0),
-            parseFloat(it.qty_despatched || 0) * parseFloat(it.rate || 0),
+            iqty, irate, itaxable,
             it.po_no || "", it.party_dc || "", it.work_order_no || "",
             it.despatch_voucher_no || "", it.inward_voucher_no || "",
-            parseInt(it.no_of_cover || 0), parseInt(it.packages || 0)]);
+            parseInt(it.no_of_cover || 0), parseInt(it.packages || 0),
+            icgst, isgst, iigst, icgstAmt, isgstAmt, iigstAmt]);
       }
       let cseq = 1;
       for (const ch of charges) {

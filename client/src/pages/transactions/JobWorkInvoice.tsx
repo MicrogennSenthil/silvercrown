@@ -14,6 +14,18 @@ function fmtDate(d: string) {
   return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function fmtAmt(n: any) {
+  const v = parseFloat(n) || 0;
+  return v === 0 ? "—" : v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function parseVehicle(s: string) {
+  const clean = (s || "").replace(/\s/g, "").toUpperCase();
+  const m = clean.match(/^([A-Z]{2})(\d{2})([A-Z]{1,3})(\d{1,4})$/);
+  if (m) return { p1: m[1], p2: m[2], p3: m[3], p4: m[4] };
+  return { p1: clean.slice(0,2), p2: clean.slice(2,4), p3: clean.slice(4,6), p4: clean.slice(6) };
+}
+
 export default function JobWorkInvoice() {
   const qc = useQueryClient();
 
@@ -48,8 +60,12 @@ export default function JobWorkInvoice() {
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [voucherNo,    setVoucherNo]    = useState("");
   const [invoiceDate,  setInvoiceDate]  = useState(today());
-  const [vehicleNo,    setVehicleNo]    = useState("");
+  const [vehP1,        setVehP1]        = useState("");
+  const [vehP2,        setVehP2]        = useState("");
+  const [vehP3,        setVehP3]        = useState("");
+  const [vehP4,        setVehP4]        = useState("");
   const [invoiceType,  setInvoiceType]  = useState<"despatch_notes" | "direct_invoice">("despatch_notes");
+  const [isInterState, setIsInterState] = useState(false);
   const [remark,       setRemark]       = useState("");
 
   // Party
@@ -113,8 +129,26 @@ export default function JobWorkInvoice() {
       })
     : items;
 
+  // Recompute tax amounts when inter-state toggle changes
+  useEffect(() => {
+    setItems(prev => prev.map(it => {
+      const taxable = parseFloat(it.amount || 0);
+      return {
+        ...it,
+        cgst_amt: isInterState ? 0 : taxable * parseFloat(it.cgst_rate || 0) / 100,
+        sgst_amt: isInterState ? 0 : taxable * parseFloat(it.sgst_rate || 0) / 100,
+        igst_amt: isInterState ? taxable * parseFloat(it.igst_rate || 0) / 100 : 0,
+      };
+    }));
+  }, [isInterState]);
+
   // Total quantity
-  const totalQty = items.reduce((s, it) => s + parseFloat(it.qty_despatched || 0), 0);
+  const totalQty     = items.reduce((s, it) => s + parseFloat(it.qty_despatched || 0), 0);
+  const totalTaxable = items.reduce((s, it) => s + parseFloat(it.amount || 0), 0);
+  const totalCgst    = items.reduce((s, it) => s + parseFloat(it.cgst_amt || 0), 0);
+  const totalSgst    = items.reduce((s, it) => s + parseFloat(it.sgst_amt || 0), 0);
+  const totalIgst    = items.reduce((s, it) => s + parseFloat(it.igst_amt || 0), 0);
+  const grandTotal   = totalTaxable + (isInterState ? totalIgst : totalCgst + totalSgst);
 
   // ── Toggle inward ─────────────────────────────────────────────────────────────
   async function toggleInward(inward: any, checked: boolean) {
@@ -129,30 +163,50 @@ export default function JobWorkInvoice() {
           : `/api/job-work-inward/${inward.id}/direct-items-for-invoice`;
         const res = await fetch(endpoint, { credentials: "include" });
         const rows: any[] = await res.json();
-        const newItems = rows.map(r => ({
-          despatch_id:        r.despatch_id || null,
-          inward_id:          inward.id,
-          inward_item_id:     r.inward_item_id || r.id || null,
-          item_id:            r.item_id || null,
-          item_code:          r.item_code || "",
-          item_name:          r.item_name || "",
-          unit:               r.unit || "",
-          process:            r.process || "",
-          hsn:                r.hsn || "",
-          qty_despatched:     r.qty_despatched || 0,
-          rate:               r.rate || 0,
-          amount:             parseFloat(r.qty_despatched || 0) * parseFloat(r.rate || 0),
-          po_no:              r.party_po_no || "",
-          party_dc:           r.party_dc_no || "",
-          work_order_no:      r.work_order_no || "",
-          despatch_voucher_no:r.despatch_voucher_no || "",
-          inward_voucher_no:  r.inward_voucher_no || "",
-          no_of_cover:        0,
-          packages:           0,
-        }));
+        const newItems = rows.map(r => {
+          const qty    = parseFloat(r.qty_despatched || 0);
+          const rate   = parseFloat(r.rate || 0);
+          const taxable = qty * rate;
+          const cgstR  = parseFloat(r.cgst_rate || 0);
+          const sgstR  = parseFloat(r.sgst_rate || 0);
+          const igstR  = parseFloat(r.igst_rate || 0);
+          return {
+            despatch_id:        r.despatch_id || null,
+            inward_id:          inward.id,
+            inward_item_id:     r.inward_item_id || r.id || null,
+            item_id:            r.item_id || null,
+            item_code:          r.item_code || "",
+            item_name:          r.item_name || "",
+            unit:               r.unit || "",
+            process:            r.process || "",
+            hsn:                r.hsn || "",
+            qty_despatched:     qty,
+            rate:               rate,
+            amount:             taxable,
+            po_no:              r.party_po_no || "",
+            party_dc:           r.party_dc_no || "",
+            work_order_no:      r.work_order_no || "",
+            despatch_voucher_no:r.despatch_voucher_no || "",
+            inward_voucher_no:  r.inward_voucher_no || "",
+            no_of_cover:        0,
+            packages:           0,
+            cgst_rate:          cgstR,
+            sgst_rate:          sgstR,
+            igst_rate:          igstR,
+            cgst_amt:           taxable * cgstR / 100,
+            sgst_amt:           taxable * sgstR / 100,
+            igst_amt:           taxable * igstR / 100,
+          };
+        });
         setItems(prev => [...prev.filter(it => it.inward_id !== inward.id), ...newItems]);
         const veh = (inward.vehicle_no || "").trim();
-        if (veh) setVehicleNo(prev => prev || veh.toUpperCase());
+        if (veh) {
+          const parts = parseVehicle(veh);
+          setVehP1(p => p || parts.p1);
+          setVehP2(p => p || parts.p2);
+          setVehP3(p => p || parts.p3);
+          setVehP4(p => p || parts.p4);
+        }
       } catch {}
       setLoadingInwardId(null);
     } else {
@@ -170,8 +224,10 @@ export default function JobWorkInvoice() {
       setEditingId(data.id);
       setVoucherNo(data.voucher_no || "");
       setInvoiceDate(data.invoice_date?.split("T")[0] || today());
-      setVehicleNo((data.vehicle_no || "").toUpperCase());
+      const vParts = parseVehicle(data.vehicle_no || "");
+      setVehP1(vParts.p1); setVehP2(vParts.p2); setVehP3(vParts.p3); setVehP4(vParts.p4);
       setInvoiceType(data.invoice_type || "despatch_notes");
+      setIsInterState(data.is_inter_state || false);
       setRemark(data.remark || "");
       setTermOfDel(data.term_of_delivery || "");
       setTransport(data.transport || "");
@@ -200,8 +256,9 @@ export default function JobWorkInvoice() {
     setEditingId(null);
     setVoucherNo("");
     setInvoiceDate(today());
-    setVehicleNo("");
+    setVehP1(""); setVehP2(""); setVehP3(""); setVehP4("");
     setInvoiceType("despatch_notes");
+    setIsInterState(false);
     setRemark("");
     setPartyId("");
     setPartySearch("");
@@ -261,6 +318,7 @@ export default function JobWorkInvoice() {
     setSaveError("");
     setSaveOk(false);
     const validCharges = charges.filter(c => c.charge_name?.trim());
+    const vehicleNo = [vehP1, vehP2, vehP3, vehP4].join("").toUpperCase();
     const body = {
       voucher_no:       voucherNo,
       invoice_date:     invoiceDate,
@@ -268,6 +326,7 @@ export default function JobWorkInvoice() {
       party_name_manual:partySearch,
       vehicle_no:       vehicleNo,
       invoice_type:     invoiceType,
+      is_inter_state:   isInterState,
       term_of_delivery: termOfDel,
       transport,
       freight,
@@ -459,10 +518,22 @@ export default function JobWorkInvoice() {
           </div>
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Vehicle No</label>
-            <input data-testid="input-vehicle-no"
-              className="border rounded px-3 py-1.5 text-sm w-36"
-              placeholder="e.g. TN66AB1234"
-              value={vehicleNo} onChange={e => setVehicleNo(e.target.value.toUpperCase())} />
+            <div className="flex items-center gap-1">
+              {[
+                { val: vehP1, set: setVehP1, w: "w-12", ph: "TN",   max: 2 },
+                { val: vehP2, set: setVehP2, w: "w-10", ph: "00",   max: 2 },
+                { val: vehP3, set: setVehP3, w: "w-12", ph: "AB",   max: 3 },
+                { val: vehP4, set: setVehP4, w: "w-16", ph: "1234", max: 4 },
+              ].map((seg, i) => (
+                <input key={i}
+                  data-testid={`input-vehicle-p${i+1}`}
+                  className={`border rounded px-2 py-1.5 text-sm text-center ${seg.w} font-semibold`}
+                  placeholder={seg.ph}
+                  maxLength={seg.max}
+                  value={seg.val}
+                  onChange={e => seg.set(e.target.value.toUpperCase())} />
+              ))}
+            </div>
           </div>
           {activeTab === "invoice" && (
             <div className="flex-1">
@@ -477,70 +548,135 @@ export default function JobWorkInvoice() {
           )}
         </div>
 
+        {/* ── Within / Inter-State toggle ── */}
+        {activeTab === "invoice" && (
+          <div className="flex items-center gap-4 mb-3">
+            {[false, true].map(val => (
+              <label key={String(val)} className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                <input type="radio" name="stateType" className="accent-orange-600"
+                  checked={isInterState === val}
+                  onChange={() => setIsInterState(val)} />
+                <span style={isInterState === val ? { color: SC.orange, fontWeight: 700 } : { color: "#555" }}>
+                  {val ? "Inter-State" : "Within State"}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+
         {/* ── TAB: Job Work Invoice ── */}
         {activeTab === "invoice" && (
           <>
             {/* Items grid */}
             <div className="border rounded-lg overflow-hidden mb-3">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: 900 }}>
+                <table className="w-full text-xs" style={{ minWidth: 1440 }}>
                   <thead>
                     <tr style={{ background: SC.primary, color: "#fff" }}>
-                      <th className="px-2 py-2 text-left w-10">
-                        <input type="checkbox" className="accent-white"
-                          onChange={e => {/* select all later */}} />
-                      </th>
-                      <th className="px-2 py-2 text-left w-10">S.No</th>
+                      <th className="px-2 py-2 text-left w-8">S.No</th>
                       <th className="px-2 py-2 text-left">PO No</th>
                       <th className="px-2 py-2 text-left">Item Code</th>
                       <th className="px-2 py-2 text-left">Item Name</th>
-                      <th className="px-2 py-2 text-left">Despatch No</th>
+                      <th className="px-2 py-2 text-left">Desp No</th>
                       <th className="px-2 py-2 text-left">Party DC</th>
-                      <th className="px-2 py-2 text-left">Wrk Ord No</th>
+                      <th className="px-2 py-2 text-left">Work Ord no</th>
                       <th className="px-2 py-2 text-left">Process</th>
                       <th className="px-2 py-2 text-left">Inw DN</th>
-                      <th className="px-2 py-2 text-center w-24">No.of Cover</th>
-                      <th className="px-2 py-2 text-center w-24">Packages</th>
+                      <th className="px-2 py-2 text-center w-20">No.of Cover</th>
+                      <th className="px-2 py-2 text-center w-20">Packages</th>
+                      <th className="px-2 py-2 text-right w-20">Qty</th>
+                      <th className="px-2 py-2 text-left w-16">Unit</th>
+                      <th className="px-2 py-2 text-right w-24">Rate ₹</th>
+                      <th className="px-2 py-2 text-right w-28">Taxable Amt ₹</th>
+                      {isInterState
+                        ? <th className="px-2 py-2 text-right w-24">IGST ₹</th>
+                        : <>
+                            <th className="px-2 py-2 text-right w-24">CGST ₹</th>
+                            <th className="px-2 py-2 text-right w-24">SGST ₹</th>
+                          </>
+                      }
+                      <th className="px-2 py-2 text-right w-28">Tot.Amt ₹</th>
+                      <th className="w-8"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredItems.length === 0 && (
                       <tr>
-                        <td colSpan={12} className="text-center py-8 text-gray-400 text-sm">
+                        <td colSpan={isInterState ? 17 : 18} className="text-center py-8 text-gray-400 text-sm">
                           Select an inward from the panel to load items
                         </td>
                       </tr>
                     )}
                     {filteredItems.map((it, idx) => {
                       const realIdx = items.indexOf(it);
+                      const qty      = parseFloat(it.qty_despatched || 0);
+                      const rate     = parseFloat(it.rate || 0);
+                      const taxable  = qty * rate;
+                      const cgstAmt  = parseFloat(it.cgst_amt || 0);
+                      const sgstAmt  = parseFloat(it.sgst_amt || 0);
+                      const igstAmt  = parseFloat(it.igst_amt || 0);
+                      const rowTotal = isInterState ? taxable + igstAmt : taxable + cgstAmt + sgstAmt;
                       return (
                         <tr key={idx} className="border-b hover:bg-blue-50 transition-colors">
-                          <td className="px-2 py-1.5">
-                            <input type="checkbox" className="accent-orange-600 cursor-pointer"
-                              data-testid={`chk-item-${idx}`} />
-                          </td>
-                          <td className="px-2 py-1.5 text-gray-500">{idx + 1}</td>
-                          <td className="px-2 py-1.5 text-gray-600 text-xs">{it.po_no || "—"}</td>
-                          <td className="px-2 py-1.5 font-mono text-xs">{it.item_code}</td>
-                          <td className="px-2 py-1.5 font-medium">{it.item_name}</td>
-                          <td className="px-2 py-1.5 text-xs" style={{ color: SC.primary }}>{it.despatch_voucher_no || "—"}</td>
-                          <td className="px-2 py-1.5 text-xs text-gray-600">{it.party_dc || "—"}</td>
-                          <td className="px-2 py-1.5 text-xs text-gray-600">{it.work_order_no || "—"}</td>
-                          <td className="px-2 py-1.5 text-xs text-gray-600">{it.process || "—"}</td>
-                          <td className="px-2 py-1.5 text-xs" style={{ color: SC.primary }}>{it.inward_voucher_no || "—"}</td>
-                          <td className="px-2 py-1.5">
+                          <td className="px-2 py-1 text-gray-500">{idx + 1}</td>
+                          <td className="px-2 py-1 text-gray-600">{it.po_no || "—"}</td>
+                          <td className="px-2 py-1 font-mono">{it.item_code}</td>
+                          <td className="px-2 py-1 font-medium text-gray-800">{it.item_name}</td>
+                          <td className="px-2 py-1" style={{ color: SC.primary }}>{it.despatch_voucher_no || "—"}</td>
+                          <td className="px-2 py-1 text-gray-600">{it.party_dc || "—"}</td>
+                          <td className="px-2 py-1 text-gray-700">{it.work_order_no || "—"}</td>
+                          <td className="px-2 py-1 text-gray-700">{it.process || "—"}</td>
+                          <td className="px-2 py-1" style={{ color: SC.primary }}>{it.inward_voucher_no || "—"}</td>
+                          <td className="px-2 py-1">
                             <input type="number" min={0}
                               data-testid={`input-cover-${idx}`}
-                              className="border rounded px-2 py-0.5 text-sm text-center w-20"
+                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
                               value={it.no_of_cover || ""}
                               onChange={e => updateItem(realIdx, "no_of_cover", parseInt(e.target.value || "0"))} />
                           </td>
-                          <td className="px-2 py-1.5">
+                          <td className="px-2 py-1">
                             <input type="number" min={0}
                               data-testid={`input-packages-${idx}`}
-                              className="border rounded px-2 py-0.5 text-sm text-center w-20"
+                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
                               value={it.packages || ""}
                               onChange={e => updateItem(realIdx, "packages", parseInt(e.target.value || "0"))} />
+                          </td>
+                          <td className="px-2 py-1 text-right font-semibold">{qty.toLocaleString("en-IN")}</td>
+                          <td className="px-2 py-1 text-gray-600">{it.unit}</td>
+                          <td className="px-2 py-1 text-right">
+                            <input type="number" min={0} step="0.01"
+                              data-testid={`input-rate-${idx}`}
+                              className="border rounded px-1 py-0.5 text-xs text-right w-20"
+                              value={rate || ""}
+                              onChange={e => {
+                                const r2 = parseFloat(e.target.value || "0");
+                                const t2 = qty * r2;
+                                const cgR = parseFloat(it.cgst_rate || 0);
+                                const sgR = parseFloat(it.sgst_rate || 0);
+                                const igR = parseFloat(it.igst_rate || 0);
+                                setItems(prev => prev.map((row, i) => i === realIdx ? {
+                                  ...row, rate: r2, amount: t2,
+                                  cgst_amt: isInterState ? 0 : t2 * cgR / 100,
+                                  sgst_amt: isInterState ? 0 : t2 * sgR / 100,
+                                  igst_amt: isInterState ? t2 * igR / 100 : 0,
+                                } : row));
+                              }} />
+                          </td>
+                          <td className="px-2 py-1 text-right text-gray-800">{fmtAmt(taxable)}</td>
+                          {isInterState
+                            ? <td className="px-2 py-1 text-right" style={{ color: SC.primary }}>{fmtAmt(igstAmt)}</td>
+                            : <>
+                                <td className="px-2 py-1 text-right" style={{ color: SC.primary }}>{fmtAmt(cgstAmt)}</td>
+                                <td className="px-2 py-1 text-right" style={{ color: SC.primary }}>{fmtAmt(sgstAmt)}</td>
+                              </>
+                          }
+                          <td className="px-2 py-1 text-right font-bold" style={{ color: SC.orange }}>{fmtAmt(rowTotal)}</td>
+                          <td className="px-2 py-1 text-center">
+                            <button data-testid={`btn-del-row-${idx}`}
+                              onClick={() => setItems(prev => prev.filter((_, i) => i !== realIdx))}
+                              className="text-red-400 hover:text-red-600 p-0.5">
+                              <Trash2 size={13} />
+                            </button>
                           </td>
                         </tr>
                       );
@@ -550,19 +686,25 @@ export default function JobWorkInvoice() {
               </div>
             </div>
 
-            {/* Footer: Remove all + Total */}
-            <div className="flex items-center justify-between mb-4">
+            {/* Footer: Remove all + Totals */}
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <button
                 data-testid="btn-remove-all"
                 onClick={removeAllItems}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors">
                 <Trash2 size={13} /> Remove all
               </button>
-              <div className="text-sm font-semibold text-gray-700">
-                Total Quantity :
-                <span className="ml-2 text-base" style={{ color: SC.primary }}>
-                  {totalQty.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 3 })}
-                </span>
+              <div className="flex items-center gap-5 text-sm flex-wrap">
+                <span className="text-gray-600">Total Qty: <strong style={{ color: SC.primary }}>{totalQty.toLocaleString("en-IN", { maximumFractionDigits: 3 })}</strong></span>
+                <span className="text-gray-600">Taxable: <strong style={{ color: SC.primary }}>₹{totalTaxable.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></span>
+                {isInterState
+                  ? <span className="text-gray-600">IGST: <strong style={{ color: SC.primary }}>₹{totalIgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></span>
+                  : <>
+                      <span className="text-gray-600">CGST: <strong style={{ color: SC.primary }}>₹{totalCgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></span>
+                      <span className="text-gray-600">SGST: <strong style={{ color: SC.primary }}>₹{totalSgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></span>
+                    </>
+                }
+                <span className="font-bold text-base">Total (with Tax): <span style={{ color: SC.orange }}>₹{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span></span>
               </div>
             </div>
           </>
