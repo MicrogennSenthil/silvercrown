@@ -923,11 +923,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       }
     }
 
-    // 2. Resolve Item — find or create in purchase_store_items
+    // 2. Resolve Item — find or create in products master
     let itemId: string | null = it.item_id || null;
     if (!itemId) {
       const nameChk = await client.query(
-        `SELECT id FROM purchase_store_items WHERE LOWER(name)=LOWER($1) LIMIT 1`,
+        `SELECT id FROM products WHERE LOWER(name)=LOWER($1) LIMIT 1`,
         [it.item_name.trim()]
       );
       if (nameChk.rows.length > 0) {
@@ -935,21 +935,51 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       } else {
         const code = (it.item_code || it.item_name.substring(0, 20).toUpperCase().replace(/\s+/g, "-")).trim();
         const ins = await client.query(
-          `INSERT INTO purchase_store_items (id, code, name, uom, hsn_code, is_active)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, true)
-           ON CONFLICT (id) DO NOTHING
+          `INSERT INTO products (id, code, name, uom, hsn_code, is_active)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, true)
+           ON CONFLICT DO NOTHING
            RETURNING id`,
           [code, it.item_name.trim(), uomCode.toUpperCase() || "", it.hsn || ""]
         );
         itemId = ins.rows[0]?.id || null;
-        // If code conflict, fetch existing
+        // If code conflict, fetch by code
         if (!itemId) {
-          const retry = await client.query(`SELECT id FROM purchase_store_items WHERE code=$1 LIMIT 1`, [code]);
+          const retry = await client.query(`SELECT id FROM products WHERE LOWER(code)=LOWER($1) LIMIT 1`, [code]);
           itemId = retry.rows[0]?.id || null;
         }
       }
     }
     return { itemId };
+  }
+
+  // ── Shared helper: resolve or auto-create Customer in masters ────────────────
+  async function resolvePartyMaster(client: any, partyId: string | null, partyName: string): Promise<string | null> {
+    const name = (partyName || "").trim();
+    if (!name) return partyId || null;
+
+    // If party_id already provided, verify it exists and return it
+    if (partyId) {
+      const chk = await client.query(`SELECT id FROM customers WHERE id=$1 LIMIT 1`, [partyId]);
+      if (chk.rows.length > 0) return partyId;
+    }
+
+    // Search by name (case-insensitive)
+    const nameChk = await client.query(
+      `SELECT id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [name]
+    );
+    if (nameChk.rows.length > 0) return nameChk.rows[0].id;
+
+    // Not found — auto-create with minimal required fields
+    const ins = await client.query(
+      `INSERT INTO customers (id, name) VALUES (gen_random_uuid()::text, $1)
+       ON CONFLICT DO NOTHING RETURNING id`,
+      [name]
+    );
+    if (ins.rows.length > 0) return ins.rows[0].id;
+
+    // Fallback: fetch by name in case of a race
+    const retry = await client.query(`SELECT id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [name]);
+    return retry.rows[0]?.id || null;
   }
 
   app.post("/api/job-work-inward", requireAuth, async (req, res) => {
@@ -965,6 +995,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         data.voucher_no = await generateVoucherNo("job_work_inward");
       }
 
+      // Resolve or auto-create customer in masters
+      const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
+
       // Insert inward header
       const hRes = await client.query(
         `INSERT INTO job_work_inward
@@ -975,7 +1008,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         [
           data.voucher_no,
           data.inward_date || new Date().toISOString().split("T")[0],
-          data.party_id || null,
+          resolvedPartyId,
           data.party_name_manual || "",
           data.party_dc_no || "",
           data.party_dc_date || null,
@@ -988,7 +1021,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       );
       const inwardId = hRes.rows[0].id;
 
-      // Insert items — auto-create masters as needed
+      // Insert items — auto-create UOM + item masters as needed
       let seq = 1;
       for (const it of items) {
         if (!it.item_name?.trim() && !it.item_code?.trim()) continue;
@@ -1020,6 +1053,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query("BEGIN");
       const { items = [], ...data } = req.body;
 
+      // Resolve or auto-create customer in masters
+      const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
+
       // Update header
       await client.query(
         `UPDATE job_work_inward SET
@@ -1028,7 +1064,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
            vehicle_no=$9, notes=$10, status='Saved'
          WHERE id=$11`,
         [
-          data.inward_date, data.party_id || null, data.party_name_manual || "",
+          data.inward_date, resolvedPartyId, data.party_name_manual || "",
           data.party_dc_no || "", data.party_dc_date || null, data.delivery_date || null,
           data.work_order_no || "", data.party_po_no || "",
           (data.vehicle_no || "").toUpperCase(), data.notes || "",
@@ -1198,13 +1234,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { generateVoucherNo } = await import("./voucher");
       const voucherNo = data.voucher_no || await generateVoucherNo("job_work_despatch");
 
+      // Resolve or auto-create customer in masters
+      const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
+
       const hRes = await client.query(`
         INSERT INTO job_work_despatch
           (id, voucher_no, despatch_date, inward_id, party_id, party_name_manual, vehicle_no, driver_name, lr_no, notes, status)
         VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,'Saved')
         RETURNING *
       `, [voucherNo, data.despatch_date || new Date().toISOString().split("T")[0],
-          data.inward_id || null, data.party_id || null, data.party_name_manual || "",
+          data.inward_id || null, resolvedPartyId, data.party_name_manual || "",
           (data.vehicle_no || "").toUpperCase(), data.driver_name || "", data.lr_no || "", data.notes || ""]);
 
       const despatchId = hRes.rows[0].id;
@@ -1243,12 +1282,15 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query("BEGIN");
       const { items = [], ...data } = req.body;
 
+      // Resolve or auto-create customer in masters
+      const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
+
       await client.query(`
         UPDATE job_work_despatch SET
           despatch_date=$1, inward_id=$2, party_id=$3, party_name_manual=$4,
           vehicle_no=$5, driver_name=$6, lr_no=$7, notes=$8, status='Saved'
         WHERE id=$9
-      `, [data.despatch_date, data.inward_id || null, data.party_id || null,
+      `, [data.despatch_date, data.inward_id || null, resolvedPartyId,
           data.party_name_manual || "", (data.vehicle_no || "").toUpperCase(),
           data.driver_name || "", data.lr_no || "", data.notes || "", req.params.id]);
 
