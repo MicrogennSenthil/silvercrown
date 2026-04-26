@@ -224,7 +224,10 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
   });
 
   function handleSave() {
-    if (!form.name?.trim()) { setFormError("Item Name is required."); return; }
+    if (!form.name?.trim())    { setFormError("Item Name is required."); return; }
+    if (!form.unit)            { setFormError("Unit is required. Please select a unit."); return; }
+    if (!form.categoryId)      { setFormError("Category is required. Please select a category."); return; }
+    if (!form.subCategoryId)   { setFormError("Sub Category is required. Please select a sub category."); return; }
     setFormError("");
     saveMut.mutate(form);
   }
@@ -262,7 +265,7 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
           {/* Row 2: Category + Sub Category */}
           <div className="flex gap-3">
             <DropPlus label="Category" value={form.categoryId}
-              onChange={(e: any) => setForm((p: any) => ({ ...p, categoryId: e.target.value, subCategoryId: "" }))}
+              onChange={(e: any) => { setFormError(""); setForm((p: any) => ({ ...p, categoryId: e.target.value, subCategoryId: "" })); }}
               options={catOptions} onPlus={() => {}} className="flex-1" />
             <DropPlus label="Sub Category" value={form.subCategoryId} onChange={f("subCategoryId")}
               options={subOptions} onPlus={() => {}} className="flex-1" />
