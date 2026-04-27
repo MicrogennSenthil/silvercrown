@@ -1794,6 +1794,70 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/supplier-payables — aging report with configurable day buckets
+  app.get("/api/reports/supplier-payables", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const days = Math.max(1, parseInt((req.query.days as string) || "15", 10));
+      const rows = (await pool.query(`
+        WITH txns AS (
+          -- Bills (opening entries)
+          SELECT
+            s.id            AS supplier_id,
+            s.name          AS supplier_name,
+            COALESCE(s.phone, s.telephone, '')          AS contact_no,
+            COALESCE(s.contact_person, s.contact_name, '') AS contact_person,
+            COALESCE(slb.ref_date, slb.voucher_date, NOW()::date) AS txn_date,
+            slb.amount::numeric AS amount,
+            UPPER(slb.cr_dr)   AS dr_cr
+          FROM suppliers s
+          JOIN sub_ledgers sl ON sl.id = s.sub_ledger_id
+          JOIN sub_ledger_bills slb ON slb.sub_ledger_id = sl.id
+
+          UNION ALL
+
+          -- Voucher entries
+          SELECT
+            s.id            AS supplier_id,
+            s.name          AS supplier_name,
+            COALESCE(s.phone, s.telephone, '')          AS contact_no,
+            COALESCE(s.contact_person, s.contact_name, '') AS contact_person,
+            vm.voucher_date AS txn_date,
+            vd.amount::numeric AS amount,
+            UPPER(vd.dr_cr)    AS dr_cr
+          FROM suppliers s
+          JOIN sub_ledgers sl ON sl.id = s.sub_ledger_id
+          JOIN voucher_det vd ON vd.sub_ledger_id = sl.id
+          JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+        ),
+        aged AS (
+          SELECT *, (CURRENT_DATE - txn_date::date) AS age_days FROM txns
+        )
+        SELECT
+          supplier_id,
+          supplier_name,
+          contact_no,
+          contact_person,
+          -- Credit (payable) buckets aged from transaction date
+          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days BETWEEN 0 AND $1-1      THEN amount END),0) AS bucket1,
+          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days BETWEEN $1   AND $1*2-1 THEN amount END),0) AS bucket2,
+          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days BETWEEN $1*2 AND $1*3-1 THEN amount END),0) AS bucket3,
+          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days BETWEEN $1*3 AND $1*4-1 THEN amount END),0) AS bucket4,
+          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days >= $1*4               THEN amount END),0) AS bucket_above,
+          -- Debit entries (advance payments / debit notes) shown as Others
+          COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount END),0) AS others,
+          -- Net payable (CR - DR)
+          COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount ELSE -amount END),0) AS total
+        FROM aged
+        GROUP BY supplier_id, supplier_name, contact_no, contact_person
+        HAVING COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount ELSE -amount END),0) <> 0
+          OR COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount END),0) > 0
+        ORDER BY supplier_name
+      `, [days])).rows;
+      res.json({ days, rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/issue-register — store issue indent lines
   app.get("/api/reports/issue-register", requireAuth, async (req, res) => {
     try {
