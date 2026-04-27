@@ -113,13 +113,11 @@ function LedgerForm({
         openingBalance: obAmount, openingBalanceType: obType,
         closingBalance: cbAmount, closingBalanceType: cbType,
         notes, isActive: true,
-        bills: obEntry
-          ? bills.map(b => ({
-              refNo: b.refNo, refDate: b.refDate || null,
-              voucherNo: b.voucherNo, voucherDate: b.voucherDate || null,
-              amount: b.amount || "0", crDr: b.crDr,
-            }))
-          : [],
+        bills: bills.map(b => ({
+          refNo: b.refNo, refDate: b.refDate || null,
+          voucherNo: b.voucherNo, voucherDate: b.voucherDate || null,
+          amount: b.amount || "0", crDr: b.crDr,
+        })),
       };
       const url = isEdit ? `/api/sub-ledgers/${item.id}` : "/api/sub-ledgers";
       const method = isEdit ? "PATCH" : "POST";

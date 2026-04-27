@@ -651,7 +651,12 @@ export default function GeneralLedgerTree() {
                             </span>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
-                                onClick={() => { setSelectedSL(sl); setPanel("edit-sl"); }}
+                                onClick={async () => {
+                                  const res = await fetch(`/api/sub-ledgers/${sl.id}`, { credentials: "include" });
+                                  const fullSl = await res.json();
+                                  setSelectedSL(fullSl);
+                                  setPanel("edit-sl");
+                                }}
                                 className="p-1 rounded hover:bg-[#d2f1fa] text-gray-400 hover:text-[#027fa5]"
                                 title="Edit ledger" data-testid={`btn-edit-sl-${sl.id}`}
                               ><Pencil size={12}/></button>
