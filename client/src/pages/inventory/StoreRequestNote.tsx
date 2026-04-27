@@ -318,17 +318,6 @@ export default function StoreRequestNote() {
             <p className="text-xs text-gray-400">Request materials from store inventory</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setMode("list")}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-            Cancel
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-            style={{ background: SC.primary }} data-testid="btn-save-srn">
-            {saving ? "Saving…" : editId ? "Update" : "Save"}
-          </button>
-        </div>
       </div>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg">{err}</div>}
