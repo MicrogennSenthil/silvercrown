@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Search, Edit2, FileText, X } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
@@ -36,6 +36,67 @@ function calcItem(it: SrnItem): SrnItem {
   return { ...it, amount: +(it.qty * it.rate).toFixed(2) };
 }
 
+// ── Fixed-position item dropdown (escapes overflow:hidden containers) ─────────
+interface ItemDropdownProps {
+  open: boolean;
+  anchorRect: DOMRect | null;
+  products: any[];
+  query: string;
+  onPick: (prod: any) => void;
+  onClose: () => void;
+}
+function ItemDropdown({ open, anchorRect, products, query, onPick, onClose }: ItemDropdownProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const q = query.toUpperCase();
+  const opts = products.filter((p: any) =>
+    !q || p.name?.toUpperCase().includes(q) || p.code?.toUpperCase().includes(q)
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open, onClose]);
+
+  if (!open || !anchorRect) return null;
+
+  const style: React.CSSProperties = {
+    position: "fixed",
+    top: anchorRect.bottom + 2,
+    left: anchorRect.left,
+    width: Math.max(anchorRect.width, 260),
+    zIndex: 9999,
+    maxHeight: 200,
+    overflowY: "auto",
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 8,
+    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+    fontSize: 12,
+  };
+
+  return (
+    <div ref={ref} style={style}>
+      {opts.length === 0 ? (
+        <div className="px-3 py-3 text-gray-400">No raw material items found</div>
+      ) : opts.map((p: any) => (
+        <div key={p.id || p.code}
+          onMouseDown={(e) => { e.preventDefault(); onPick(p); }}
+          className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center border-b border-gray-50 last:border-b-0">
+          <div>
+            <div className="font-medium text-gray-800">{p.name}</div>
+            <div className="text-gray-400 text-[10px]">Stock: {parseFloat(p.current_stock)||0} · {p.uom||p.unit||"Nos"}</div>
+          </div>
+          <span className="text-gray-400 text-[10px] ml-2 shrink-0">{p.code}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function StoreRequestNote() {
   const qc = useQueryClient();
   const [mode, setMode] = useState<"list" | "form">("list");
@@ -45,26 +106,21 @@ export default function StoreRequestNote() {
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const [itemSearch, setItemSearch] = useState<Record<number, string>>({});
-  const [itemDropOpen, setItemDropOpen] = useState<number | null>(null);
-  const tableRef = useRef<HTMLDivElement>(null);
+
+  // Dropdown state — uses fixed positioning to avoid overflow clipping
+  const [openDropIdx, setOpenDropIdx]     = useState<number | null>(null);
+  const [dropAnchor, setDropAnchor]       = useState<DOMRect | null>(null);
+  const [itemQuery, setItemQuery]         = useState<Record<number, string>>({});
 
   const { data: srns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-request-notes"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
 
+  // Only raw material products
   const products = (allProducts as any[]).filter((p: any) =>
     p.is_active !== false &&
     p.category_name?.toLowerCase().includes("raw material")
   );
-
-  useEffect(() => {
-    function h(e: MouseEvent) {
-      if (!tableRef.current?.contains(e.target as Node)) setItemDropOpen(null);
-    }
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
 
   const totalQty = form.items.reduce((s, it) => s + (+it.qty || 0), 0);
   const grandTotal = form.items.reduce((s, it) => s + (+it.amount || 0), 0);
@@ -74,14 +130,22 @@ export default function StoreRequestNote() {
     return [s.voucher_no, s.store_name, s.status, String(s.grand_total || "")].join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
+  const closeDropdown = useCallback(() => { setOpenDropIdx(null); setDropAnchor(null); }, []);
+
+  function openInputDropdown(e: React.FocusEvent<HTMLInputElement>, i: number, currentName: string) {
+    setOpenDropIdx(i);
+    setDropAnchor(e.currentTarget.getBoundingClientRect());
+    setItemQuery(p => ({ ...p, [i]: currentName }));
+  }
+
   function openNew() {
-    setForm(blankForm()); setEditId(null); setErr(""); setSrnNo(""); setMode("form");
+    setForm(blankForm()); setEditId(null); setErr(""); setSrnNo(""); setMode("form"); closeDropdown();
     fetch("/api/voucher-series/next/store_request", { credentials: "include" })
       .then(r => r.json()).then(d => { if (d.voucher_no) setSrnNo(d.voucher_no); });
   }
 
   async function openEdit(srn: any) {
-    setSrnNo(srn.voucher_no || "");
+    setSrnNo(srn.voucher_no || ""); closeDropdown();
     const r = await fetch(`/api/store-request-notes/${srn.id}`, { credentials: "include" });
     const data = await r.json();
     const items = (data.items || []).map((it: any, i: number) => ({
@@ -117,14 +181,14 @@ export default function StoreRequestNote() {
 
   function pickProduct(i: number, prod: any) {
     const rate = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
-    const stock = parseFloat(prod.current_stock) || parseFloat(prod.opening_stock) || 0;
+    const stock = parseFloat(prod.current_stock) || 0;
     setForm(f => {
       const items = [...f.items];
       items[i] = calcItem({ ...items[i], item_code: prod.code || "", item_name: prod.name || "", unit: prod.uom || prod.unit || "Nos", rate, stock });
       return { ...f, items };
     });
-    setItemSearch(p => ({ ...p, [i]: prod.name }));
-    setItemDropOpen(null);
+    setItemQuery(p => ({ ...p, [i]: prod.name }));
+    closeDropdown();
   }
 
   async function handleSave() {
@@ -195,7 +259,7 @@ export default function StoreRequestNote() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b" style={{ background: "#e8f6fb" }}>
-                {["SRN No", "Date", "Store", "Req. Before", "Items", "Total ₹", "Status", ""].map(h => (
+                {["SRN No", "Date", "Store", "Req. Before", "Total ₹", "Status", ""].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600">{h}</th>
                 ))}
               </tr>
@@ -207,7 +271,6 @@ export default function StoreRequestNote() {
                   <td className="px-4 py-3 text-gray-600">{s.request_date?.slice(0, 10)}</td>
                   <td className="px-4 py-3 text-gray-700">{s.store_name || "—"}</td>
                   <td className="px-4 py-3 text-gray-600">{s.required_before?.slice(0, 10) || "—"}</td>
-                  <td className="px-4 py-3 text-gray-500">—</td>
                   <td className="px-4 py-3 font-semibold text-gray-800">₹ {n2(s.grand_total)}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[s.status] || "bg-gray-100 text-gray-600"}`}>
@@ -234,6 +297,16 @@ export default function StoreRequestNote() {
   // ── Form ──
   return (
     <div className="p-6 space-y-4">
+      {/* Fixed dropdown — renders outside all overflow containers */}
+      <ItemDropdown
+        open={openDropIdx !== null}
+        anchorRect={dropAnchor}
+        products={products}
+        query={itemQuery[openDropIdx ?? -1] ?? ""}
+        onPick={(prod) => pickProduct(openDropIdx!, prod)}
+        onClose={closeDropdown}
+      />
+
       {/* Header bar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -291,11 +364,11 @@ export default function StoreRequestNote() {
       </div>
 
       {/* Items Table */}
-      <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-        <div className="overflow-x-auto" ref={tableRef}>
+      <div className="border border-gray-200 rounded-xl bg-white overflow-visible">
+        <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b" style={{ background: "#e8f6fb" }}>
+              <tr className="border-b rounded-t-xl" style={{ background: "#e8f6fb" }}>
                 {["S.no", "Item Code", "Item Name", "Qty", "Stock", "Unit", "Rate ₹", "Amount ₹", ""].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                 ))}
@@ -306,44 +379,33 @@ export default function StoreRequestNote() {
                 <tr key={i} className="border-b hover:bg-[#f0f9ff]">
                   <td className="px-3 py-1.5 text-gray-500 text-center w-8">{it.sno}</td>
 
-                  {/* Item Code — read-only auto-filled */}
+                  {/* Item Code — read-only, auto-filled when item picked */}
                   <td className="px-1 py-1">
                     <input readOnly value={it.item_code}
-                      className="border border-gray-200 bg-gray-50 rounded px-2 py-1.5 w-24 text-xs text-gray-600"/>
+                      className="border border-gray-200 bg-gray-50 rounded px-2 py-1.5 w-24 text-xs text-gray-600 uppercase"/>
                   </td>
 
-                  {/* Item Name — searchable dropdown */}
-                  <td className="px-1 py-1 relative">
-                    <div className="relative w-44">
+                  {/* Item Name — searchable, fixed-position dropdown */}
+                  <td className="px-1 py-1">
+                    <div className="relative w-48">
                       <input
-                        value={itemDropOpen === i ? (itemSearch[i] ?? it.item_name) : it.item_name}
-                        onFocus={() => { setItemDropOpen(i); setItemSearch(p => ({ ...p, [i]: it.item_name })); }}
-                        onChange={e => { setItemSearch(p => ({ ...p, [i]: e.target.value })); setItemDropOpen(i); }}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 outline-none focus:border-[#027fa5] text-xs pr-6"
-                        placeholder="Search item…"
+                        value={openDropIdx === i ? (itemQuery[i] ?? it.item_name) : it.item_name}
+                        onFocus={(e) => openInputDropdown(e, i, it.item_name)}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          setItemQuery(p => ({ ...p, [i]: val }));
+                          if (openDropIdx !== i) {
+                            setOpenDropIdx(i);
+                            setDropAnchor(e.currentTarget.getBoundingClientRect());
+                          }
+                        }}
+                        className="w-full border border-gray-300 rounded px-2 py-1.5 outline-none focus:border-[#027fa5] text-xs pr-6 uppercase"
+                        placeholder="SEARCH ITEM…"
+                        style={{ textTransform: "uppercase" }}
                         data-testid={`input-item-${i}`}
                       />
                       <Search size={10} className="absolute right-1.5 top-2.5 text-gray-400 pointer-events-none"/>
                     </div>
-                    {itemDropOpen === i && (() => {
-                      const q = (itemSearch[i] ?? "").toLowerCase();
-                      const opts = products.filter((p: any) => !q || p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q));
-                      return opts.length > 0 ? (
-                        <div className="absolute z-50 left-1 top-full mt-0.5 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-xs">
-                          {opts.map((p: any) => (
-                            <div key={p.id} onMouseDown={() => pickProduct(i, p)}
-                              className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center">
-                              <span className="font-medium text-gray-800">{p.name}</span>
-                              <span className="text-gray-400 text-[10px]">{p.code}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="absolute z-50 left-1 top-full mt-0.5 w-56 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-400">
-                          No items found
-                        </div>
-                      );
-                    })()}
                   </td>
 
                   {/* Qty */}
@@ -387,7 +449,7 @@ export default function StoreRequestNote() {
         </div>
 
         {/* Add row + summary */}
-        <div className="flex items-center justify-between px-3 py-2 border-t bg-gray-50">
+        <div className="flex items-center justify-between px-3 py-2 border-t bg-gray-50 rounded-b-xl">
           <button onClick={addItem}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded hover:bg-[#d2f1fa] transition-colors"
             style={{ color: SC.primary }} data-testid="btn-add-item">
