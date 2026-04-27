@@ -142,11 +142,16 @@ export default function PhyReconciliation() {
     setRecNo(rec.voucher_no || ""); closeDropdown();
     const r = await fetch(`/api/phy-reconciliations/${rec.id}`, { credentials: "include" });
     const data = await r.json();
-    const items = (data.items || []).map((it: any, i: number) => calcRow({
-      sno: i + 1, item_code: it.item_code || "", item_name: it.item_name || "",
-      uom: it.uom || "Nos", system_qty: +it.system_qty || 0, physical_qty: +it.physical_qty || 0,
-      difference: +it.difference || 0, adj_type: it.adj_type || "Match", reason: it.reason || "",
-    }));
+    const items = (data.items || []).map((it: any, i: number) => {
+      // Always use the CURRENT live stock as system_qty so adjustments reflect reality
+      const liveProd = (allProducts as any[]).find((p: any) => p.code === it.item_code);
+      const liveStock = liveProd ? (parseFloat(liveProd.current_stock) || 0) : (+it.system_qty || 0);
+      return calcRow({
+        sno: i + 1, item_code: it.item_code || "", item_name: it.item_name || "",
+        uom: it.uom || "Nos", system_qty: liveStock, physical_qty: +it.physical_qty || 0,
+        difference: 0, adj_type: "Match", reason: it.reason || "",
+      });
+    });
     setForm({
       rec_date: data.rec_date?.slice(0, 10) || today(),
       store_id: data.store_id || "",

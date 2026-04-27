@@ -3597,16 +3597,9 @@ Return ONLY valid JSON (no markdown, no explanation):
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        // Check if the existing record was Posted so we know whether to reverse stock
-        const oldRec = await client.query(`SELECT status FROM phy_reconciliations WHERE id=$1`, [req.params.id]);
-        const wasPosted = oldRec.rows[0]?.status === "Posted";
-        // If old record had applied stock changes, restore them before re-applying
-        if (wasPosted) {
-          const oldItems = await client.query(`SELECT item_code, system_qty FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
-          for (const oi of oldItems.rows) {
-            if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.system_qty||0), oi.item_code]);
-          }
-        }
+        // NOTE: We do NOT restore old stock before re-applying.
+        // system_qty in the edit form always reflects the CURRENT live stock,
+        // so we simply set stock to physical_qty when posting — no reversal needed.
         await client.query(`UPDATE phy_reconciliations SET rec_date=$1,store_id=$2,status=$3,remark=$4,updated_at=NOW() WHERE id=$5`,
           [b.rec_date, b.store_id||null, newStatus, b.remark||"", req.params.id]);
         await client.query(`DELETE FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
