@@ -89,6 +89,8 @@ export default function GoodsReceiptReturn() {
     setGrrNo(grr.voucher_no || "");
     const r = await fetch(`/api/goods-receipt-returns/${grr.id}`, { credentials: "include" });
     const data = await r.json();
+    const stockMap: Record<string, number> = {};
+    (allProducts as any[]).forEach((p: any) => { stockMap[p.code] = p2(p.current_stock); });
     setForm({
       return_date: data.return_date?.slice(0,10) || today(),
       store_id: data.store_id || "", supplier_id: data.supplier_id || "",
@@ -97,7 +99,9 @@ export default function GoodsReceiptReturn() {
       remark: data.remark || "", status: data.status || "Draft",
       items: (data.items || []).map((it: any, i: number) => calcItem({
         sno: i+1, item_code: it.item_code||"", item_name: it.item_name||"",
-        stock: p2(it.stock), grn_qty: p2(it.grn_qty), return_qty: p2(it.return_qty),
+        // Always use current live stock, not the saved snapshot
+        stock: stockMap[it.item_code] ?? p2(it.stock),
+        grn_qty: p2(it.grn_qty), return_qty: p2(it.return_qty),
         unit: it.unit||"Nos", rate: p2(it.rate),
         taxable_amt: p2(it.taxable_amt), cgst_pct: p2(it.cgst_pct), cgst_amt: p2(it.cgst_amt),
         sgst_pct: p2(it.sgst_pct), sgst_amt: p2(it.sgst_amt), igst_pct: p2(it.igst_pct), igst_amt: p2(it.igst_amt), total: p2(it.total),
@@ -118,13 +122,19 @@ export default function GoodsReceiptReturn() {
       const data = await r.json();
       const stockMap: Record<string, number> = {};
       (allProducts as any[]).forEach((p: any) => { stockMap[p.code] = p2(p.current_stock); });
-      const items: GrrItem[] = (data.items || []).map((it: any, i: number) => calcItem({
-        sno: i+1, item_code: it.item_code||"", item_name: it.item_name||"",
-        stock: stockMap[it.item_code] ?? 0, grn_qty: p2(it.qty), return_qty: p2(it.qty), // default return = full qty
-        unit: it.unit||"Nos", rate: p2(it.rate),
-        taxable_amt: 0, cgst_pct: p2(it.cgst_pct), cgst_amt: 0,
-        sgst_pct: p2(it.sgst_pct), sgst_amt: 0, igst_pct: p2(it.igst_pct), igst_amt: 0, total: 0,
-      }));
+      const items: GrrItem[] = (data.items || []).map((it: any, i: number) => {
+        const liveStock = stockMap[it.item_code] ?? 0;
+        const grnQty = p2(it.qty);
+        // Default return qty = min(grn qty, available stock)
+        const defaultReturnQty = Math.min(grnQty, liveStock);
+        return calcItem({
+          sno: i+1, item_code: it.item_code||"", item_name: it.item_name||"",
+          stock: liveStock, grn_qty: grnQty, return_qty: defaultReturnQty,
+          unit: it.unit||"Nos", rate: p2(it.rate),
+          taxable_amt: 0, cgst_pct: p2(it.cgst_pct), cgst_amt: 0,
+          sgst_pct: p2(it.sgst_pct), sgst_amt: 0, igst_pct: p2(it.igst_pct), igst_amt: 0, total: 0,
+        });
+      });
       setForm(f => ({
         ...f, grn_id: grn.id, grn_no: grn.voucher_no, grn_date: grn.grn_date?.slice(0,10)||"",
         supplier_id: grn.supplier_id||"", supplier_name: grn.supplier_name||grn.supplier_name_manual||"",
@@ -143,6 +153,16 @@ export default function GoodsReceiptReturn() {
 
   async function handleSave() {
     setErr(""); setSaving(true);
+    // Validate: return qty must not exceed available live stock
+    const overStockItems = form.items.filter(it => p2(it.return_qty) > p2(it.stock));
+    if (overStockItems.length > 0) {
+      const msgs = overStockItems.map(it =>
+        `• ${it.item_name || it.item_code}: Return Qty ${it.return_qty} exceeds available stock ${it.stock}`
+      ).join("\n");
+      alert(`Cannot save — return quantity exceeds available stock:\n\n${msgs}`);
+      setSaving(false);
+      return;
+    }
     const payload = { ...form, total_qty: totalQty, taxable_amount: taxableTotal, cgst_amount: cgstTotal, sgst_amount: sgstTotal, igst_amount: igstTotal, grand_total: grandTotal };
     const url = editId ? `/api/goods-receipt-returns/${editId}` : "/api/goods-receipt-returns";
     const method = editId ? "PATCH" : "POST";
@@ -259,6 +279,16 @@ export default function GoodsReceiptReturn() {
       </div>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg">{err}</div>}
+      {form.items.some(it => p2(it.return_qty) > p2(it.stock)) && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-800 text-sm px-4 py-2 rounded-lg flex items-start gap-2">
+          <span className="font-bold mt-0.5">⚠</span>
+          <span>
+            <strong>Return qty exceeds available stock</strong> for one or more items.
+            The return qty (highlighted in red) cannot be more than the current available stock.
+            Please correct before saving.
+          </span>
+        </div>
+      )}
 
       {/* Header + GRN selector */}
       <div className="grid grid-cols-2 gap-4">
@@ -366,15 +396,24 @@ export default function GoodsReceiptReturn() {
                   <td className="px-2 py-1 text-right text-gray-600 w-12 tabular-nums">{it.stock}</td>
                   {/* GRN Qty */}
                   <td className="px-2 py-1 text-right text-gray-600 w-14 tabular-nums">{it.grn_qty}</td>
-                  {/* Return Qty — editable, capped at grn_qty */}
+                  {/* Return Qty — editable, must not exceed live stock */}
                   <td className="px-1 py-1">
-                    <input type="number" step="0.001" value={it.return_qty || ""}
+                    <input type="number" step="0.001" min="0" value={it.return_qty || ""}
                       onChange={e => {
-                        const v = Math.min(parseFloat(e.target.value)||0, it.grn_qty);
+                        const v = parseFloat(e.target.value) || 0;
                         updItem(i, "return_qty", v);
                       }}
-                      className="border-2 border-[#027fa5] rounded px-2 py-1.5 w-16 outline-none focus:border-[#d74700] text-xs text-right font-semibold"
+                      className={`border-2 rounded px-2 py-1.5 w-16 outline-none text-xs text-right font-semibold ${
+                        p2(it.return_qty) > p2(it.stock)
+                          ? "border-red-500 bg-red-50 text-red-700 focus:border-red-600"
+                          : "border-[#027fa5] focus:border-[#d74700]"
+                      }`}
                       data-testid={`input-rqty-${i}`}/>
+                    {p2(it.return_qty) > p2(it.stock) && (
+                      <div className="text-red-600 text-[10px] mt-0.5 whitespace-nowrap">
+                        Max: {it.stock}
+                      </div>
+                    )}
                   </td>
                   <td className="px-1 py-1">
                     <input readOnly value={it.unit} className="border border-gray-200 bg-gray-50 rounded px-2 py-1.5 w-12 text-xs text-center"/>

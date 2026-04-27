@@ -2766,6 +2766,13 @@ Return ONLY valid JSON (no markdown, no explanation):
             it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
+        // Add received qty to live stock on GRN inward
+        if (it.item_code && +it.qty > 0) {
+          await client.query(
+            `UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`,
+            [+it.qty, it.item_code]
+          );
+        }
       }
 
       await postGrnVoucher(client, hdr, { ...b, items, grand_total });
@@ -2806,6 +2813,14 @@ Return ONLY valid JSON (no markdown, no explanation):
       if (!hdrRes.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "GRN not found" }); }
       const hdr = hdrRes.rows[0];
 
+      // Reverse old stock before updating items
+      const oldGrnItems = await client.query(`SELECT item_code, qty FROM goods_receipt_note_items WHERE grn_id=$1`, [hdr.id]);
+      for (const oi of oldGrnItems.rows) {
+        if (oi.item_code && +oi.qty > 0) {
+          await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+oi.qty, oi.item_code]);
+        }
+      }
+
       await client.query(`DELETE FROM goods_receipt_note_items WHERE grn_id=$1`, [hdr.id]);
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
@@ -2818,6 +2833,10 @@ Return ONLY valid JSON (no markdown, no explanation):
             it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
+        // Re-apply updated qty to live stock
+        if (it.item_code && +it.qty > 0) {
+          await client.query(`UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`, [+it.qty, it.item_code]);
+        }
       }
 
       await postGrnVoucher(client, hdr, { ...b, items, grand_total });
