@@ -470,6 +470,20 @@ export default function StoreRequestNote() {
           className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
           data-testid="textarea-remark"/>
       </div>
+
+      {/* Save / Cancel */}
+      <div className="flex items-center justify-end gap-3 pb-4">
+        <button onClick={() => setMode("list")}
+          className="px-5 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+          data-testid="btn-cancel-bottom">
+          Cancel
+        </button>
+        <button onClick={handleSave} disabled={saving}
+          className="px-6 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+          style={{ background: SC.primary }} data-testid="btn-save-bottom">
+          {saving ? "Saving…" : editId ? "Update" : "Save"}
+        </button>
+      </div>
     </div>
   );
 }
