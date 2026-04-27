@@ -1669,6 +1669,64 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/expiry-item-list — items with expiry dates in a date range
+  app.get("/api/reports/expiry-item-list", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from     = (req.query.from     as string) || "2000-01-01";
+      const to       = (req.query.to       as string) || "2099-12-31";
+      const storeId  = (req.query.store_id as string) || "";
+      const rows = (await pool.query(`
+        SELECT
+          item_code, item_name, stock_qty, unit,
+          expiry_date, batch_no, store_name, store_id,
+          source
+        FROM (
+          -- From Store Openings
+          SELECT
+            soi.item_code,
+            soi.item_name,
+            soi.opening_qty::numeric   AS stock_qty,
+            soi.uom                    AS unit,
+            soi.expiry_date,
+            COALESCE(soi.batch_no,'')  AS batch_no,
+            COALESCE(w.name,'')        AS store_name,
+            so.store_id,
+            'Opening'                  AS source
+          FROM store_opening_items soi
+          JOIN store_openings so ON so.id = soi.sop_id
+          LEFT JOIN warehouses w ON w.id = so.store_id
+          WHERE soi.expiry_date IS NOT NULL
+            AND so.status = 'Posted'
+
+          UNION ALL
+
+          -- From GRN Items
+          SELECT
+            grni.item_code,
+            grni.item_name,
+            grni.qty::numeric          AS stock_qty,
+            COALESCE(grni.unit,'')     AS unit,
+            grni.expiry_date,
+            COALESCE(grni.batch_no,'') AS batch_no,
+            COALESCE(w.name,'')        AS store_name,
+            grn.store_id,
+            'GRN'                      AS source
+          FROM goods_receipt_note_items grni
+          JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
+          LEFT JOIN warehouses w ON w.id = grn.store_id
+          WHERE grni.expiry_date IS NOT NULL
+            AND COALESCE(grn.status,'') <> 'Cancelled'
+        ) t
+        WHERE expiry_date BETWEEN $1 AND $2
+          AND ($3 = '' OR store_id = $3)
+          AND (item_code IS NOT NULL AND item_code <> '')
+        ORDER BY expiry_date, item_name, batch_no
+      `, [from, to, storeId])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/issue-register — store issue indent lines
   app.get("/api/reports/issue-register", requireAuth, async (req, res) => {
     try {
