@@ -1124,6 +1124,114 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── Accounting Vouchers (manual voucher entry) ──────────────────────────────
+  app.get("/api/accounting-vouchers", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      // Ensure extra columns exist (idempotent migrations)
+      await pool.query(`ALTER TABLE voucher_mas ADD COLUMN IF NOT EXISTS payment_mode text DEFAULT ''`).catch(()=>{});
+      const r = await pool.query(`
+        SELECT vm.*, vt.name AS voucher_type_name
+        FROM voucher_mas vm
+        LEFT JOIN voucher_types vt ON vt.code = vm.voucher_type
+        WHERE vm.source_type = 'manual'
+        ORDER BY vm.voucher_date DESC, vm.voucher_no DESC
+        LIMIT 200
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/accounting-vouchers/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hdr, det] = await Promise.all([
+        pool.query(`SELECT vm.*, vt.name AS voucher_type_name FROM voucher_mas vm LEFT JOIN voucher_types vt ON vt.code=vm.voucher_type WHERE vm.id=$1`, [req.params.id]),
+        pool.query(`
+          SELECT vd.*, sl.name AS sl_name, sl.code AS sl_code, gl.name AS gl_name
+          FROM voucher_det vd
+          LEFT JOIN sub_ledgers sl ON sl.id = vd.sub_ledger_id
+          LEFT JOIN general_ledgers gl ON gl.id = vd.general_ledger_id
+          WHERE vd.voucher_mas_id = $1
+          ORDER BY vd.seq_no
+        `, [req.params.id]),
+      ]);
+      if (!hdr.rows[0]) return res.status(404).json({ message: "Not found" });
+      res.json({ ...hdr.rows[0], lines: det.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/accounting-vouchers", requireAuth, async (req, res) => {
+    const client = await (await import("./db")).pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { pool } = await import("./db");
+      // Ensure payment_mode column exists
+      await pool.query(`ALTER TABLE voucher_mas ADD COLUMN IF NOT EXISTS payment_mode text DEFAULT ''`).catch(()=>{});
+      const { generateVoucherNo } = await import("./voucher");
+      const { voucherTypeCode, voucherTypeName, referenceNo, referenceDate,
+              voucherDate, paymentMode, narration, lines = [] } = req.body;
+
+      // Validate Dr/Cr balance
+      const totalDr = lines.filter((l: any) => l.drCr === "DR").reduce((s: number, l: any) => s + parseFloat(l.amount || 0), 0);
+      const totalCr = lines.filter((l: any) => l.drCr === "CR").reduce((s: number, l: any) => s + parseFloat(l.amount || 0), 0);
+      if (Math.abs(totalDr - totalCr) > 0.01) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: `Voucher is not balanced. Debit: ₹${totalDr.toFixed(2)}, Credit: ₹${totalCr.toFixed(2)}` });
+      }
+
+      // Get current FY
+      const fyRes = await client.query(`SELECT id, label FROM financial_years WHERE is_current=true LIMIT 1`);
+      const fy = fyRes.rows[0] || { id: null, label: "" };
+
+      const voucherNo = await generateVoucherNo(voucherTypeCode || "manual_voucher", client);
+
+      const vmRes = await client.query(`
+        INSERT INTO voucher_mas (voucher_no, voucher_type, voucher_date, ref_no, ref_date,
+          financial_year_id, financial_year, total_amount, taxable_amount, tax_amount,
+          narration, source_type, source_id, payment_mode)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'manual',$12,$13)
+        RETURNING id
+      `, [
+        voucherNo, voucherTypeCode || voucherTypeName, voucherDate || new Date().toISOString().slice(0,10),
+        referenceNo || "", referenceDate || null,
+        fy.id, fy.label, totalDr.toFixed(2), totalDr.toFixed(2), "0",
+        narration || "", voucherNo, paymentMode || null,
+      ]);
+      const vmId = vmRes.rows[0].id;
+
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (!l.subLedgerId && !l.generalLedgerId) continue;
+        // Get GL id from sub-ledger if not provided
+        let glId = l.generalLedgerId || null;
+        if (!glId && l.subLedgerId) {
+          const slR = await client.query(`SELECT general_ledger_id FROM sub_ledgers WHERE id=$1`, [l.subLedgerId]);
+          glId = slR.rows[0]?.general_ledger_id || null;
+        }
+        await client.query(`
+          INSERT INTO voucher_det (voucher_mas_id, seq_no, general_ledger_id, sub_ledger_id, dr_cr, amount, narration)
+          VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `, [vmId, i + 1, glId, l.subLedgerId || null, l.drCr, parseFloat(l.amount || 0), l.narration || narration || ""]);
+      }
+
+      await client.query("COMMIT");
+      res.json({ id: vmId, voucherNo });
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
+  });
+
+  app.delete("/api/accounting-vouchers/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM voucher_det WHERE voucher_mas_id=$1`, [req.params.id]);
+      await pool.query(`DELETE FROM voucher_mas WHERE id=$1 AND source_type='manual'`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   // ─── Voucher Series ───────────────────────────────────────────────────────────
   app.get("/api/voucher-series", requireAuth, async (_req, res) => {
     const { db } = await import("./db");

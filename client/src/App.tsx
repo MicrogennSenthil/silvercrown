@@ -47,6 +47,7 @@ import StoreOpening from "@/pages/inventory/StoreOpening";
 import FinancialYears from "@/pages/masters/FinancialYears";
 import YearEndClosing from "@/pages/masters/YearEndClosing";
 import VoucherSeries from "@/pages/masters/VoucherSeries";
+import AccountingVoucher from "@/pages/accounts/AccountingVoucher";
 import StoreMaster from "@/pages/masters/StoreMaster";
 // User Management
 import Users from "@/pages/usermgmt/Users";
@@ -124,6 +125,7 @@ function Router() {
       <Route path="/masters/store-item-sub-groups"><ProtectedRoute component={StoreItemSubGroups} /></Route>
       <Route path="/masters/general-ledgers"><ProtectedRoute component={GeneralLedgerTree} /></Route>
       <Route path="/masters/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>
+      <Route path="/accounts/voucher"><ProtectedRoute component={AccountingVoucher} /></Route>
       <Route path="/accounts/general-ledger"><ProtectedRoute component={GeneralLedgerTree} /></Route>
       <Route path="/accounts/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>
       <Route path="/setup"><ProtectedRoute component={SoftwareSetup} /></Route>

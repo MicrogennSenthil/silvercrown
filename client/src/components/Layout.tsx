@@ -91,10 +91,9 @@ const NAV: any[] = [
   },
   {
     label: "Accounts", icon: BookOpen, children: [
-      { label: "Journal Entries", href: "/accounts/journal" },
+      { label: "Voucher", href: "/accounts/voucher" },
       { label: "General Ledger", href: "/accounts/general-ledger" },
       { label: "Ledger", href: "/accounts/ledger" },
-      { label: "Reports", href: "/accounts/reports" },
     ]
   },
   { label: "Tasks & Reminders", icon: CheckSquare, href: "/tasks" },
