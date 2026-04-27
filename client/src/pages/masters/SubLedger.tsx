@@ -14,14 +14,14 @@ function fmt(v: string | number) {
 // ── Inline toggle (Credit/Debit selector) ────────────────────────────────────
 function CrDrToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div className="flex border border-gray-300 rounded overflow-hidden text-xs font-semibold">
+    <div className="flex border border-gray-300 rounded overflow-hidden text-sm font-medium h-[34px]">
       <button type="button" onClick={() => onChange("Credit")}
-        className="px-3 py-1 transition-colors"
+        className="px-4 transition-colors"
         style={value === "Credit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#6b7280" }}>
         Credit
       </button>
       <button type="button" onClick={() => onChange("Debit")}
-        className="px-3 py-1 transition-colors"
+        className="px-4 transition-colors"
         style={value === "Debit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#6b7280" }}>
         Debit
       </button>
@@ -174,7 +174,7 @@ function LedgerForm({
               <input
                 value={name} onChange={e => setName(e.target.value)}
                 placeholder="Enter Ledger Name..."
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+                className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm outline-none focus:border-[#027fa5]"
                 data-testid="input-ledger-name"
               />
             </div>
@@ -184,7 +184,7 @@ function LedgerForm({
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Ledger</label>
               <select
                 value={glId} onChange={e => setGlId(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm bg-white outline-none focus:border-[#027fa5] appearance-none"
+                className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm bg-white outline-none focus:border-[#027fa5] appearance-none"
                 data-testid="select-general-ledger"
               >
                 <option value="">-- Select Parent Ledger --</option>
@@ -198,7 +198,7 @@ function LedgerForm({
             {/* Category (read-only, from GL) */}
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category</label>
-              <div className="w-full border border-gray-200 rounded px-3 py-2.5 text-sm text-gray-700 bg-gray-50 flex items-center justify-between">
+              <div className="w-full border border-gray-200 rounded px-3 h-[34px] text-sm text-gray-700 bg-gray-50 flex items-center justify-between">
                 <span>{catName || <span className="text-gray-400 text-xs">Auto from Ledger</span>}</span>
                 <ChevronDown size={14} className="text-gray-400" />
               </div>
@@ -211,7 +211,7 @@ function LedgerForm({
             <div className="relative">
               <select
                 value={levelType} onChange={e => setLevelType(e.target.value)}
-                className="border border-gray-300 rounded px-3 py-2 text-sm bg-white outline-none focus:border-[#027fa5] appearance-none pr-8 font-medium text-gray-700"
+                className="border border-gray-300 rounded px-3 h-[34px] text-sm bg-white outline-none focus:border-[#027fa5] appearance-none pr-8 font-medium text-gray-700"
                 data-testid="select-level-type"
               >
                 <option value="Same">Same Level</option>
@@ -224,7 +224,7 @@ function LedgerForm({
             <div className="relative">
               <select
                 value={paymentType} onChange={e => setPaymentType(e.target.value)}
-                className="border border-gray-300 rounded px-3 py-2 text-sm bg-white outline-none focus:border-[#027fa5] appearance-none pr-8 font-medium text-gray-700"
+                className="border border-gray-300 rounded px-3 h-[34px] text-sm bg-white outline-none focus:border-[#027fa5] appearance-none pr-8 font-medium text-gray-700"
                 data-testid="select-payment-type"
               >
                 <option value="OnAccount">On Account</option>
@@ -234,7 +234,7 @@ function LedgerForm({
             </div>
 
             {/* Opening Balance Entry toggle */}
-            <div className="flex items-center gap-2 border border-gray-300 rounded px-3 py-2">
+            <div className="flex items-center gap-2 border border-gray-300 rounded px-3 h-[34px]">
               <span className="text-sm text-gray-700 font-medium whitespace-nowrap">Opening Balance Entry</span>
               <button
                 type="button"
@@ -258,7 +258,7 @@ function LedgerForm({
                   type="number" value={obAmount}
                   onChange={e => { if (!obEntry) setObAmount(e.target.value); }}
                   readOnly={obEntry}
-                  className="w-28 border border-gray-300 rounded-l px-2 py-1 text-sm outline-none focus:border-[#027fa5] text-right"
+                  className="w-28 border border-gray-300 rounded-l px-2 h-[34px] text-sm outline-none focus:border-[#027fa5] text-right"
                   placeholder="0000.00"
                   data-testid="input-opening-balance"
                 />
@@ -274,7 +274,7 @@ function LedgerForm({
                   type="number" value={cbAmount}
                   onChange={e => { if (!obEntry) setCbAmount(e.target.value); }}
                   readOnly={obEntry}
-                  className="w-28 border border-gray-300 rounded-l px-2 py-1 text-sm outline-none focus:border-[#027fa5] text-right"
+                  className="w-28 border border-gray-300 rounded-l px-2 h-[34px] text-sm outline-none focus:border-[#027fa5] text-right"
                   placeholder="0000.00"
                   data-testid="input-closing-balance"
                 />
