@@ -18,6 +18,13 @@ function fmtAmt(v: number | string | null | undefined) {
   const n = parseFloat(String(v ?? 0));
   return isNaN(n) ? "—" : n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+function taxCell(amt: string, pct: string) {
+  const a = parseFloat(amt || "0");
+  const p = parseFloat(pct || "0");
+  if (a === 0 && p === 0) return "—";
+  if (p > 0) return `${fmtN(a)}(${p}%)`;
+  return fmtN(a);
+}
 
 type Row = {
   receipt_no: string; receipt_dt: string;
@@ -28,7 +35,7 @@ type Row = {
   cgst_pct: string; cgst_amt: string;
   sgst_pct: string; sgst_amt: string;
   igst_pct: string; igst_amt: string;
-  total: string;
+  total: string; user_name: string;
 };
 
 export default function ReceiptList() {
@@ -52,7 +59,7 @@ export default function ReceiptList() {
     if (!search.trim()) return rows;
     const q = search.toLowerCase();
     return rows.filter(r =>
-      [r.receipt_no, r.bill_no, r.supplier, r.item_code, r.item_name].join(" ").toLowerCase().includes(q)
+      [r.receipt_no, r.bill_no, r.supplier, r.item_code, r.item_name, r.user_name].join(" ").toLowerCase().includes(q)
     );
   }, [rows, search]);
 
@@ -69,7 +76,7 @@ export default function ReceiptList() {
     const headers = [
       "S.No","Receipt No","Receipt Dt","Bill No","Bill Date","Supplier",
       "Item Code","Item Name","Unit","Qty","Rate ₹","Taxable Amt ₹",
-      "CGST%","CGST ₹","SGST%","SGST ₹","IGST%","IGST ₹","Total ₹",
+      "CGST ₹","SGST ₹","IGST ₹","Total Amt ₹","User",
     ];
     const data = filtered.map((r, i) => [
       i + 1, r.receipt_no, fmtDate(r.receipt_dt),
@@ -77,21 +84,17 @@ export default function ReceiptList() {
       r.bill_date ? fmtDate(r.bill_date) : "—",
       r.supplier, r.item_code, r.item_name, r.unit,
       fmtN(r.qty), fmtAmt(r.rate), fmtAmt(r.taxable_amt),
-      fmtN(r.cgst_pct), fmtAmt(r.cgst_amt),
-      fmtN(r.sgst_pct), fmtAmt(r.sgst_amt),
-      fmtN(r.igst_pct), fmtAmt(r.igst_amt),
-      fmtAmt(r.total),
+      taxCell(r.cgst_amt, r.cgst_pct),
+      taxCell(r.sgst_amt, r.sgst_pct),
+      taxCell(r.igst_amt, r.igst_pct),
+      fmtAmt(r.total), r.user_name || "—",
     ]);
     exportToCSV("ReceiptList.csv", headers, data);
   }
 
   const TH  = "px-3 py-2.5 text-xs font-bold text-gray-700 whitespace-nowrap text-left";
   const THR = "px-3 py-2.5 text-xs font-bold text-gray-700 whitespace-nowrap text-right";
-
-  function taxLabel(pct: string) {
-    const p = parseFloat(pct || "0");
-    return p > 0 ? `(${p}%)` : "";
-  }
+  const COLS = 17;
 
   return (
     <ReportShell
@@ -115,7 +118,7 @@ export default function ReceiptList() {
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm" style={{ minWidth: 1200 }}>
+        <table className="w-full text-sm" style={{ minWidth: 1300 }}>
           <thead className="sticky top-0">
             <tr style={{ background: SC.tonal }}>
               <th className={TH}  style={{ width: 44 }}>S.no</th>
@@ -123,22 +126,23 @@ export default function ReceiptList() {
               <th className={TH}  style={{ width: 105 }}>Receipt Dt</th>
               <th className={TH}  style={{ width: 82 }}>Bill No</th>
               <th className={TH}  style={{ width: 105 }}>Bill Date</th>
-              <th className={TH}  style={{ minWidth: 140 }}>Supplier</th>
+              <th className={TH}  style={{ minWidth: 130 }}>Supplier</th>
               <th className={TH}  style={{ width: 88 }}>Item Code</th>
-              <th className={TH}  style={{ minWidth: 130 }}>Item Name</th>
-              <th className={TH}  style={{ width: 55 }}>Unit</th>
-              <th className={THR} style={{ width: 65 }}>Qty</th>
-              <th className={THR} style={{ width: 75 }}>Rate ₹</th>
-              <th className={THR} style={{ width: 100 }}>Taxable ₹</th>
-              <th className={THR} style={{ width: 90 }}>CGST ₹</th>
-              <th className={THR} style={{ width: 90 }}>SGST ₹</th>
-              <th className={THR} style={{ width: 90 }}>IGST ₹</th>
-              <th className={THR} style={{ width: 100 }}>Total ₹</th>
+              <th className={TH}  style={{ minWidth: 120 }}>Item Name</th>
+              <th className={TH}  style={{ width: 50 }}>Unit</th>
+              <th className={THR} style={{ width: 60 }}>Qty</th>
+              <th className={THR} style={{ width: 72 }}>Rate ₹</th>
+              <th className={THR} style={{ width: 100 }}>Taxable Amt ₹</th>
+              <th className={THR} style={{ width: 95 }}>CGST ₹</th>
+              <th className={THR} style={{ width: 95 }}>SGST ₹</th>
+              <th className={THR} style={{ width: 95 }}>IGST ₹</th>
+              <th className={THR} style={{ width: 100 }}>Total Amt ₹</th>
+              <th className={TH}  style={{ width: 90 }}>User</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={16} className="px-5 py-14 text-center text-gray-400">
+              <tr><td colSpan={COLS} className="px-5 py-14 text-center text-gray-400">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-7 h-7 rounded-full animate-spin"
                     style={{ border: "3px solid #d2f1fa", borderTopColor: "#027fa5" }} />
@@ -147,7 +151,7 @@ export default function ReceiptList() {
               </td></tr>
             )}
             {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={16} className="px-5 py-14 text-center">
+              <tr><td colSpan={COLS} className="px-5 py-14 text-center">
                 <div className="flex flex-col items-center gap-2 text-gray-400">
                   <AlertCircle size={28} className="text-gray-300" />
                   <span className="text-sm">
@@ -173,22 +177,17 @@ export default function ReceiptList() {
                 <td className="px-3 py-2.5 text-sm text-right font-medium text-gray-700">{fmtN(row.qty)}</td>
                 <td className="px-3 py-2.5 text-sm text-right text-gray-600">{fmtAmt(row.rate)}</td>
                 <td className="px-3 py-2.5 text-sm text-right text-gray-700">{fmtAmt(row.taxable_amt)}</td>
-                <td className="px-3 py-2.5 text-sm text-right text-gray-600">
-                  {fmtAmt(row.cgst_amt)}
-                  {parseFloat(row.cgst_pct||"0") > 0 &&
-                    <span className="text-xs text-gray-400 ml-0.5">{taxLabel(row.cgst_pct)}</span>}
+                <td className="px-3 py-2.5 text-sm text-right text-gray-600 whitespace-nowrap">
+                  {taxCell(row.cgst_amt, row.cgst_pct)}
                 </td>
-                <td className="px-3 py-2.5 text-sm text-right text-gray-600">
-                  {fmtAmt(row.sgst_amt)}
-                  {parseFloat(row.sgst_pct||"0") > 0 &&
-                    <span className="text-xs text-gray-400 ml-0.5">{taxLabel(row.sgst_pct)}</span>}
+                <td className="px-3 py-2.5 text-sm text-right text-gray-600 whitespace-nowrap">
+                  {taxCell(row.sgst_amt, row.sgst_pct)}
                 </td>
-                <td className="px-3 py-2.5 text-sm text-right text-gray-600">
-                  {fmtAmt(row.igst_amt)}
-                  {parseFloat(row.igst_pct||"0") > 0 &&
-                    <span className="text-xs text-gray-400 ml-0.5">{taxLabel(row.igst_pct)}</span>}
+                <td className="px-3 py-2.5 text-sm text-right text-gray-600 whitespace-nowrap">
+                  {taxCell(row.igst_amt, row.igst_pct)}
                 </td>
                 <td className="px-3 py-2.5 text-sm text-right font-semibold text-gray-800">{fmtAmt(row.total)}</td>
+                <td className="px-3 py-2.5 text-sm text-gray-600">{row.user_name || "—"}</td>
               </tr>
             ))}
             {/* Totals row */}
@@ -202,6 +201,7 @@ export default function ReceiptList() {
                 <td className="px-3 py-3 text-sm font-bold text-right text-gray-800">{fmtAmt(totals.sgst_amt)}</td>
                 <td className="px-3 py-3 text-sm font-bold text-right text-gray-800">{fmtAmt(totals.igst_amt)}</td>
                 <td className="px-3 py-3 text-sm font-bold text-right text-gray-800">{fmtAmt(totals.total)}</td>
+                <td />
               </tr>
             )}
           </tbody>

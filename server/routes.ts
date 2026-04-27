@@ -1656,10 +1656,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(grni.sgst_amt::numeric, 0)              AS sgst_amt,
           COALESCE(grni.igst_pct::numeric, 0)              AS igst_pct,
           COALESCE(grni.igst_amt::numeric, 0)              AS igst_amt,
-          COALESCE(grni.total::numeric, 0)                 AS total
+          COALESCE(grni.total::numeric, 0)                 AS total,
+          COALESCE(u.name, u.username, '')                 AS user_name
         FROM goods_receipt_notes grn
         JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
         LEFT JOIN customers c ON c.id = grn.supplier_id
+        LEFT JOIN users u ON u.id::text = grn.created_by::text
         WHERE grn.grn_date BETWEEN $1 AND $2
         ORDER BY grn.grn_date DESC, grn.voucher_no, grni.sno
       `, [from, to])).rows;
