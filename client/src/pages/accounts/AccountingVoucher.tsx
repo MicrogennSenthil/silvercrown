@@ -1,18 +1,37 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Trash2, Info, ChevronDown, ArrowLeft, Send, Search, CheckCircle2, Plus } from "lucide-react";
+import {
+  Trash2, Info, ChevronDown, ArrowLeft, Send, Search,
+  CheckCircle2, Plus, AlertCircle, X,
+} from "lucide-react";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
 function today() { return new Date().toISOString().slice(0, 10); }
-function fmt2(v: number | string) { return parseFloat(String(v) || "0").toFixed(2); }
+function fmtAmt(v: number | string) {
+  const n = parseFloat(String(v) || "0");
+  return isNaN(n) ? "0.00" : n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function parseAmt(v: string) { return parseFloat(v.replace(/,/g, "")) || 0; }
 function uuid() { return crypto.randomUUID(); }
 
-type Nature = "payment" | "receipt" | "contra" | "journal";
+// ── Types ─────────────────────────────────────────────────────────────────────
+type Nature     = "payment" | "receipt" | "contra" | "journal";
 type FilterType = "bank" | "cash" | "bank_cash" | "all";
 
-// ── Nature detection ─────────────────────────────────────────────────────────
+type VLine = {
+  _key: string;
+  isMain: boolean;
+  drCr: "DR" | "CR";
+  subLedgerId: string;
+  subLedgerName: string;
+  amount: string;
+  narration: string;
+  _err?: string;  // inline validation error
+};
+
+// ── Voucher nature helpers ────────────────────────────────────────────────────
 function getNature(name: string): Nature {
   const n = name.toLowerCase();
   if (n.includes("payment")) return "payment";
@@ -21,35 +40,34 @@ function getNature(name: string): Nature {
   return "journal";
 }
 
-// Main line drCr: Payment → party gets CR; Receipt/Contra/Journal → DR first
+// By = Debit / To = Credit  (Tally convention)
+function drCrLabel(drCr: "DR" | "CR") {
+  return drCr === "DR" ? "By" : "To";
+}
+
 function getMainDrCr(nature: Nature): "DR" | "CR" {
+  // Payment → Party is Credited (To)  Receipt/Contra → Bank is Debited (By)
   return nature === "payment" ? "CR" : "DR";
 }
 
-// ── Per-line account filter (by position in table) ────────────────────────────
-function getLineFilterByIndex(vtName: string, idx: number): FilterType {
-  const n = vtName.toLowerCase();
+// ── Per-line ledger filter (by row index) ─────────────────────────────────────
+function getLineFilter(vtName: string, idx: number): FilterType {
+  const n      = vtName.toLowerCase();
   const nature = getNature(vtName);
   if (n.includes("contra")) return "bank_cash";
   if (nature === "payment") {
-    if (idx === 0) return "all";          // Row 1: party — any ledger
-    if (idx === 1) {
-      if (n.includes("bank")) return "bank";
-      if (n.includes("cash")) return "cash";
-    }
-    return "all";                          // Row 3+: splits — any ledger
+    if (idx === 0) return "all";
+    if (idx === 1) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "all";
+    return "all";
   }
   if (nature === "receipt") {
-    if (idx === 0) {                       // Row 1: bank/cash
-      if (n.includes("bank")) return "bank";
-      if (n.includes("cash")) return "cash";
-    }
-    return "all";                          // Row 2+: party / splits
+    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "all";
+    return "all";
   }
   return "all";
 }
 
-function applyFilter(sls: any[], f: FilterType): any[] {
+function applyFilter(sls: any[], f: FilterType) {
   if (f === "all") return sls;
   return sls.filter(s => {
     const g = (s.gl_name || "").toLowerCase();
@@ -60,53 +78,52 @@ function applyFilter(sls: any[], f: FilterType): any[] {
   });
 }
 
-function filterHint(f: FilterType): string | undefined {
+function filterLabel(f: FilterType): string | undefined {
   if (f === "bank")      return "Bank only";
   if (f === "cash")      return "Cash only";
   if (f === "bank_cash") return "Bank / Cash";
   return undefined;
 }
 
-// ── Line type ─────────────────────────────────────────────────────────────────
-type VLine = {
-  _key: string;
-  isMain: boolean;
-  drCr: "DR" | "CR";
-  subLedgerId: string;
-  subLedgerName: string;
-  amount: string;
-  narration: string;
-};
-
-function mkLine(isMain: boolean, drCr: "DR" | "CR", partial: Partial<VLine> = {}): VLine {
-  return { _key: uuid(), isMain, drCr, subLedgerId: "", subLedgerName: "", amount: "", narration: "", ...partial };
+// ── Default lines ─────────────────────────────────────────────────────────────
+function mkLine(isMain: boolean, drCr: "DR" | "CR", extra: Partial<VLine> = {}): VLine {
+  return { _key: uuid(), isMain, drCr, subLedgerId: "", subLedgerName: "", amount: "", narration: "", ...extra };
 }
 
 function buildDefaultLines(vtName: string): VLine[] {
-  const nature = getNature(vtName);
-  const mainDrCr = getMainDrCr(nature);
+  const nature    = getNature(vtName);
+  const mainDrCr  = getMainDrCr(nature);
   const detDrCr: "DR" | "CR" = mainDrCr === "DR" ? "CR" : "DR";
-  return [
-    mkLine(true,  mainDrCr),
-    mkLine(false, detDrCr),
-  ];
+  return [mkLine(true, mainDrCr), mkLine(false, detDrCr)];
 }
 
-// ── Sub-ledger searchable picker ──────────────────────────────────────────────
-function SlPicker({ value, name, onChange, subLedgers, hint }: {
+// ── Inline account picker (Tally-style: type to search) ───────────────────────
+function SlPicker({
+  value, name, onChange, subLedgers, hint, autoOpen, amountRef, onEnterAmount,
+}: {
   value: string; name: string;
   onChange: (id: string, name: string) => void;
   subLedgers: any[];
   hint?: string;
+  autoOpen?: boolean;
+  amountRef?: React.RefObject<HTMLInputElement>;
+  onEnterAmount?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ]       = useState("");
-  const ref      = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [open, setOpen]   = useState(false);
+  const [q, setQ]         = useState("");
+  const containerRef      = useRef<HTMLDivElement>(null);
+  const inputRef          = useRef<HTMLInputElement>(null);
+  const [rect, setRect]   = useState<DOMRect | null>(null);
+  const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    if (autoOpen) { openDrop(); }
+  }, [autoOpen]);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
@@ -115,49 +132,78 @@ function SlPicker({ value, name, onChange, subLedgers, hint }: {
     !q || s.name.toLowerCase().includes(q.toLowerCase()) || (s.code || "").toLowerCase().includes(q.toLowerCase())
   ).slice(0, 80);
 
+  useEffect(() => { setActiveIdx(0); }, [q]);
+
   function openDrop() {
-    if (ref.current) setRect(ref.current.getBoundingClientRect());
+    if (containerRef.current) setRect(containerRef.current.getBoundingClientRect());
     setQ(""); setOpen(true);
     setTimeout(() => inputRef.current?.focus(), 40);
   }
 
+  function select(s: any) {
+    onChange(s.id, s.name);
+    setOpen(false);
+    // After selecting, jump to amount
+    setTimeout(() => amountRef?.current?.focus(), 60);
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (!open) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); }
+    if (e.key === "ArrowUp")   { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
+    if (e.key === "Enter" && filtered[activeIdx]) { e.preventDefault(); select(filtered[activeIdx]); }
+    if (e.key === "Escape") setOpen(false);
+  }
+
   return (
-    <div ref={ref} className="relative w-full">
+    <div ref={containerRef} className="relative w-full">
       <button type="button" onClick={openDrop}
-        className="w-full flex items-center gap-1.5 px-2 py-1.5 border border-gray-200 rounded text-xs bg-white hover:border-[#027fa5] text-left min-h-[30px]"
-        data-testid="btn-pick-sl">
+        className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 border rounded text-sm bg-white text-left min-h-[32px] transition-colors ${
+          open ? "border-[#027fa5] ring-1 ring-[#027fa5]/30" : "border-gray-200 hover:border-[#027fa5]"
+        }`} data-testid="btn-pick-sl">
         {name
           ? <span className="flex-1 truncate text-gray-800 font-medium">{name}</span>
-          : <span className="flex-1 text-gray-400">Select account…</span>}
-        <ChevronDown size={11} className="text-gray-400 flex-shrink-0" />
+          : <span className="flex-1 text-gray-400 text-sm">Select ledger…</span>}
+        <ChevronDown size={12} className="text-gray-400 flex-shrink-0" />
       </button>
+
       {open && rect && (
-        <div className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-2xl overflow-hidden"
-          style={{ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 300), maxHeight: 320 }}>
-          <div className="px-2.5 py-1.5 border-b border-gray-100 flex items-center gap-1.5">
-            <Search size={12} className="text-gray-400 flex-shrink-0" />
+        <div className="fixed z-[200] bg-white border border-[#027fa5]/30 rounded-lg shadow-2xl overflow-hidden"
+          style={{ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 340), maxHeight: 340 }}>
+          {/* Search row */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50/60">
+            <Search size={13} className="text-gray-400 flex-shrink-0" />
             <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
-              placeholder="Search ledger…" className="flex-1 text-xs outline-none py-0.5 min-w-0" />
+              onKeyDown={handleKey}
+              placeholder="Type to search ledger…"
+              className="flex-1 text-sm outline-none py-0.5 bg-transparent" />
             {hint && (
               <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold flex-shrink-0"
                 style={{ background: "#fef3c7", color: "#92400e" }}>{hint}</span>
             )}
+            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <X size={13} />
+            </button>
           </div>
-          <div className="overflow-y-auto" style={{ maxHeight: 270 }}>
+          {/* Results */}
+          <div className="overflow-y-auto" style={{ maxHeight: 280 }}>
             {filtered.length === 0 && (
-              <div className="px-3 py-5 text-xs text-gray-400 text-center">
-                {hint ? `No ${hint} ledgers found` : "No results"}
+              <div className="px-4 py-6 text-sm text-gray-400 text-center">
+                {hint ? `No ${hint} ledger found` : "No matching ledger"}
               </div>
             )}
-            {filtered.map(s => (
+            {filtered.map((s, si) => (
               <button key={s.id} type="button"
-                onClick={() => { onChange(s.id, s.name); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] flex items-center gap-2 ${s.id === value ? "bg-[#d2f1fa] font-semibold" : ""}`}>
-                <span className="text-gray-400 font-mono text-[10px] w-14 flex-shrink-0">{s.code}</span>
+                onClick={() => select(s)}
+                className={`w-full text-left px-3 py-2.5 text-sm flex items-center gap-3 border-b border-gray-50 transition-colors ${
+                  si === activeIdx ? "bg-[#d2f1fa] font-semibold" : "hover:bg-[#d2f1fa]/50"
+                } ${s.id === value ? "text-[#027fa5]" : "text-gray-800"}`}>
+                <span className="text-gray-400 font-mono text-xs w-16 flex-shrink-0">{s.code}</span>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-gray-800 truncate">{s.name}</span>
-                  {s.gl_name && <span className="text-gray-400 text-[10px] truncate">{s.gl_name}</span>}
+                  <span className="truncate">{s.name}</span>
+                  {s.gl_name && <span className="text-gray-400 text-[11px] truncate">{s.gl_name}</span>}
                 </div>
+                {s.id === value && <CheckCircle2 size={13} className="ml-auto text-[#027fa5] flex-shrink-0" />}
               </button>
             ))}
           </div>
@@ -183,12 +229,13 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   const [vDate,     setVDate]     = useState(editData?.voucher_date?.slice(0, 10) || today());
   const [refDate,   setRefDate]   = useState(editData?.ref_date?.slice(0, 10) || today());
   const [narration, setNarration] = useState(editData?.narration || "");
-  const [error,     setError]     = useState("");
+  const [submitErr, setSubmitErr] = useState("");
   const [saved,     setSaved]     = useState(false);
+  const [touched,   setTouched]   = useState(false); // track if user tried to save
 
-  const nature = vtName ? getNature(vtName) : "journal";
-  const mainDrCr: "DR" | "CR" = getMainDrCr(nature);
-  const detDrCr: "DR" | "CR"  = mainDrCr === "DR" ? "CR" : "DR";
+  const nature    = vtName ? getNature(vtName) : "journal";
+  const mainDrCr  = getMainDrCr(nature);
+  const detDrCr: "DR" | "CR" = mainDrCr === "DR" ? "CR" : "DR";
 
   const [lines, setLines] = useState<VLine[]>(() => {
     if (editData?.lines?.length) {
@@ -202,28 +249,37 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     return [mkLine(true, "DR"), mkLine(false, "CR")];
   });
 
-  // Reset lines when voucher type changes
+  // Amount input refs for keyboard jump
+  const amtRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // ── Recalculate totals ──────────────────────────────────────────────────────
+  const totalDr  = lines.filter(l => l.drCr === "DR").reduce((s, l) => s + parseAmt(l.amount), 0);
+  const totalCr  = lines.filter(l => l.drCr === "CR").reduce((s, l) => s + parseAmt(l.amount), 0);
+  const diff     = totalDr - totalCr; // positive = Dr excess, negative = Cr excess
+  const balanced = Math.abs(diff) < 0.005 && totalDr > 0;
+  const mainAmt  = parseAmt(lines[0]?.amount || "0");
+
+  // ── Reset when voucher type changes ────────────────────────────────────────
   useEffect(() => {
     if (!vtName || isEdit) return;
     setLines(buildDefaultLines(vtName));
+    setTouched(false);
   }, [vtName]);
 
-  // Auto-fetch voucher number
+  // ── Auto-fetch voucher number ───────────────────────────────────────────────
   useEffect(() => {
     if (!vtCode || isEdit) return;
     fetch(`/api/voucher-series/next/${vtCode}`, { credentials: "include" })
       .then(r => r.json()).then(d => { if (d.voucher_no) setVoucherNo(d.voucher_no); }).catch(() => {});
   }, [vtCode, isEdit]);
 
-  // ── Line mutations ──────────────────────────────────────────────────────────
-  function updateAmount(key: string, val: string) {
-    setLines(prev => prev.map(l => l._key === key ? { ...l, amount: val } : l));
-  }
-
-  function setLineSl(key: string, id: string, name: string) {
+  // ── Line operations ────────────────────────────────────────────────────────
+  function selectAccount(key: string, id: string, name: string) {
     setLines(prev => {
-      const updated = prev.map(l => l._key === key ? { ...l, subLedgerId: id, subLedgerName: name } : l);
-      // Auto-add empty detail row if the last row is now filled
+      const updated = prev.map(l => l._key === key
+        ? { ...l, subLedgerId: id, subLedgerName: name, _err: undefined }
+        : l);
+      // Auto-add empty row if this was the last row
       const last = updated[updated.length - 1];
       if (last.subLedgerId) {
         updated.push(mkLine(false, nature === "journal" ? "CR" : detDrCr));
@@ -232,17 +288,29 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     });
   }
 
+  function setAmount(key: string, val: string) {
+    setLines(prev => prev.map(l => l._key === key ? { ...l, amount: val, _err: undefined } : l));
+  }
+
+  // On Tab from last detail row's amount → add new row
+  function handleAmountTab(key: string, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Tab" && e.key !== "Enter") return;
+    const idx = lines.findIndex(l => l._key === key);
+    if (idx === lines.length - 1 && lines[idx].subLedgerId) {
+      e.preventDefault();
+      const newLine = mkLine(false, nature === "journal" ? "CR" : detDrCr);
+      setLines(prev => [...prev, newLine]);
+      // Focus will be picked up by the new row's auto-open
+    }
+  }
+
   function removeLine(key: string) {
     setLines(prev => {
-      const remaining = prev.filter(l => l._key !== key);
-      // Keep at least: 1 main + 1 detail
-      if (remaining.length < 2) return prev;
-      // If last line is not empty, add one
-      const last = remaining[remaining.length - 1];
-      if (last.subLedgerId || last.amount) {
-        remaining.push(mkLine(false, nature === "journal" ? "CR" : detDrCr));
-      }
-      return remaining;
+      const remain = prev.filter(l => l._key !== key);
+      if (remain.length < 2) return prev;
+      const last = remain[remain.length - 1];
+      if (last.subLedgerId) remain.push(mkLine(false, nature === "journal" ? "CR" : detDrCr));
+      return remain;
     });
   }
 
@@ -257,28 +325,58 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     setLines(prev => [...prev, mkLine(false, drCr)]);
   }
 
-  // ── Totals ─────────────────────────────────────────────────────────────────
-  const totalDr   = lines.filter(l => l.drCr === "DR").reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
-  const totalCr   = lines.filter(l => l.drCr === "CR").reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
-  const balanced  = Math.abs(totalDr - totalCr) < 0.01 && totalDr > 0;
-  const diff      = Math.abs(totalDr - totalCr);
+  // ── Suggest amount for pending empty rows ───────────────────────────────────
+  function suggestedAmount(l: VLine, idx: number): string {
+    if (l.amount || !l.subLedgerId) return "";
+    // If last meaningful detail row and there's a remaining difference
+    const remaining = Math.abs(diff);
+    if (remaining > 0.005) return fmt2(remaining).toString();
+    return "";
+  }
 
-  // Main line amount (row 0)
-  const mainAmt   = parseFloat(lines[0]?.amount || "0") || 0;
-  // Detail total
-  const detailAmt = lines.slice(1).reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
-  const detailDiff = mainAmt > 0 ? mainAmt - detailAmt : 0;
+  function fmt2(n: number) { return n.toFixed(2); }
+
+  // ── Inline validation ───────────────────────────────────────────────────────
+  type ValidationError = { field: "account" | "amount" | "general"; key?: string; msg: string };
+
+  function validate(): ValidationError[] {
+    const errs: ValidationError[] = [];
+    if (!vtId) errs.push({ field: "general", msg: "Select a Voucher Type to proceed." });
+    const nonEmpty = lines.filter(l => l.subLedgerId || l.amount);
+    if (nonEmpty.length < 2) errs.push({ field: "general", msg: "At least two ledger entries are required." });
+    nonEmpty.forEach(l => {
+      if (!l.subLedgerId) errs.push({ field: "account", key: l._key, msg: "Ledger not selected." });
+      if (!l.amount || parseAmt(l.amount) <= 0) errs.push({ field: "amount", key: l._key, msg: "Amount must be > 0." });
+    });
+    // Duplicate ledger check
+    const ids = nonEmpty.map(l => l.subLedgerId).filter(Boolean);
+    const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+    if (dupes.length) errs.push({ field: "general", msg: "Same ledger appears more than once. Remove duplicates." });
+    if (!balanced && totalDr + totalCr > 0) {
+      errs.push({ field: "general", msg: `Voucher is not balanced. Difference: ₹${fmtAmt(Math.abs(diff))} (${diff > 0 ? "Debit" : "Credit"} excess).` });
+    }
+    return errs;
+  }
+
+  const validationErrors = touched ? validate() : [];
+  const generalErrors    = validationErrors.filter(e => e.field === "general");
 
   // ── Save ────────────────────────────────────────────────────────────────────
   const saveMut = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const errs = validate();
+      if (errs.length) {
+        setTouched(true);
+        throw new Error(errs.filter(e => e.field === "general").map(e => e.msg).join(" "));
+      }
+      const nonEmpty = lines.filter(l => l.subLedgerId && parseAmt(l.amount) > 0);
+      const payload  = {
         voucherTypeCode: vtCode, voucherTypeName: vtName,
         referenceNo: refNo, referenceDate: refDate,
         voucherDate: vDate, narration,
-        lines: lines.filter(l => l.subLedgerId && parseFloat(l.amount || "0") > 0).map(l => ({
-          drCr: l.drCr, subLedgerId: l.subLedgerId || null,
-          amount: l.amount || "0", narration: l.narration || narration,
+        lines: nonEmpty.map(l => ({
+          drCr: l.drCr, subLedgerId: l.subLedgerId,
+          amount: String(parseAmt(l.amount)), narration: l.narration || narration,
         })),
       };
       const res = await fetch("/api/accounting-vouchers", {
@@ -292,8 +390,8 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["/api/accounting-vouchers"] });
       setVoucherNo(data.voucherNo || voucherNo);
-      setSaved(true); setError("");
-      setTimeout(() => setSaved(false), 3000);
+      setSaved(true); setSubmitErr(""); setTouched(false);
+      setTimeout(() => setSaved(false), 3500);
       setRefNo(""); setNarration("");
       setLines(vtName ? buildDefaultLines(vtName) : [mkLine(true, "DR"), mkLine(false, "CR")]);
       if (vtCode) {
@@ -301,21 +399,31 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
           .then(r => r.json()).then(d => { if (d.voucher_no) setVoucherNo(d.voucher_no); });
       }
     },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => setSubmitErr(e.message),
   });
+
+  // ── Totals for display ─────────────────────────────────────────────────────
+  const mainAmtDisplay   = lines[0]?.amount ? fmtAmt(parseAmt(lines[0].amount)) : "—";
+  const detailTotal      = lines.slice(1).reduce((s, l) => s + parseAmt(l.amount), 0);
+  const splitRemaining   = mainAmt > 0 ? mainAmt - detailTotal : 0;
 
   return (
     <div className="p-4" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
-      <div className="max-w-5xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
 
-        {/* Header */}
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-gray-100">
           <div className="flex items-center gap-3">
             <button type="button" onClick={onBack}
               className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700" data-testid="btn-back-voucher">
               <ArrowLeft size={16} />
             </button>
-            <h2 className="font-semibold text-gray-800 text-base">Accounting Voucher Creation</h2>
+            <div>
+              <h2 className="font-semibold text-gray-800 text-base leading-tight">
+                {vtName ? vtName : "Accounting"} Voucher
+              </h2>
+              {voucherNo && <div className="text-xs text-gray-400 font-mono">{voucherNo}</div>}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {saved && (
@@ -331,9 +439,10 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
           </div>
         </div>
 
-        <div className="px-6 py-5 space-y-5">
-          {/* Row 1: Voucher Type | Voucher No | Ref No */}
+        {/* ── Fields ─────────────────────────────────────────────────────── */}
+        <div className="px-6 py-4 space-y-4 border-b border-gray-100">
           <div className="grid grid-cols-3 gap-4">
+            {/* Voucher Type */}
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Voucher Type</label>
               <select value={vtId}
@@ -343,17 +452,21 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                 }}
                 className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm bg-white outline-none focus:border-[#027fa5] appearance-none"
                 data-testid="select-voucher-type">
-                <option value="">— Select Voucher Type —</option>
+                <option value="">— Select Type —</option>
                 {voucherTypes.map((vt: any) => <option key={vt.id} value={vt.id}>{vt.name}</option>)}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
+
+            {/* Voucher No */}
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Voucher No</label>
               <input value={voucherNo} readOnly placeholder="Auto-generated"
-                className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm outline-none bg-gray-50 text-gray-500"
+                className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm bg-gray-50 text-gray-500 outline-none"
                 data-testid="input-voucher-no" />
             </div>
+
+            {/* Ref No */}
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Reference No</label>
               <input value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="REF0215001"
@@ -362,7 +475,6 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
             </div>
           </div>
 
-          {/* Row 2: Dates */}
           <div className="grid grid-cols-2 gap-4">
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Voucher Date</label>
@@ -373,102 +485,135 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               <DatePicker value={refDate} onChange={setRefDate} data-testid="input-ref-date" />
             </div>
           </div>
+        </div>
 
-          {/* Nature badge */}
+        {/* ── Entry Grid ─────────────────────────────────────────────────── */}
+        <div className="px-6 pt-4 pb-2">
+
+          {/* Nature strip */}
           {vtName && (
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-gray-400">Voucher nature:</span>
-              {nature === "payment" && <span className="px-2 py-0.5 rounded font-semibold bg-red-50 text-red-700">Payment — Party Ct · Cash/Bank Dt</span>}
-              {nature === "receipt" && <span className="px-2 py-0.5 rounded font-semibold bg-green-50 text-green-700">Receipt — Cash/Bank Dt · Party Ct</span>}
-              {nature === "contra"  && <span className="px-2 py-0.5 rounded font-semibold bg-blue-50 text-blue-700">Contra — Bank↔Cash Transfer</span>}
-              {nature === "journal" && <span className="px-2 py-0.5 rounded font-semibold bg-purple-50 text-purple-700">Journal — Free-form Dr/Cr</span>}
+            <div className="mb-3 flex items-center gap-2 text-xs">
+              {nature === "payment" && <>
+                <span className="font-semibold text-gray-500">Nature:</span>
+                <span className="px-2 py-0.5 rounded font-bold bg-orange-50 text-orange-700">Payment</span>
+                <span className="text-gray-400">·  <b className="text-green-700">To</b> Party (Credit)  ·  <b className="text-red-700">By</b> Cash/Bank (Debit)</span>
+              </>}
+              {nature === "receipt" && <>
+                <span className="font-semibold text-gray-500">Nature:</span>
+                <span className="px-2 py-0.5 rounded font-bold bg-green-50 text-green-700">Receipt</span>
+                <span className="text-gray-400">·  <b className="text-red-700">By</b> Cash/Bank (Debit)  ·  <b className="text-green-700">To</b> Party (Credit)</span>
+              </>}
+              {nature === "contra"  && <>
+                <span className="font-semibold text-gray-500">Nature:</span>
+                <span className="px-2 py-0.5 rounded font-bold bg-blue-50 text-blue-700">Contra</span>
+                <span className="text-gray-400">·  Bank ↔ Cash Transfer</span>
+              </>}
+              {nature === "journal" && <>
+                <span className="font-semibold text-gray-500">Nature:</span>
+                <span className="px-2 py-0.5 rounded font-bold bg-purple-50 text-purple-700">Journal</span>
+                <span className="text-gray-400">·  Click <b>By/To</b> on each line to toggle Dr/Cr</span>
+              </>}
             </div>
           )}
 
-          {/* Entry Table */}
+          {/* Table */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full">
               <thead>
                 <tr style={{ background: SC.tonal }}>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-10">S.no</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Particulars</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-gray-700 w-32">Debit ₹</th>
-                  <th className="px-3 py-2.5 text-right font-semibold text-gray-700 w-32">Credit ₹</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-600 w-10">#</th>
+                  <th className="px-2 py-2.5 text-left text-xs font-bold text-gray-600 w-12">Dr/Cr</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-600">Particulars / Account</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-bold text-gray-600 w-36">Amount (₹)</th>
                   <th className="w-7"></th>
                 </tr>
               </thead>
               <tbody>
                 {lines.map((l, i) => {
-                  const f        = vtName ? getLineFilterByIndex(vtName, i) : "all";
-                  const filtSls  = applyFilter(allSubs, f);
-                  const fhint    = filterHint(f);
-                  const isDr     = l.drCr === "DR";
-                  // For non-journal, drCr is fixed; for journal, it's toggleable on non-main rows
-                  const canToggle = nature === "journal";
-                  const isLast   = i === lines.length - 1;
-                  const isEmpty  = !l.subLedgerId && !l.amount;
+                  const f          = vtName ? getLineFilter(vtName, i) : "all";
+                  const filtSls    = applyFilter(allSubs, f);
+                  const fhint      = filterLabel(f);
+                  const isDr       = l.drCr === "DR";
+                  const label      = drCrLabel(l.drCr);
+                  const suggested  = !l.amount && l.subLedgerId ? suggestedAmount(l, i) : "";
+                  const isEmpty    = !l.subLedgerId && !l.amount;
+                  const isLast     = i === lines.length - 1;
+                  const canToggle  = nature === "journal";
+                  const lineErr    = touched ? validationErrors.find(e => e.key === l._key) : null;
 
                   return (
                     <tr key={l._key}
                       className={`border-t border-gray-100 transition-colors ${
-                        l.isMain ? "bg-blue-50/20" : isEmpty && isLast ? "bg-gray-50/40" : "bg-white"
+                        l.isMain
+                          ? "bg-[#f0f9ff]"
+                          : isEmpty && isLast
+                            ? "bg-gray-50/30"
+                            : "bg-white"
                       }`}
                       data-testid={`row-voucher-line-${i}`}>
 
-                      {/* S.no + Ct/Dt badge in one cell */}
-                      <td className="px-2 py-2 text-center">
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span className="text-gray-400 text-[10px]">{String(i + 1).padStart(2, "0")}</span>
-                          <button type="button"
-                            onClick={() => canToggle && toggleJournalDrCr(l._key)}
-                            disabled={!canToggle}
-                            title={canToggle ? "Click to toggle Dr/Cr" : (isDr ? "Debit (fixed)" : "Credit (fixed)")}
-                            className="text-[10px] px-1.5 py-0.5 rounded font-bold leading-tight"
-                            style={isDr
-                              ? { background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", cursor: canToggle ? "pointer" : "default" }
-                              : { background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac", cursor: canToggle ? "pointer" : "default" }}
-                            data-testid={`badge-dr-cr-${i}`}>
-                            {isDr ? "Dt" : "Ct"}
-                          </button>
-                        </div>
+                      {/* # */}
+                      <td className="px-3 py-2 text-center text-gray-400 text-xs font-mono">
+                        {String(i + 1).padStart(2, "0")}
                       </td>
 
-                      {/* Particulars */}
+                      {/* By / To badge */}
+                      <td className="px-2 py-2 text-center">
+                        <button type="button"
+                          onClick={() => canToggle && toggleJournalDrCr(l._key)}
+                          disabled={!canToggle}
+                          title={canToggle ? "Click to toggle Debit/Credit" : (isDr ? "Debit (By)" : "Credit (To)")}
+                          className="text-xs font-bold px-2 py-1 rounded w-10 transition-colors"
+                          style={isDr
+                            ? { background: "#fef2f2", color: "#b91c1c", border: "1px solid #fca5a5", cursor: canToggle ? "pointer" : "default" }
+                            : { background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: canToggle ? "pointer" : "default" }}
+                          data-testid={`badge-dr-cr-${i}`}>
+                          {label}
+                        </button>
+                      </td>
+
+                      {/* Account */}
                       <td className="px-2 py-2">
                         <SlPicker
                           value={l.subLedgerId} name={l.subLedgerName}
-                          onChange={(id, name) => setLineSl(l._key, id, name)}
+                          onChange={(id, name) => selectAccount(l._key, id, name)}
                           subLedgers={filtSls} hint={fhint}
+                          amountRef={{ current: amtRefs.current[l._key] }}
                         />
-                        {l.isMain && nature !== "journal" && mainAmt > 0 && detailDiff > 0.001 && (
-                          <div className="text-[10px] text-amber-600 mt-0.5 pl-1">
-                            Split remaining: ₹{fmt2(detailDiff)}
+                        {/* Inline: split remaining hint */}
+                        {l.isMain && nature !== "journal" && mainAmt > 0 && splitRemaining > 0.005 && (
+                          <div className="text-[11px] text-amber-600 mt-0.5 pl-1 flex items-center gap-1">
+                            <AlertCircle size={10} /> Remaining to split: ₹{fmtAmt(splitRemaining)}
                           </div>
+                        )}
+                        {lineErr?.field === "account" && (
+                          <div className="text-[11px] text-red-500 mt-0.5 pl-1">{lineErr.msg}</div>
                         )}
                       </td>
 
-                      {/* Debit */}
+                      {/* Amount */}
                       <td className="px-2 py-2">
-                        {isDr
-                          ? <input type="number" value={l.amount}
-                              onChange={e => updateAmount(l._key, e.target.value)}
-                              placeholder="0.00" min={0}
-                              className="w-full border border-gray-200 rounded px-2 h-[30px] text-xs text-right outline-none focus:border-[#027fa5]"
-                              data-testid={`input-debit-${i}`} />
-                          : <div className="text-right text-gray-200 text-xs select-none">—</div>
-                        }
-                      </td>
-
-                      {/* Credit */}
-                      <td className="px-2 py-2">
-                        {!isDr
-                          ? <input type="number" value={l.amount}
-                              onChange={e => updateAmount(l._key, e.target.value)}
-                              placeholder="0.00" min={0}
-                              className="w-full border border-gray-200 rounded px-2 h-[30px] text-xs text-right outline-none focus:border-[#027fa5]"
-                              data-testid={`input-credit-${i}`} />
-                          : <div className="text-right text-gray-200 text-xs select-none">—</div>
-                        }
+                        <div className="relative">
+                          <input
+                            ref={el => { amtRefs.current[l._key] = el; }}
+                            type="number" min={0} value={l.amount}
+                            onChange={e => setAmount(l._key, e.target.value)}
+                            onKeyDown={e => handleAmountTab(l._key, e)}
+                            placeholder={suggested || "0.00"}
+                            className={`w-full border rounded px-2 h-[32px] text-sm text-right outline-none transition-colors font-mono ${
+                              lineErr?.field === "amount"
+                                ? "border-red-400 bg-red-50 focus:border-red-500"
+                                : "border-gray-200 focus:border-[#027fa5] bg-white"
+                            }`}
+                            data-testid={`input-amount-${i}`}
+                          />
+                          {suggested && !l.amount && (
+                            <span className="absolute right-7 top-1/2 -translate-y-1/2 text-[10px] text-amber-500 pointer-events-none">↑ suggested</span>
+                          )}
+                        </div>
+                        {lineErr?.field === "amount" && (
+                          <div className="text-[11px] text-red-500 mt-0.5 text-right">{lineErr.msg}</div>
+                        )}
                       </td>
 
                       {/* Delete */}
@@ -477,7 +622,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                           <button type="button" onClick={() => removeLine(l._key)}
                             className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors"
                             data-testid={`btn-remove-line-${i}`}>
-                            <Trash2 size={12} />
+                            <Trash2 size={13} />
                           </button>
                         )}
                       </td>
@@ -486,12 +631,24 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                 })}
               </tbody>
 
-              {/* Grand Total */}
+              {/* Totals footer */}
               <tfoot>
-                <tr className="border-t-2 border-gray-200" style={{ background: SC.tonal }}>
-                  <td colSpan={2} className="px-4 py-2.5 text-sm font-bold text-gray-700">Grand Total :</td>
-                  <td className="px-4 py-2.5 text-right font-mono font-bold text-sm text-red-700">₹ {fmt2(totalDr)}</td>
-                  <td className="px-4 py-2.5 text-right font-mono font-bold text-sm text-green-700">₹ {fmt2(totalCr)}</td>
+                <tr className="border-t-2 border-gray-200" style={{ background: "#f8fafc" }}>
+                  <td colSpan={3} className="px-4 py-2.5 text-sm font-bold text-gray-700">Grand Total</td>
+                  <td className="px-3 py-2.5 text-right">
+                    <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-red-700 font-mono font-bold">Dr ₹{fmtAmt(totalDr)}</span>
+                        <span className="text-gray-300">|</span>
+                        <span className="text-green-700 font-mono font-bold">Cr ₹{fmtAmt(totalCr)}</span>
+                      </div>
+                      {!balanced && totalDr + totalCr > 0 && (
+                        <div className="text-[11px] font-semibold text-amber-600">
+                          Diff: ₹{fmtAmt(Math.abs(diff))} {diff > 0 ? "(Dr excess)" : "(Cr excess)"}
+                        </div>
+                      )}
+                    </div>
+                  </td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -500,57 +657,81 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
             {/* Status bar */}
             <div className="flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-gray-50/40">
               <div className="flex items-center gap-2">
-                {/* Journal: allow manual add */}
                 {nature === "journal" && (
                   <>
                     <button type="button" onClick={() => addJournalLine("DR")}
-                      className="flex items-center gap-1 text-xs px-2 py-1 rounded border font-semibold"
-                      style={{ color: "#dc2626", borderColor: "#fca5a5" }} data-testid="btn-add-dr">
-                      <Plus size={10} /> Dr Line
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded border font-semibold"
+                      style={{ color: "#b91c1c", borderColor: "#fca5a5" }} data-testid="btn-add-dr">
+                      <Plus size={10} /> By (Dr)
                     </button>
                     <button type="button" onClick={() => addJournalLine("CR")}
-                      className="flex items-center gap-1 text-xs px-2 py-1 rounded border font-semibold"
-                      style={{ color: "#16a34a", borderColor: "#86efac" }} data-testid="btn-add-cr">
-                      <Plus size={10} /> Cr Line
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded border font-semibold"
+                      style={{ color: "#15803d", borderColor: "#86efac" }} data-testid="btn-add-cr">
+                      <Plus size={10} /> To (Cr)
                     </button>
                   </>
                 )}
               </div>
-              <div className="text-xs font-semibold">
+              <div>
                 {balanced
-                  ? <span className="text-green-600 flex items-center gap-1"><CheckCircle2 size={12} /> Balanced</span>
+                  ? <span className="flex items-center gap-1 text-xs font-bold text-green-600">
+                      <CheckCircle2 size={13} /> Balanced ✓
+                    </span>
                   : totalDr + totalCr > 0
-                    ? <span className="text-amber-600">⚠ Difference: ₹{fmt2(diff)} — Voucher must balance</span>
+                    ? <span className="text-xs text-amber-600 font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} /> Not balanced — Difference: ₹{fmtAmt(Math.abs(diff))}
+                      </span>
                     : null
                 }
               </div>
             </div>
           </div>
 
-          {/* Narrations */}
-          <div className="relative">
-            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Narrations</label>
+          {/* Narration */}
+          <div className="mt-4 relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Narration</label>
             <input value={narration} onChange={e => setNarration(e.target.value)}
-              placeholder="Bill no : INV2014 (DT:28.02.2026)"
+              placeholder="e.g. Bill no : INV2014 (Dt: 28-02-2026)"
               className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm outline-none focus:border-[#027fa5]"
               data-testid="input-narration" />
           </div>
 
-          {error && <p className="text-red-500 text-xs bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+          {/* General validation errors */}
+          {generalErrors.length > 0 && (
+            <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-4 py-3 space-y-1">
+              {generalErrors.map((e, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-red-700">
+                  <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+                  <span>{e.msg}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {submitErr && !generalErrors.length && (
+            <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-xs text-red-700 flex items-center gap-2">
+              <AlertCircle size={13} /> {submitErr}
+            </div>
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
-          <button type="button" onClick={onBack}
-            className="px-8 py-2 rounded border text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            style={{ borderColor: "#9ca3af" }} data-testid="btn-back">Back</button>
-          <button type="button"
-            onClick={() => saveMut.mutate()}
-            disabled={!vtId || !balanced || saveMut.isPending}
-            className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-40"
-            style={{ background: SC.orange }} data-testid="btn-accept">
-            {saveMut.isPending ? "Saving…" : "Accept"}
-          </button>
+        {/* ── Footer ─────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
+          <div className="text-xs text-gray-400">
+            Press <kbd className="border border-gray-200 rounded px-1 py-0.5 bg-white font-mono">Tab</kbd> or <kbd className="border border-gray-200 rounded px-1 py-0.5 bg-white font-mono">Enter</kbd> to move between fields
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={onBack}
+              className="px-7 py-2 rounded border text-sm font-semibold text-gray-700 hover:bg-gray-50 border-gray-300"
+              data-testid="btn-back">Back</button>
+            <button type="button"
+              onClick={() => { setTouched(true); saveMut.mutate(); }}
+              disabled={saveMut.isPending}
+              className="px-8 py-2 rounded text-sm font-bold text-white shadow-sm disabled:opacity-50 transition-opacity"
+              style={{ background: balanced ? SC.orange : "#9ca3af" }}
+              data-testid="btn-accept">
+              {saveMut.isPending ? "Saving…" : "Accept"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -584,14 +765,17 @@ export default function AccountingVoucher() {
   if (view === "edit") return <VoucherForm editData={editData} onBack={handleBack} />;
 
   const filtered = vouchers.filter(v =>
-    !search || [v.voucher_no, v.voucher_type_name, v.narration, v.ref_no].join(" ").toLowerCase().includes(search.toLowerCase())
+    !search ||
+    [v.voucher_no, v.voucher_type_name, v.narration, v.ref_no]
+      .join(" ").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <div className="p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
       <div className="max-w-5xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
+        {/* List Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h1 className="font-semibold text-gray-800 text-base">Accounting Voucher</h1>
+          <h1 className="font-semibold text-gray-800 text-base">Accounting Vouchers</h1>
           <div className="flex items-center gap-3">
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search vouchers…"
@@ -604,34 +788,38 @@ export default function AccountingVoucher() {
             </button>
           </div>
         </div>
+
+        {/* List Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: SC.tonal }}>
-                {["S.no","Voucher No","Type","Date","Ref No","Narration","Amount ₹","Actions"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-semibold text-gray-700 whitespace-nowrap">{h}</th>
+                {["#","Voucher No","Type","Date","Ref No","Narration","Amount ₹",""].map(h => (
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-bold text-gray-600 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">Loading…</td></tr>}
+              {isLoading && <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">Loading vouchers…</td></tr>}
               {!isLoading && filtered.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">No vouchers yet. Click "New Voucher" to create one.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                  No vouchers found.{!search && " Click \"New Voucher\" to create one."}
+                </td></tr>
               )}
               {filtered.map((v, i) => (
                 <tr key={v.id} className="border-b border-gray-50 hover:bg-blue-50/20 transition-colors"
                   data-testid={`row-voucher-${v.id}`}>
-                  <td className="px-4 py-3 text-gray-500">{i + 1}</td>
-                  <td className="px-4 py-3 font-semibold" style={{ color: SC.primary }}>{v.voucher_no}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{i + 1}</td>
+                  <td className="px-4 py-3 font-bold text-sm" style={{ color: SC.primary }}>{v.voucher_no}</td>
                   <td className="px-4 py-3">
-                    <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ background: SC.tonal, color: SC.primary }}>
+                    <span className="text-xs px-2 py-0.5 rounded font-semibold" style={{ background: SC.tonal, color: SC.primary }}>
                       {v.voucher_type_name || v.voucher_type}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{v.voucher_date?.slice(0, 10)}</td>
-                  <td className="px-4 py-3 text-gray-600">{v.ref_no || "—"}</td>
-                  <td className="px-4 py-3 text-gray-600 max-w-[180px] truncate">{v.narration || "—"}</td>
-                  <td className="px-4 py-3 font-mono text-gray-800">₹{fmt2(v.total_amount)}</td>
+                  <td className="px-4 py-3 text-gray-600 text-sm">{v.voucher_date?.slice(0, 10)}</td>
+                  <td className="px-4 py-3 text-gray-500 text-sm">{v.ref_no || "—"}</td>
+                  <td className="px-4 py-3 text-gray-600 text-sm max-w-[160px] truncate">{v.narration || "—"}</td>
+                  <td className="px-4 py-3 font-mono font-bold text-gray-800">₹{fmtAmt(v.total_amount)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button onClick={() => handleEdit(v)}
