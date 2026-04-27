@@ -249,9 +249,21 @@ export function ReportFilterSelect({
 }
 
 // ── Table helpers ─────────────────────────────────────────────────────────────
-export function RTh({ children, right }: { children: React.ReactNode; right?: boolean }) {
+export function RTh({
+  children, right, center, sub,
+  rowSpan, colSpan, className = "",
+}: {
+  children: React.ReactNode;
+  right?: boolean; center?: boolean; sub?: boolean;
+  rowSpan?: number; colSpan?: number; className?: string;
+}) {
   return (
-    <th className={`px-4 py-2.5 text-xs font-bold text-gray-700 whitespace-nowrap ${right ? "text-right" : "text-left"}`}
+    <th
+      rowSpan={rowSpan} colSpan={colSpan}
+      className={`px-4 py-2.5 text-xs font-bold text-gray-700 whitespace-nowrap border-b border-white/30
+        ${right ? "text-right" : center ? "text-center" : "text-left"}
+        ${sub ? "font-semibold text-gray-600" : ""}
+        ${className}`}
       style={{ background: "#d2f1fa" }}>
       {children}
     </th>

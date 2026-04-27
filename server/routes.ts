@@ -1532,6 +1532,110 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/stock-report-value — stock with monetary values
+  app.get("/api/reports/stock-report-value", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to   = (req.query.to   as string) || new Date().toISOString().slice(0, 10);
+      const rows = (await pool.query(`
+        WITH op_stock AS (
+          SELECT soi.item_code, SUM(soi.opening_qty) AS qty, SUM(soi.amount) AS val
+          FROM store_opening_items soi
+          JOIN store_openings so ON so.id = soi.sop_id
+          WHERE so.opening_date < $1
+          GROUP BY soi.item_code
+        ),
+        before_grn AS (
+          SELECT grni.item_code, SUM(grni.qty) AS qty, SUM(grni.total) AS val
+          FROM goods_receipt_note_items grni
+          JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
+          WHERE grn.grn_date < $1
+          GROUP BY grni.item_code
+        ),
+        before_grn_ret AS (
+          SELECT grri.item_code, SUM(grri.return_qty) AS qty, SUM(grri.total) AS val
+          FROM goods_receipt_return_items grri
+          JOIN goods_receipt_returns grr ON grr.id = grri.grr_id
+          WHERE grr.return_date < $1
+          GROUP BY grri.item_code
+        ),
+        before_issue AS (
+          SELECT sii.item_code, SUM(sii.issued_qty) AS qty, SUM(sii.amount) AS val
+          FROM store_issue_indent_items sii
+          JOIN store_issue_indents si ON si.id = sii.sii_id
+          WHERE si.issue_date < $1
+          GROUP BY sii.item_code
+        ),
+        before_issue_ret AS (
+          SELECT irri.item_code, SUM(irri.return_qty) AS qty, SUM(irri.amount) AS val
+          FROM issue_indent_return_items irri
+          JOIN issue_indent_returns irr ON irr.id = irri.irr_id
+          WHERE irr.return_date < $1
+          GROUP BY irri.item_code
+        ),
+        period_grn AS (
+          SELECT grni.item_code, SUM(grni.qty) AS qty, SUM(grni.total) AS val
+          FROM goods_receipt_note_items grni
+          JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
+          WHERE grn.grn_date BETWEEN $1 AND $2
+          GROUP BY grni.item_code
+        ),
+        period_grn_ret AS (
+          SELECT grri.item_code, SUM(grri.return_qty) AS qty, SUM(grri.total) AS val
+          FROM goods_receipt_return_items grri
+          JOIN goods_receipt_returns grr ON grr.id = grri.grr_id
+          WHERE grr.return_date BETWEEN $1 AND $2
+          GROUP BY grri.item_code
+        ),
+        period_issue AS (
+          SELECT sii.item_code, SUM(sii.issued_qty) AS qty, SUM(sii.amount) AS val
+          FROM store_issue_indent_items sii
+          JOIN store_issue_indents si ON si.id = sii.sii_id
+          WHERE si.issue_date BETWEEN $1 AND $2
+          GROUP BY sii.item_code
+        ),
+        period_issue_ret AS (
+          SELECT irri.item_code, SUM(irri.return_qty) AS qty, SUM(irri.amount) AS val
+          FROM issue_indent_return_items irri
+          JOIN issue_indent_returns irr ON irr.id = irri.irr_id
+          WHERE irr.return_date BETWEEN $1 AND $2
+          GROUP BY irri.item_code
+        )
+        SELECT
+          ii.code AS item_code,
+          ii.name AS item_name,
+          ii.unit,
+          COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0) AS opening_qty,
+          COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0) AS opening_val,
+          COALESCE(pgn.qty,0) AS purchase_qty,
+          COALESCE(pgn.val,0) AS purchase_val,
+          COALESCE(pgr.qty,0) AS grn_return_qty,
+          COALESCE(pgr.val,0) AS grn_return_val,
+          COALESCE(pi.qty,0)  AS issue_qty,
+          COALESCE(pi.val,0)  AS issue_val,
+          COALESCE(pir.qty,0) AS issue_return_qty,
+          COALESCE(pir.val,0) AS issue_return_val,
+          COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0)
+          +COALESCE(pgn.qty,0)-COALESCE(pgr.qty,0)-COALESCE(pi.qty,0)+COALESCE(pir.qty,0) AS closing_qty,
+          COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0)
+          +COALESCE(pgn.val,0)-COALESCE(pgr.val,0)-COALESCE(pi.val,0)+COALESCE(pir.val,0) AS closing_val
+        FROM inventory_items ii
+        LEFT JOIN op_stock       ops ON ops.item_code = ii.code
+        LEFT JOIN before_grn     bgn ON bgn.item_code = ii.code
+        LEFT JOIN before_grn_ret bgr ON bgr.item_code = ii.code
+        LEFT JOIN before_issue   bi  ON bi.item_code  = ii.code
+        LEFT JOIN before_issue_ret bir ON bir.item_code = ii.code
+        LEFT JOIN period_grn     pgn ON pgn.item_code = ii.code
+        LEFT JOIN period_grn_ret pgr ON pgr.item_code = ii.code
+        LEFT JOIN period_issue   pi  ON pi.item_code  = ii.code
+        LEFT JOIN period_issue_ret pir ON pir.item_code = ii.code
+        ORDER BY ii.name
+      `, [from, to])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/despatch-register — all despatch records within date range
   app.get("/api/reports/despatch-register", requireAuth, async (req, res) => {
     try {
