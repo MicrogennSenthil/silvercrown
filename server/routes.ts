@@ -1170,7 +1170,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await pool.query(`ALTER TABLE voucher_mas ADD COLUMN IF NOT EXISTS payment_mode text DEFAULT ''`).catch(()=>{});
       const { generateVoucherNo } = await import("./voucher");
       const { voucherTypeCode, voucherTypeName, referenceNo, referenceDate,
-              voucherDate, paymentMode, narration, lines = [] } = req.body;
+              voucherDate, narration, lines = [] } = req.body;
 
       // Validate Dr/Cr balance
       const totalDr = lines.filter((l: any) => l.drCr === "DR").reduce((s: number, l: any) => s + parseFloat(l.amount || 0), 0);
@@ -1189,14 +1189,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const vmRes = await client.query(`
         INSERT INTO voucher_mas (voucher_no, voucher_type, voucher_date, ref_no, ref_date,
           financial_year_id, financial_year, total_amount, taxable_amount, tax_amount,
-          narration, source_type, source_id, payment_mode)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'manual',$12,$13)
+          narration, source_type, source_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'manual',$12)
         RETURNING id
       `, [
         voucherNo, voucherTypeCode || voucherTypeName, voucherDate || new Date().toISOString().slice(0,10),
         referenceNo || "", referenceDate || null,
         fy.id, fy.label, totalDr.toFixed(2), totalDr.toFixed(2), "0",
-        narration || "", voucherNo, paymentMode || null,
+        narration || "", voucherNo,
       ]);
       const vmId = vmRes.rows[0].id;
 

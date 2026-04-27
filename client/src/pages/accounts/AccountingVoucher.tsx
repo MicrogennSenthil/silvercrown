@@ -105,7 +105,6 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
   const { data: voucherTypes = [] } = useQuery<any[]>({ queryKey: ["/api/voucher-types"] });
   const { data: subLedgers = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
-  const { data: payModes = [] } = useQuery<any[]>({ queryKey: ["/api/pay-mode-types"] });
 
   const [vtId, setVtId] = useState(editData?.voucherTypeId || "");
   const [vtCode, setVtCode] = useState(editData?.voucher_type || "");
@@ -114,7 +113,6 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   const [refNo, setRefNo] = useState(editData?.ref_no || "");
   const [vDate, setVDate] = useState(editData?.voucher_date?.slice(0, 10) || today());
   const [refDate, setRefDate] = useState(editData?.ref_date?.slice(0, 10) || today());
-  const [payMode, setPayMode] = useState(editData?.payment_mode || "");
   const [narration, setNarration] = useState(editData?.narration || "");
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -170,7 +168,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       const payload = {
         voucherTypeCode: vtCode, voucherTypeName: vtName,
         referenceNo: refNo, referenceDate: refDate,
-        voucherDate: vDate, paymentMode: payMode, narration,
+        voucherDate: vDate, narration,
         lines: lines.map(l => ({
           drCr: l.drCr, subLedgerId: l.subLedgerId || null,
           amount: l.amount || "0", narration: l.narration || narration,
@@ -271,8 +269,8 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
             </div>
           </div>
 
-          {/* Row 2 — Voucher Date | Reference Date | Payment Mode */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Row 2 — Voucher Date | Reference Date */}
+          <div className="grid grid-cols-2 gap-4">
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Voucher Date</label>
               <DatePicker value={vDate} onChange={setVDate} data-testid="input-voucher-date" />
@@ -281,17 +279,6 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Reference Date</label>
               <DatePicker value={refDate} onChange={setRefDate} data-testid="input-ref-date" />
-            </div>
-
-            <div className="relative">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Payment Mode</label>
-              <select value={payMode} onChange={e => setPayMode(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm bg-white outline-none focus:border-[#027fa5] appearance-none"
-                data-testid="select-payment-mode">
-                <option value="">Select Payment Mode</option>
-                {payModes.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
           </div>
 
