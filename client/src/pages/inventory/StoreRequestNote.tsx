@@ -462,27 +462,13 @@ export default function StoreRequestNote() {
         </div>
       </div>
 
-      {/* Remark + Status */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <label className="text-xs text-gray-500 font-medium block mb-1">Remark</label>
-          <textarea value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
-            rows={3} placeholder="Optional remark…"
-            className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
-            data-testid="textarea-remark"/>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <label className="text-xs text-gray-500 font-medium block mb-2">Status</label>
-          <div className="flex flex-wrap gap-3">
-            {["Draft", "Approved", "Issued", "Rejected"].map(s => (
-              <label key={s} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <input type="radio" checked={form.status === s} onChange={() => setForm(f => ({ ...f, status: s }))}
-                  className="accent-[#027fa5]" data-testid={`radio-status-${s.toLowerCase()}`}/>
-                <span className={form.status === s ? "font-semibold" : "text-gray-500"}>{s}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+      {/* Remark */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <label className="text-xs text-gray-500 font-medium block mb-1">Remark</label>
+        <textarea value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
+          rows={3} placeholder="Optional remark…"
+          className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
+          data-testid="textarea-remark"/>
       </div>
     </div>
   );
