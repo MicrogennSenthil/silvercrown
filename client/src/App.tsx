@@ -19,7 +19,8 @@ import Customers from "@/pages/Customers";
 import NotFound from "@/pages/not-found";
 // Masters
 import Employees from "@/pages/masters/Employees";
-import { Warehouses, UnitsOfMeasure, TaxRates, Categories, VoucherTypes, PayModeTypes, LedgerCategories, GeneralLedgers, TermTypes, Departments, StoreItemGroups, StoreItemSubGroups } from "@/pages/masters/MastersList";
+import { Warehouses, UnitsOfMeasure, TaxRates, Categories, VoucherTypes, PayModeTypes, LedgerCategories, TermTypes, Departments, StoreItemGroups, StoreItemSubGroups } from "@/pages/masters/MastersList";
+import GeneralLedgerTree from "@/pages/masters/GeneralLedger";
 import { Countries, States, Cities } from "@/pages/masters/Geography";
 import { SubCategories, Products } from "@/pages/masters/ProductMasters";
 import { MachineMaster, PurchaseStoreItems, PurchaseApprovals, Terms } from "@/pages/masters/OperationMasters";
@@ -121,7 +122,7 @@ function Router() {
       <Route path="/masters/approval-authority"><ProtectedRoute component={ApprovalAuthority} /></Route>
       <Route path="/masters/processes"><ProtectedRoute component={ProcessMasters} /></Route>
       <Route path="/masters/store-item-sub-groups"><ProtectedRoute component={StoreItemSubGroups} /></Route>
-      <Route path="/masters/general-ledgers"><ProtectedRoute component={GeneralLedgers} /></Route>
+      <Route path="/masters/general-ledgers"><ProtectedRoute component={GeneralLedgerTree} /></Route>
       <Route path="/masters/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>
       <Route path="/setup"><ProtectedRoute component={SoftwareSetup} /></Route>
       <Route path="/engineering/job-work-inward"><ProtectedRoute component={JobWorkInward} /></Route>

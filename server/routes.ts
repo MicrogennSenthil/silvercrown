@@ -877,7 +877,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({ ...ledger, bills: savedBills });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.delete("/api/sub-ledgers/:id", requireAuth, async (req, res) => { await storage.deleteSubLedger(req.params.id); res.json({ ok: true }); });
+  app.delete("/api/sub-ledgers/:id", requireAuth, async (req, res) => {
+    try {
+      const sl = await storage.getSubLedger(req.params.id);
+      if (!sl) return res.status(404).json({ message: "Ledger not found" });
+      const ob = parseFloat(String(sl.openingBalance || 0));
+      const cb = parseFloat(String(sl.closingBalance || 0));
+      if (ob !== 0 || cb !== 0) {
+        return res.status(400).json({ message: `Cannot delete: Opening Balance (₹${ob.toFixed(2)}) and Closing Balance (₹${cb.toFixed(2)}) must both be zero.` });
+      }
+      await storage.deleteSubLedger(req.params.id);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
 
   // General Ledgers
   app.get("/api/general-ledgers", requireAuth, async (req, res) => { res.json(await storage.listGeneralLedgers()); });
