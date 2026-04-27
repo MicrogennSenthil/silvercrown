@@ -1631,6 +1631,34 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/issue-register — store issue indent lines
+  app.get("/api/reports/issue-register", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to   = (req.query.to   as string) || "2099-12-31";
+      const rows = (await pool.query(`
+        SELECT
+          sii.voucher_no                               AS issue_no,
+          sii.issue_date,
+          COALESCE(sii.issue_type, '')                 AS issue_type,
+          COALESCE(ii.hsn_code, '')                    AS hsn_no,
+          siit.item_name                               AS product_name,
+          COALESCE(siit.unit, '')                      AS unit,
+          COALESCE(siit.issued_qty::numeric, 0)        AS issued_qty,
+          COALESCE(u.name, u.username, '')             AS user_name
+        FROM store_issue_indents sii
+        JOIN store_issue_indent_items siit ON siit.sii_id = sii.id
+        LEFT JOIN inventory_items ii  ON ii.code = siit.item_code
+        LEFT JOIN users u ON u.id::text = sii.created_by::text
+        WHERE sii.issue_date BETWEEN $1 AND $2
+          AND COALESCE(sii.status,'') <> 'Cancelled'
+        ORDER BY sii.issue_date DESC, sii.voucher_no, siit.sno
+      `, [from, to])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/material-register — GRN lines (material inward register)
   app.get("/api/reports/material-register", requireAuth, async (req, res) => {
     try {

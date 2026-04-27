@@ -60,6 +60,7 @@ import StockLedger             from "@/pages/reports/StockLedger";
 import BankStockReport         from "@/pages/reports/BankStockReport";
 import POPending               from "@/pages/reports/POPending";
 import MaterialRegister        from "@/pages/reports/MaterialRegister";
+import IssueRegister           from "@/pages/reports/IssueRegister";
 // User Management
 import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
@@ -162,6 +163,7 @@ function Router() {
       <Route path="/reports/inventory/bank-stock-report"><ProtectedRoute component={BankStockReport} /></Route>
       <Route path="/reports/inventory/po-pending"><ProtectedRoute component={POPending} /></Route>
       <Route path="/reports/inventory/material-register"><ProtectedRoute component={MaterialRegister} /></Route>
+      <Route path="/reports/inventory/issue-register"><ProtectedRoute component={IssueRegister} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>
