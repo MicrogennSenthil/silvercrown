@@ -1858,6 +1858,95 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/ageing-list — customer aging with custom bucket ranges
+  // ?ranges=0-7,7-14,14-21,21-28   (last bucket becomes "above last.to")
+  app.get("/api/reports/ageing-list", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const raw = (req.query.ranges as string) || "0-7,7-14,14-21,21-28";
+      // Parse and sanitise bucket ranges — only allow integers
+      const buckets = raw.split(",").map(seg => {
+        const [a, b] = seg.split("-").map(n => Math.max(0, parseInt(n, 10) || 0));
+        return { from: a, to: b ?? a + 7 };
+      }).filter(b => b.to > b.from);
+      if (buckets.length === 0) buckets.push({ from: 0, to: 7 });
+
+      // Build per-customer DR transaction base
+      const baseSQL = `
+        WITH txns AS (
+          SELECT
+            c.id            AS customer_id,
+            c.name          AS customer_name,
+            COALESCE(c.phone, c.telephone, '')          AS contact_no,
+            COALESCE(c.contact_person, c.contact_name, '') AS contact_person,
+            COALESCE(slb.ref_date, slb.voucher_date, NOW()::date) AS txn_date,
+            slb.amount::numeric AS amount,
+            UPPER(slb.cr_dr)   AS dr_cr
+          FROM customers c
+          JOIN sub_ledgers sl ON sl.id = c.sub_ledger_id
+          JOIN sub_ledger_bills slb ON slb.sub_ledger_id = sl.id
+
+          UNION ALL
+
+          SELECT
+            c.id, c.name,
+            COALESCE(c.phone, c.telephone, ''),
+            COALESCE(c.contact_person, c.contact_name, ''),
+            vm.voucher_date,
+            vd.amount::numeric,
+            UPPER(vd.dr_cr)
+          FROM customers c
+          JOIN sub_ledgers sl ON sl.id = c.sub_ledger_id
+          JOIN voucher_det vd ON vd.sub_ledger_id = sl.id
+          JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+        ),
+        aged AS (
+          SELECT *, (CURRENT_DATE - txn_date::date) AS age_days FROM txns
+        )
+      `;
+
+      // Build bucket CASE expressions using numeric literals (safe — sanitised above)
+      const bucketCases = buckets.map((b, i) => {
+        if (i === buckets.length - 1) {
+          // Last defined bucket = "above last from"
+          return `COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days >= ${b.from} THEN amount END),0)`;
+        }
+        return `COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days >= ${b.from} AND age_days < ${b.to} THEN amount END),0)`;
+      });
+
+      const selectSQL = `
+        SELECT
+          customer_id,
+          customer_name,
+          contact_no,
+          contact_person,
+          ${bucketCases.map((c, i) => `${c} AS bkt${i}`).join(",\n          ")},
+          COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount END),0) AS others,
+          COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount ELSE -amount END),0) AS total
+        FROM aged
+        GROUP BY customer_id, customer_name, contact_no, contact_person
+        HAVING COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount ELSE -amount END),0) <> 0
+          OR COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount END),0) > 0
+        ORDER BY customer_name
+      `;
+
+      const result = await pool.query(baseSQL + selectSQL);
+
+      // Reshape: convert bkt0,bkt1,... columns into a buckets[] array
+      const rows = result.rows.map(row => ({
+        customer_id:    row.customer_id,
+        customer_name:  row.customer_name,
+        contact_no:     row.contact_no,
+        contact_person: row.contact_person,
+        buckets: buckets.map((_, i) => parseFloat(row[`bkt${i}`] || "0")),
+        others:  parseFloat(row.others || "0"),
+        total:   parseFloat(row.total  || "0"),
+      }));
+
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/issue-register — store issue indent lines
   app.get("/api/reports/issue-register", requireAuth, async (req, res) => {
     try {
