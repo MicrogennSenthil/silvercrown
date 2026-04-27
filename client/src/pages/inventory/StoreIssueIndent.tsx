@@ -359,23 +359,13 @@ export default function StoreIssueIndent() {
       />
 
       {/* Top bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setMode("list")} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">
-              {editId ? `Edit Issue — ${issueNo}` : "New Store Issue Indent"}
-            </h1>
-            <p className="text-xs text-gray-400">Issue materials from store inventory</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setMode("list")} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-            style={{ background: SC.primary }} data-testid="btn-save-sii">
-            {saving ? "Saving…" : editId ? "Update" : "Save"}
-          </button>
+      <div className="flex items-center gap-3">
+        <button onClick={() => setMode("list")} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
+        <div>
+          <h1 className="text-xl font-bold text-gray-800">
+            {editId ? `Edit Issue — ${issueNo}` : "New Store Issue Indent"}
+          </h1>
+          <p className="text-xs text-gray-400">Issue materials from store inventory</p>
         </div>
       </div>
 
@@ -616,27 +606,27 @@ export default function StoreIssueIndent() {
         </div>
       </div>
 
-      {/* Remark + Status */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <label className="text-xs text-gray-500 font-medium block mb-1">Remark</label>
-          <textarea value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
-            rows={3} placeholder="Optional remark…"
-            className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
-            data-testid="textarea-remark"/>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <label className="text-xs text-gray-500 font-medium block mb-2">Status</label>
-          <div className="flex flex-wrap gap-3">
-            {["Draft", "Approved", "Issued", "Rejected"].map(s => (
-              <label key={s} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                <input type="radio" checked={form.status === s} onChange={() => setForm(f => ({ ...f, status: s }))}
-                  className="accent-[#027fa5]" data-testid={`radio-status-${s.toLowerCase()}`}/>
-                <span className={form.status === s ? "font-semibold" : "text-gray-500"}>{s}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+      {/* Remark */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <label className="text-xs text-gray-500 font-medium block mb-1">Remark</label>
+        <textarea value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
+          rows={3} placeholder="Optional remark…"
+          className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
+          data-testid="textarea-remark"/>
+      </div>
+
+      {/* Save / Cancel */}
+      <div className="flex items-center justify-end gap-2 pb-2">
+        <button onClick={() => setMode("list")}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+          data-testid="btn-cancel-sii">
+          Cancel
+        </button>
+        <button onClick={handleSave} disabled={saving}
+          className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+          style={{ background: SC.primary }} data-testid="btn-save-sii">
+          {saving ? "Saving…" : editId ? "Update" : "Save"}
+        </button>
       </div>
     </div>
   );
