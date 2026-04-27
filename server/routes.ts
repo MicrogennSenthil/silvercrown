@@ -1431,6 +1431,45 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/despatch-pending — inward items with outstanding despatch balance
+  app.get("/api/reports/despatch-pending", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to   = (req.query.to   as string) || "2099-12-31";
+      const rows = (await pool.query(`
+        SELECT
+          j.id                AS order_id,
+          j.voucher_no        AS jw_no,
+          j.work_order_no,
+          j.inward_date       AS jw_date,
+          j.delivery_date,
+          j.despatch_status,
+          COALESCE(c.name, j.party_name_manual, '') AS party_name,
+          i.id                AS item_id,
+          i.seq_no,
+          i.item_code,
+          i.item_name,
+          i.unit,
+          i.qty               AS ord_qty,
+          COALESCE(SUM(di.qty_despatched), 0)        AS des_qty,
+          i.qty - COALESCE(SUM(di.qty_despatched),0) AS pending_qty
+        FROM job_work_inward j
+        LEFT JOIN customers              c  ON c.id  = j.party_id
+        LEFT JOIN job_work_inward_items  i  ON i.inward_id = j.id
+        LEFT JOIN job_work_despatch_items di ON di.inward_item_id = i.id
+        WHERE j.inward_date BETWEEN $1 AND $2
+        GROUP BY j.id, j.voucher_no, j.work_order_no, j.inward_date,
+                 j.delivery_date, j.despatch_status,
+                 c.name, j.party_name_manual,
+                 i.id, i.seq_no, i.item_code, i.item_name, i.unit, i.qty
+        HAVING i.qty - COALESCE(SUM(di.qty_despatched),0) > 0
+        ORDER BY j.inward_date DESC, j.created_at DESC, i.seq_no
+      `, [from, to])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── Job Work Inward ─────────────────────────────────────────────────────────
   app.get("/api/job-work-inward", requireAuth, async (req, res) => {
     try {

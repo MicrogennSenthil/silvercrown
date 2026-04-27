@@ -51,6 +51,7 @@ import AccountingVoucher from "@/pages/accounts/AccountingVoucher";
 import StoreMaster from "@/pages/masters/StoreMaster";
 // Reports
 import JobWorkPendingReport from "@/pages/reports/JobWorkPending";
+import DespatchPendingReport from "@/pages/reports/DespatchPending";
 // User Management
 import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
@@ -143,6 +144,7 @@ function Router() {
       <Route path="/masters/stores"><ProtectedRoute component={StoreMaster} /></Route>
       {/* Reports */}
       <Route path="/reports/engineering/job-work-pending"><ProtectedRoute component={JobWorkPendingReport} /></Route>
+      <Route path="/reports/engineering/despatch-pending"><ProtectedRoute component={DespatchPendingReport} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>
