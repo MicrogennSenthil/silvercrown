@@ -1631,6 +1631,36 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/bank-stock-report — purchase store items grouped by group/sub-group
+  app.get("/api/reports/bank-stock-report", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const rows = (await pool.query(`
+        SELECT
+          COALESCE(sig.name, 'Uncategorized')   AS group_name,
+          COALESCE(sig.id,   'zzz')              AS group_id,
+          COALESCE(sisg.name, 'General')         AS sub_group_name,
+          COALESCE(sisg.id,  'zzz')              AS sub_group_id,
+          psi.code        AS item_code,
+          psi.name        AS item_name,
+          COALESCE(psi.qty::numeric,  0)         AS qty,
+          COALESCE(psi.uom, 'Nos')               AS unit,
+          COALESCE(ii.purchase_price::numeric, 0) AS rate,
+          COALESCE(psi.qty::numeric,0) * COALESCE(ii.purchase_price::numeric,0) AS amount,
+          psi.batch_no,
+          psi.exp_date    AS expiry_date
+        FROM purchase_store_items psi
+        LEFT JOIN store_item_groups    sig  ON sig.id  = psi.item_group_id
+        LEFT JOIN store_item_sub_groups sisg ON sisg.id = psi.item_sub_group_id
+        LEFT JOIN inventory_items      ii   ON ii.code  = psi.code
+        WHERE COALESCE(psi.is_active, true) = true
+          AND COALESCE(psi.qty::numeric, 0) > 0
+        ORDER BY COALESCE(sig.name,'zzz'), COALESCE(sisg.name,'zzz'), psi.name
+      `)).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/stock-report-value — stock with monetary values
   app.get("/api/reports/stock-report-value", requireAuth, async (req, res) => {
     try {

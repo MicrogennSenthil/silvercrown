@@ -19,10 +19,10 @@ export interface ReportShellProps {
   title: string;
   search: string;
   onSearch: (v: string) => void;
-  fromDate: string;
-  toDate: string;
-  onFromDate: (v: string) => void;
-  onToDate: (v: string) => void;
+  fromDate?: string;
+  toDate?: string;
+  onFromDate?: (v: string) => void;
+  onToDate?: (v: string) => void;
   /** @deprecated — print is now handled internally by ReportShell */
   onPrint?: () => void;
   onExcelExport: () => void;
@@ -58,11 +58,12 @@ function DateField({ label, value, onChange }: {
 // ── ReportShell ───────────────────────────────────────────────────────────────
 export function ReportShell({
   title, search, onSearch,
-  fromDate, toDate, onFromDate, onToDate,
+  fromDate = "", toDate = "", onFromDate, onToDate,
   onExcelExport, recordCount, extraFilters, children,
 }: ReportShellProps) {
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+  const showDates = !!(onFromDate && onToDate);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -110,9 +111,13 @@ export function ReportShell({
             )}
           </div>
 
-          {/* Dates */}
-          <DateField label="From" value={fromDate} onChange={onFromDate} />
-          <DateField label="To"   value={toDate}   onChange={onToDate} />
+          {/* Dates — optional */}
+          {showDates && onFromDate && onToDate && (
+            <>
+              <DateField label="From" value={fromDate} onChange={onFromDate} />
+              <DateField label="To"   value={toDate}   onChange={onToDate} />
+            </>
+          )}
 
           <div className="flex-1" />
 
