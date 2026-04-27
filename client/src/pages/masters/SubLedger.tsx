@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PencilLine, Plus, Trash2, Info, ChevronDown, ArrowLeft, TrendingUp } from "lucide-react";
+import { PencilLine, Plus, Trash2, Info, ChevronDown, ArrowLeft, TrendingUp, CheckCircle2, AlertTriangle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import DatePicker from "@/components/DatePicker";
@@ -516,6 +516,59 @@ function LedgerForm({
                   )}
                 </table>
               </div>
+
+              {/* ── Closing Balance Verification ── */}
+              {stmtData && (() => {
+                const stmtRows: any[] = stmtData.statement || [];
+                const calcBal  = stmtRows.length > 0 ? stmtRows[stmtRows.length - 1].balance : parseFloat(stmtData.openingBalance || "0");
+                const calcType = stmtRows.length > 0 ? stmtRows[stmtRows.length - 1].balanceType : (stmtData.openingBalanceType === "Credit" ? "Cr" : "Dr");
+                const storedBal  = parseFloat(cbAmount || "0");
+                const storedType = cbType === "Credit" ? "Cr" : "Dr";
+                const diff = Math.abs(calcBal - storedBal);
+                const matched = diff < 0.01 && calcType === storedType;
+                return (
+                  <div className={`flex items-center justify-between px-4 py-3 border-t-2 ${matched ? "border-green-200 bg-green-50/60" : "border-amber-200 bg-amber-50/60"}`}>
+                    <div className="flex items-center gap-2">
+                      {matched
+                        ? <CheckCircle2 size={16} className="text-green-600 flex-shrink-0" />
+                        : <AlertTriangle size={16} className="text-amber-600 flex-shrink-0" />}
+                      <span className={`text-sm font-semibold ${matched ? "text-green-800" : "text-amber-800"}`}>
+                        {matched ? "Closing Balance Verified" : "Closing Balance Mismatch"}
+                      </span>
+                      {!matched && (
+                        <span className="text-xs text-amber-700 ml-1">
+                          — Difference: ₹{fmt(diff)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-6 text-xs">
+                      <div className="text-center">
+                        <div className="text-gray-500 mb-0.5">Stored Closing Bal</div>
+                        <div className={`font-mono font-bold text-sm ${matched ? "text-green-700" : "text-amber-700"}`}>
+                          ₹{fmt(storedBal)} <span className="text-xs font-semibold">{storedType}</span>
+                        </div>
+                      </div>
+                      <div className="text-gray-300 text-lg font-light">/</div>
+                      <div className="text-center">
+                        <div className="text-gray-500 mb-0.5">Calculated Closing Bal</div>
+                        <div className={`font-mono font-bold text-sm ${matched ? "text-green-700" : "text-amber-700"}`}>
+                          ₹{fmt(calcBal)} <span className="text-xs font-semibold">{calcType}</span>
+                        </div>
+                      </div>
+                      {!matched && (
+                        <button
+                          type="button"
+                          onClick={() => { setCbAmount(fmt(calcBal)); setCbType(calcType === "Cr" ? "Credit" : "Debit"); }}
+                          className="text-xs px-3 py-1 rounded font-semibold text-white"
+                          style={{ background: SC.primary }}
+                          data-testid="btn-sync-closing-bal">
+                          Sync to Calculated
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
