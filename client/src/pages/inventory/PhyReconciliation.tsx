@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Search, Edit2, FileText, X, TrendingDown, TrendingUp, Minus, Info, AlertTriangle, CheckCircle } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
@@ -6,6 +6,70 @@ import DatePicker from "@/components/DatePicker";
 const SC = { primary: "#027fa5", orange: "#d74700" };
 const today = () => new Date().toISOString().slice(0, 10);
 const n3 = (v: any) => Number(v || 0).toFixed(3);
+
+// Fixed-position dropdown — escapes overflow:hidden / overflow-x-auto clipping
+interface ItemDropdownProps {
+  open: boolean;
+  anchorRect: DOMRect | null;
+  products: any[];
+  query: string;
+  onPick: (prod: any) => void;
+  onClose: () => void;
+}
+function ItemDropdown({ open, anchorRect, products, query, onPick, onClose }: ItemDropdownProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const q = query.toLowerCase();
+  const opts = products.filter((p: any) =>
+    !q || p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q)
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open, onClose]);
+
+  if (!open || !anchorRect) return null;
+
+  const style: React.CSSProperties = {
+    position: "fixed",
+    top: anchorRect.bottom + 2,
+    left: anchorRect.left,
+    width: Math.max(anchorRect.width, 280),
+    zIndex: 9999,
+    maxHeight: 220,
+    overflowY: "auto",
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 8,
+    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+    fontSize: 12,
+  };
+
+  return (
+    <div ref={ref} style={style}>
+      {opts.length === 0 ? (
+        <div className="px-3 py-3 text-gray-400">No items found</div>
+      ) : opts.map((p: any) => (
+        <div key={p.id || p.code}
+          onMouseDown={(e) => { e.preventDefault(); onPick(p); }}
+          className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center border-b border-gray-50 last:border-b-0">
+          <div>
+            <div className="font-medium text-gray-800">{p.name}</div>
+            <div className="text-gray-400 text-[10px]">
+              Stock: {n3(p.current_stock)} · {p.uom || p.unit || "Nos"}
+              {p.category_name ? ` · ${p.category_name}` : ""}
+            </div>
+          </div>
+          <span className="text-gray-400 text-[10px] ml-2 shrink-0">{p.code}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface RecItem {
   sno: number;
@@ -51,9 +115,9 @@ export default function PhyReconciliation() {
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const [itemSearch, setItemSearch] = useState<Record<number, string>>({});
-  const [itemDropOpen, setItemDropOpen] = useState<number | null>(null);
-  const tableRef = useRef<HTMLDivElement>(null);
+  const [itemQuery, setItemQuery] = useState<Record<number, string>>({});
+  const [openDropIdx, setOpenDropIdx] = useState<number | null>(null);
+  const [dropAnchor, setDropAnchor] = useState<DOMRect | null>(null);
 
   const { data: recs = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/phy-reconciliations"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
@@ -61,13 +125,7 @@ export default function PhyReconciliation() {
 
   const products = (allProducts as any[]).filter((p: any) => p.is_active !== false);
 
-  useEffect(() => {
-    function h(e: MouseEvent) {
-      if (!tableRef.current?.contains(e.target as Node)) setItemDropOpen(null);
-    }
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
+  const closeDropdown = useCallback(() => { setOpenDropIdx(null); setDropAnchor(null); }, []);
 
   const filtered = (recs as any[]).filter((r: any) => {
     if (!search) return true;
@@ -75,13 +133,13 @@ export default function PhyReconciliation() {
   });
 
   function openNew() {
-    setForm(blankForm()); setEditId(null); setErr(""); setRecNo(""); setMode("form");
+    setForm(blankForm()); setEditId(null); setErr(""); setRecNo(""); setMode("form"); closeDropdown();
     fetch("/api/voucher-series/next/phy_reconciliation", { credentials: "include" })
       .then(r => r.json()).then(d => { if (d.voucher_no) setRecNo(d.voucher_no); });
   }
 
   async function openEdit(rec: any) {
-    setRecNo(rec.voucher_no || "");
+    setRecNo(rec.voucher_no || ""); closeDropdown();
     const r = await fetch(`/api/phy-reconciliations/${rec.id}`, { credentials: "include" });
     const data = await r.json();
     const items = (data.items || []).map((it: any, i: number) => calcRow({
@@ -106,8 +164,8 @@ export default function PhyReconciliation() {
       items[i] = calcRow({ ...items[i], item_code: prod.code || "", item_name: prod.name || "", uom: prod.uom || prod.unit || "Nos", system_qty: sys });
       return { ...f, items };
     });
-    setItemSearch(p => ({ ...p, [i]: prod.name }));
-    setItemDropOpen(null);
+    setItemQuery(p => ({ ...p, [i]: prod.name }));
+    closeDropdown();
   }
 
   function updItem(i: number, key: keyof RecItem, val: any) {
@@ -224,15 +282,46 @@ export default function PhyReconciliation() {
 
   return (
     <div className="p-6 space-y-4">
-      {/* Top bar */}
-      <div className="flex items-center gap-3">
-        <button onClick={() => setMode("list")} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Physical Inventory Reconciliation</h1>
-          <p className="text-xs text-gray-400">
-            {editId ? `Editing ${recNo}` : "New reconciliation — verify physical counts against system stock"}
-          </p>
+      {/* Fixed-position item dropdown — renders outside all overflow containers */}
+      <ItemDropdown
+        open={openDropIdx !== null}
+        anchorRect={dropAnchor}
+        products={products}
+        query={itemQuery[openDropIdx ?? -1] ?? ""}
+        onPick={(prod) => pickProduct(openDropIdx!, prod)}
+        onClose={closeDropdown}
+      />
+
+      {/* Top bar — title left, status info badge right */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setMode("list")} className="text-gray-400 hover:text-gray-600 mt-0.5"><X size={18}/></button>
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">Physical Inventory Reconciliation</h1>
+            <p className="text-xs text-gray-400">
+              {editId ? `Editing ${recNo}` : "New reconciliation — verify physical counts against system stock"}
+            </p>
+          </div>
         </div>
+
+        {/* Inline status info — compact, right-aligned */}
+        {isDraft ? (
+          <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 text-blue-800 text-xs px-3 py-2 rounded-lg max-w-md shrink-0">
+            <Info size={13} className="shrink-0 mt-0.5 text-blue-500"/>
+            <span>
+              <span className="font-semibold">Draft — stock not affected.</span>{" "}
+              Reopen and Post when ready to apply adjustments to actual stock.
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg max-w-md shrink-0">
+            <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-500"/>
+            <span>
+              <span className="font-semibold">Post mode — stock will be adjusted.</span>{" "}
+              Difference (Physical − System) is applied as the adjustment qty. Cannot be undone.
+            </span>
+          </div>
+        )}
       </div>
 
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg">{err}</div>}
@@ -270,52 +359,26 @@ export default function PhyReconciliation() {
         </div>
       </div>
 
-      {/* Status-aware info banner */}
-      {isDraft ? (
-        <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 text-blue-800 text-xs px-4 py-3 rounded-lg">
-          <Info size={15} className="shrink-0 mt-0.5 text-blue-500"/>
-          <div>
-            <span className="font-semibold">Draft Mode — Stock Not Affected.</span>{" "}
-            This reconciliation will be saved as a draft. Actual stock quantities will <span className="font-semibold">not</span> be changed.
-            You can reopen this draft at any time, update the physical counts, and then change the status to <span className="font-semibold">Posted</span> to apply the adjustments to actual stock.
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-3 rounded-lg">
-          <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-500"/>
-          <div>
-            <span className="font-semibold">Post Mode — Stock Will Be Adjusted.</span>{" "}
-            Saving in Posted status will permanently update the closing stock for each item.
-            The <span className="font-semibold">Adjustment Qty (Difference = Physical Qty − System Qty)</span> will be applied:
-            a positive difference increases stock (Surplus) and a negative difference reduces stock (Shortage).
-            This action cannot be undone without creating a new reconciliation.
-          </div>
-        </div>
-      )}
-
-      {/* How it works — legend row */}
-      <div className="flex items-center gap-6 px-1 text-xs text-gray-500">
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-300"></span>
-          <span><span className="font-semibold text-gray-700">System Qty</span> — current closing stock in the system</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-[#027fa5]"></span>
-          <span><span className="font-semibold text-gray-700">Physical Qty</span> — actual count entered by user</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#d74700]"></span>
-          <span><span className="font-semibold text-gray-700">Difference</span> — Physical − System (adjustment qty, ± value)</span>
-        </span>
-      </div>
-
       {/* Items grid */}
       <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
         <div className="px-4 py-2 border-b bg-gray-50 flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Items</span>
-          <span className="text-xs text-gray-400">System Qty = current closing stock · Physical Qty = actual count · Difference = Physical − System</span>
+          <div className="flex items-center gap-5 text-[10px] text-gray-500">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-gray-300"></span>
+              <span><b className="text-gray-600">System Qty</b> = current stock</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full border-2 border-[#027fa5]"></span>
+              <span><b className="text-gray-600">Physical Qty</b> = actual count</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-[#d74700]"></span>
+              <span><b className="text-gray-600">Difference</b> = Physical − System (adj qty ±)</span>
+            </span>
+          </div>
         </div>
-        <div className="overflow-x-auto" ref={tableRef}>
+        <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b" style={{ background: "#e8f6fb" }}>
@@ -342,39 +405,28 @@ export default function PhyReconciliation() {
                       className="border border-gray-200 bg-gray-50 rounded px-2 py-1.5 w-24 text-xs text-gray-600"/>
                   </td>
 
-                  {/* Item Name — searchable */}
-                  <td className="px-1 py-1 relative">
+                  {/* Item Name — fixed-position searchable dropdown */}
+                  <td className="px-1 py-1">
                     <div className="relative w-44">
                       <input
-                        value={itemDropOpen === i ? (itemSearch[i] ?? it.item_name) : it.item_name}
-                        onFocus={() => { setItemDropOpen(i); setItemSearch(p => ({ ...p, [i]: it.item_name })); }}
-                        onChange={e => { setItemSearch(p => ({ ...p, [i]: e.target.value })); setItemDropOpen(i); }}
+                        value={openDropIdx === i ? (itemQuery[i] ?? it.item_name) : it.item_name}
+                        onFocus={(e) => {
+                          setOpenDropIdx(i);
+                          setDropAnchor(e.currentTarget.getBoundingClientRect());
+                          setItemQuery(p => ({ ...p, [i]: it.item_name }));
+                        }}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setItemQuery(p => ({ ...p, [i]: val }));
+                          if (openDropIdx !== i) {
+                            setOpenDropIdx(i);
+                            setDropAnchor(e.currentTarget.getBoundingClientRect());
+                          }
+                        }}
                         className="w-full border border-gray-300 rounded px-2 py-1.5 outline-none focus:border-[#027fa5] text-xs pr-6"
                         placeholder="Search item…" data-testid={`input-item-${i}`}/>
                       <Search size={10} className="absolute right-1.5 top-2.5 text-gray-400 pointer-events-none"/>
                     </div>
-                    {itemDropOpen === i && (() => {
-                      const q = (itemSearch[i] ?? "").toLowerCase();
-                      const opts = products.filter((p: any) => !q || p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q));
-                      return opts.length > 0 ? (
-                        <div className="absolute z-50 left-1 top-full mt-0.5 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-xs">
-                          {opts.map((p: any) => (
-                            <div key={p.id} onMouseDown={() => pickProduct(i, p)}
-                              className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center">
-                              <div>
-                                <div className="font-medium text-gray-800">{p.name}</div>
-                                <div className="text-gray-400 text-[10px]">Stock: {n3(p.current_stock)}</div>
-                              </div>
-                              <span className="text-gray-400 text-[10px]">{p.code}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="absolute z-50 left-1 top-full mt-0.5 w-56 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-400">
-                          No items found
-                        </div>
-                      );
-                    })()}
                   </td>
 
                   {/* UOM */}
@@ -432,7 +484,7 @@ export default function PhyReconciliation() {
           </table>
         </div>
 
-        {/* Add row */}
+        {/* Add row + totals */}
         <div className="flex items-center justify-between px-3 py-2 border-t bg-gray-50">
           <button onClick={addItem}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded hover:bg-[#d2f1fa] transition-colors"
@@ -450,7 +502,7 @@ export default function PhyReconciliation() {
         </div>
       </div>
 
-      {/* Remark + Save/Cancel (side by side) */}
+      {/* Remark + Save/Cancel side by side */}
       <div className="grid grid-cols-2 gap-4 pb-2">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <label className="text-xs text-gray-500 font-medium block mb-1">Remark</label>
