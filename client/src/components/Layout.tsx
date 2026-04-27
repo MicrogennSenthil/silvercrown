@@ -112,8 +112,15 @@ const NAV: any[] = [
       {
         label: "Inventory",
         subChildren: [
-          { label: "Stock Summary",   href: "/reports/inventory/stock-summary" },
-          { label: "Stock Ledger",    href: "/reports/inventory/stock-ledger" },
+          { label: "Stock Report",            href: "/reports/inventory/stock-report" },
+          { label: "Stock Report With Value",  href: "/reports/inventory/stock-report-value" },
+          { label: "Stock Ledger",             href: "/reports/inventory/stock-ledger" },
+          { label: "Bank Stock Report",        href: "/reports/inventory/bank-stock-report" },
+          { label: "PO Pending",               href: "/reports/inventory/po-pending" },
+          { label: "Material Register",        href: "/reports/inventory/material-register" },
+          { label: "Issue Register",           href: "/reports/inventory/issue-register" },
+          { label: "Receipt List",             href: "/reports/inventory/receipt-list" },
+          { label: "Expiry Item List",         href: "/reports/inventory/expiry-item-list" },
         ],
       },
       {

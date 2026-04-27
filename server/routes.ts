@@ -1470,6 +1470,68 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/stock-report — item-wise stock with opening/receipt/issue/closing
+  app.get("/api/reports/stock-report", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to   = (req.query.to   as string) || new Date().toISOString().slice(0, 10);
+      const rows = (await pool.query(`
+        WITH op_stock AS (
+          SELECT soi.item_code, SUM(soi.opening_qty) AS qty
+          FROM store_opening_items soi
+          JOIN store_openings so ON so.id = soi.sop_id
+          WHERE so.opening_date < $1
+          GROUP BY soi.item_code
+        ),
+        before_receipt AS (
+          SELECT grni.item_code, SUM(grni.qty) AS qty
+          FROM goods_receipt_note_items grni
+          JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
+          WHERE grn.grn_date < $1
+          GROUP BY grni.item_code
+        ),
+        before_issue AS (
+          SELECT sii.item_code, SUM(sii.issued_qty) AS qty
+          FROM store_issue_indent_items sii
+          JOIN store_issue_indents si ON si.id = sii.sii_id
+          WHERE si.issue_date < $1
+          GROUP BY sii.item_code
+        ),
+        period_receipt AS (
+          SELECT grni.item_code, SUM(grni.qty) AS qty
+          FROM goods_receipt_note_items grni
+          JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
+          WHERE grn.grn_date BETWEEN $1 AND $2
+          GROUP BY grni.item_code
+        ),
+        period_issue AS (
+          SELECT sii.item_code, SUM(sii.issued_qty) AS qty
+          FROM store_issue_indent_items sii
+          JOIN store_issue_indents si ON si.id = sii.sii_id
+          WHERE si.issue_date BETWEEN $1 AND $2
+          GROUP BY sii.item_code
+        )
+        SELECT
+          ii.code AS item_code,
+          ii.name AS item_name,
+          ii.unit,
+          COALESCE(ops.qty,0) + COALESCE(br.qty,0) - COALESCE(bi.qty,0)                           AS opening,
+          COALESCE(pr.qty,0)                                                                        AS receipt,
+          COALESCE(pi.qty,0)                                                                        AS issue,
+          COALESCE(ops.qty,0)+COALESCE(br.qty,0)-COALESCE(bi.qty,0)+COALESCE(pr.qty,0)-COALESCE(pi.qty,0) AS closing
+        FROM inventory_items ii
+        LEFT JOIN op_stock       ops ON ops.item_code = ii.code
+        LEFT JOIN before_receipt br  ON br.item_code  = ii.code
+        LEFT JOIN before_issue   bi  ON bi.item_code  = ii.code
+        LEFT JOIN period_receipt pr  ON pr.item_code  = ii.code
+        LEFT JOIN period_issue   pi  ON pi.item_code  = ii.code
+        ORDER BY ii.name
+      `, [from, to])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/despatch-register — all despatch records within date range
   app.get("/api/reports/despatch-register", requireAuth, async (req, res) => {
     try {
