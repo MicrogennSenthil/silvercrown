@@ -1631,6 +1631,42 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/receipt-list — GRN line-level receipt list with tax details
+  app.get("/api/reports/receipt-list", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to   = (req.query.to   as string) || "2099-12-31";
+      const rows = (await pool.query(`
+        SELECT
+          grn.voucher_no                                   AS receipt_no,
+          grn.grn_date                                     AS receipt_dt,
+          COALESCE(grn.bill_no, '-')                       AS bill_no,
+          grn.bill_date,
+          COALESCE(c.name, grn.supplier_name_manual, '')   AS supplier,
+          grni.item_code,
+          grni.item_name,
+          COALESCE(grni.unit, '')                          AS unit,
+          COALESCE(grni.qty::numeric, 0)                   AS qty,
+          COALESCE(grni.rate::numeric, 0)                  AS rate,
+          COALESCE(grni.taxable_amt::numeric, 0)           AS taxable_amt,
+          COALESCE(grni.cgst_pct::numeric, 0)              AS cgst_pct,
+          COALESCE(grni.cgst_amt::numeric, 0)              AS cgst_amt,
+          COALESCE(grni.sgst_pct::numeric, 0)              AS sgst_pct,
+          COALESCE(grni.sgst_amt::numeric, 0)              AS sgst_amt,
+          COALESCE(grni.igst_pct::numeric, 0)              AS igst_pct,
+          COALESCE(grni.igst_amt::numeric, 0)              AS igst_amt,
+          COALESCE(grni.total::numeric, 0)                 AS total
+        FROM goods_receipt_notes grn
+        JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
+        LEFT JOIN customers c ON c.id = grn.supplier_id
+        WHERE grn.grn_date BETWEEN $1 AND $2
+        ORDER BY grn.grn_date DESC, grn.voucher_no, grni.sno
+      `, [from, to])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/issue-register — store issue indent lines
   app.get("/api/reports/issue-register", requireAuth, async (req, res) => {
     try {
