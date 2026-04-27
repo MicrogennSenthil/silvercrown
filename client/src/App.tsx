@@ -44,6 +44,7 @@ import GoodsReceiptReturn from "@/pages/inventory/GoodsReceiptReturn";
 import IssueIndentReturn from "@/pages/inventory/IssueIndentReturn";
 import StoreOpening from "@/pages/inventory/StoreOpening";
 import FinancialYears from "@/pages/masters/FinancialYears";
+import YearEndClosing from "@/pages/masters/YearEndClosing";
 import VoucherSeries from "@/pages/masters/VoucherSeries";
 import StoreMaster from "@/pages/masters/StoreMaster";
 // User Management
@@ -130,6 +131,7 @@ function Router() {
       <Route path="/engineering/returnable-outward"><ProtectedRoute component={ReturnableOutward} /></Route>
       <Route path="/engineering/gate-pass"><ProtectedRoute component={GatePass} /></Route>
       <Route path="/masters/financial-years"><ProtectedRoute component={FinancialYears} /></Route>
+      <Route path="/masters/year-end-closing"><ProtectedRoute component={YearEndClosing} /></Route>
       <Route path="/masters/voucher-series"><ProtectedRoute component={VoucherSeries} /></Route>
       <Route path="/masters/stores"><ProtectedRoute component={StoreMaster} /></Route>
       {/* Keep old routes for backwards compatibility */}

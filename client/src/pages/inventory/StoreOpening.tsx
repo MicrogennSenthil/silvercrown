@@ -106,6 +106,8 @@ export default function StoreOpening() {
   const { data: sops = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-openings"] });
   const { data: warehouses = [] }      = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
   const { data: allProducts = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: financialYears = [] }  = useQuery<any[]>({ queryKey: ["/api/financial-years"] });
+  const currentFY = (financialYears as any[]).find((y: any) => y.is_current);
 
   const totalQty    = form.items.reduce((s, it) => s + p2(it.opening_qty), 0);
   const totalAmount = form.items.reduce((s, it) => s + p2(it.amount), 0);
@@ -119,7 +121,9 @@ export default function StoreOpening() {
   const prodMap = Object.fromEntries((allProducts as any[]).map((p: any) => [p.code?.toLowerCase(), p]));
 
   function openNew() {
-    setForm(blankForm()); setEditId(null); setErr(""); setImportErr(""); setImportOk("");
+    const fyLabel = currentFY?.label || "";
+    setForm({ ...blankForm(), financial_year: fyLabel });
+    setEditId(null); setErr(""); setImportErr(""); setImportOk("");
     setSopNo(""); setMode("form");
     fetch("/api/voucher-series/next/store_opening", { credentials: "include" })
       .then(r => r.json()).then(d => { if (d.voucher_no) setSopNo(d.voucher_no); });
@@ -481,10 +485,17 @@ export default function StoreOpening() {
           </div>
           <div>
             <label className="text-xs text-gray-500 font-medium">Financial Year</label>
-            <input value={form.financial_year}
+            <select value={form.financial_year}
               onChange={e => setForm(f => ({ ...f, financial_year: e.target.value }))}
               className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-              placeholder="e.g. 2025-26" data-testid="input-fy"/>
+              data-testid="select-fy">
+              <option value="">Select Year</option>
+              {(financialYears as any[]).sort((a: any, b: any) => b.start_date?.localeCompare(a.start_date)).map((fy: any) => (
+                <option key={fy.id} value={fy.label}>
+                  {fy.label}{fy.is_current ? " (Current)" : ""}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="text-xs text-gray-500 font-medium">Status</label>

@@ -59,6 +59,7 @@ const NAV: any[] = [
       {
         label: "Administration", icon: Shield, subChildren: [
           { label: "Financial Years", href: "/masters/financial-years" },
+          { label: "Year-End Closing", href: "/masters/year-end-closing" },
           { label: "Voucher Numbering", href: "/masters/voucher-series" },
         ]
       },

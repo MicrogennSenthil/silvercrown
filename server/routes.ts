@@ -964,6 +964,69 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
 
+  // ─── Year-End Closing ────────────────────────────────────────────────────────
+  app.post("/api/year-end/close", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { generateVoucherNo } = await import("./voucher");
+      const { current_fy_id, new_fy_id, reset_series } = req.body;
+      if (!current_fy_id || !new_fy_id) return res.status(400).json({ message: "current_fy_id and new_fy_id are required" });
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        // Validate years
+        const curFY = (await client.query(`SELECT * FROM financial_years WHERE id=$1`, [current_fy_id])).rows[0];
+        const newFY = (await client.query(`SELECT * FROM financial_years WHERE id=$1`, [new_fy_id])).rows[0];
+        if (!curFY || !newFY) throw new Error("Financial year not found");
+
+        // Get all active warehouses
+        const warehouses = (await client.query(`SELECT * FROM warehouses WHERE is_active=true OR is_active IS NULL ORDER BY name`)).rows;
+
+        // Get all products with stock > 0
+        const products = (await client.query(`SELECT * FROM products WHERE COALESCE(current_stock,0) > 0`)).rows;
+
+        let sopsCreated = 0;
+        for (const wh of warehouses) {
+          if (products.length === 0) continue;
+          const voucherNo = await generateVoucherNo("store_opening", client);
+          const totalQty    = products.reduce((s: number, p: any) => s + parseFloat(p.current_stock||0), 0);
+          const totalAmount = products.reduce((s: number, p: any) => s + parseFloat(p.current_stock||0) * parseFloat(p.selling_price||0), 0);
+          const remark = `Year-End carry-forward from ${curFY.label}`;
+          const sop = (await client.query(`
+            INSERT INTO store_openings(id,voucher_no,opening_date,store_id,financial_year,status,remark,total_qty,total_amount,created_by)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,'Draft',$5,$6,$7,$8)
+            RETURNING id
+          `, [voucherNo, newFY.start_date, wh.id, newFY.label, remark, totalQty, totalAmount, (req as any).user?.id||null])).rows[0];
+          for (let i = 0; i < products.length; i++) {
+            const p = products[i];
+            await client.query(`
+              INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,opening_qty,rate,amount,previous_stock)
+              VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,0)
+            `, [sop.id, i+1, p.code||"", p.name||"", p.uom||p.unit||"Nos",
+                parseFloat(p.current_stock||0), parseFloat(p.selling_price||0),
+                parseFloat(p.current_stock||0)*parseFloat(p.selling_price||0)]);
+          }
+          sopsCreated++;
+        }
+
+        // Switch current year
+        await client.query(`UPDATE financial_years SET is_current=false WHERE id=$1`, [current_fy_id]);
+        await client.query(`UPDATE financial_years SET is_current=true  WHERE id=$1`, [new_fy_id]);
+
+        // Reset voucher series if requested
+        if (reset_series) {
+          await client.query(`UPDATE voucher_series SET current_number=starting_number`);
+        }
+
+        await client.query("COMMIT");
+        res.json({ ok: true, from_fy: curFY.label, to_fy: newFY.label, sops_created: sopsCreated, series_reset: !!reset_series });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── Voucher Series ───────────────────────────────────────────────────────────
   app.get("/api/voucher-series", requireAuth, async (_req, res) => {
     const { db } = await import("./db");
