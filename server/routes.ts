@@ -3301,6 +3301,66 @@ Return ONLY valid JSON (no markdown, no explanation):
   });
 
   // ── Store Opening ─────────────────────────────────────────────────────────────
+
+  // Bulk multi-store import — must be before /:id routes
+  app.post("/api/store-openings/bulk-import", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { generateVoucherNo } = await import("./voucher");
+      const { opening_date, financial_year, entries } = req.body;
+      // entries = [{ store_name, items: [{ item_code, item_name, uom, opening_qty, rate }] }]
+      const created: { sopNo: string; storeName: string; itemCount: number }[] = [];
+      const storesCreated: string[] = [];
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        for (const entry of (entries || [])) {
+          const storeName = String(entry.store_name || "").trim();
+          if (!storeName) continue;
+          // Find or create the warehouse
+          let wRow = (await client.query(
+            `SELECT id, name FROM warehouses WHERE LOWER(name)=LOWER($1) AND is_active=true LIMIT 1`, [storeName]
+          )).rows[0];
+          if (!wRow) {
+            // Generate a unique code from the name
+            let code = storeName.toUpperCase().replace(/[^A-Z0-9]/g, '_').replace(/_+/g, '_').substring(0, 20);
+            const existing = (await client.query(`SELECT 1 FROM warehouses WHERE code=$1`, [code])).rows;
+            if (existing.length > 0) code = code.substring(0, 17) + '_' + Date.now().toString().slice(-3);
+            wRow = (await client.query(
+              `INSERT INTO warehouses(id,code,name,location,description,is_active,created_at)
+               VALUES(gen_random_uuid()::text,$1,$2,'','',true,NOW()) RETURNING id,name`,
+              [code, storeName]
+            )).rows[0];
+            storesCreated.push(storeName);
+          }
+          const storeId = wRow.id;
+          const items: any[] = entry.items || [];
+          const totalQty    = items.reduce((s: number, it: any) => s + (+it.opening_qty || 0), 0);
+          const totalAmount = items.reduce((s: number, it: any) => s + ((+it.opening_qty || 0) * (+it.rate || 0)), 0);
+          const voucherNo = await generateVoucherNo("store_opening", client);
+          const hdr = (await client.query(
+            `INSERT INTO store_openings(id,voucher_no,opening_date,store_id,financial_year,status,remark,total_qty,total_amount,created_by)
+             VALUES(gen_random_uuid()::text,$1,$2,$3,$4,'Draft','',$5,$6,$7) RETURNING *`,
+            [voucherNo, opening_date || new Date().toISOString().slice(0,10), storeId, financial_year || "", totalQty, totalAmount, (req as any).user?.id || null]
+          )).rows[0];
+          for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            const amount = (+it.opening_qty || 0) * (+it.rate || 0);
+            await client.query(
+              `INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,opening_qty,rate,amount,previous_stock)
+               VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,0)`,
+              [hdr.id, i+1, it.item_code||"", it.item_name||"", it.uom||"Nos", +it.opening_qty||0, +it.rate||0, amount]
+            );
+          }
+          created.push({ sopNo: voucherNo, storeName, itemCount: items.length });
+        }
+        await client.query("COMMIT");
+        res.json({ created, storesCreated });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/store-openings", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");

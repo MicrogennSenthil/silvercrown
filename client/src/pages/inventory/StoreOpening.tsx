@@ -42,13 +42,17 @@ function calcItem(it: SopItem): SopItem {
 }
 
 // ─── Excel template definition ──────────────────────────────────────────────
-const TEMPLATE_HEADERS = ["Item Code *", "Item Name *", "UOM", "Opening Qty *", "Rate (₹)"];
-const TEMPLATE_SAMPLE   = [["RM-001", "MS Pipe 2 inch", "Kg", 100, 45.50], ["RM-002", "Copper Wire 2mm", "Mtr", 200, 120.00]];
+// Store column is first — allows multi-store bulk import in a single file
+const TEMPLATE_HEADERS = ["Store *", "Item Code *", "Item Name *", "UOM", "Opening Qty *", "Rate (₹)"];
+const TEMPLATE_SAMPLE   = [
+  ["Main Store",  "RM-001", "MS Pipe 2 inch",   "Kg",  100, 45.50],
+  ["Main Store",  "RM-002", "Copper Wire 2mm",  "Mtr", 200, 120.00],
+  ["Branch Store","IC-001", "Ace A1-Smartphone", "Nos",  10, 200.00],
+];
 
 function downloadTemplate() {
   const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_SAMPLE]);
-  ws["!cols"] = [{ wch: 14 }, { wch: 28 }, { wch: 8 }, { wch: 14 }, { wch: 12 }];
-  // Style header row yellow
+  ws["!cols"] = [{ wch: 18 }, { wch: 14 }, { wch: 28 }, { wch: 8 }, { wch: 14 }, { wch: 12 }];
   TEMPLATE_HEADERS.forEach((_, i) => {
     const cell = XLSX.utils.encode_cell({ r: 0, c: i });
     if (!ws[cell]) return;
@@ -80,8 +84,9 @@ export default function StoreOpening() {
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr]       = useState("");
-  const [importErr, setImportErr] = useState("");
-  const [importOk, setImportOk]   = useState("");
+  const [importErr, setImportErr]     = useState("");
+  const [importOk, setImportOk]       = useState("");
+  const [bulkImporting, setBulkImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: sops = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-openings"] });
@@ -152,7 +157,7 @@ export default function StoreOpening() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const data = new Uint8Array(ev.target!.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: "array" });
@@ -160,19 +165,70 @@ export default function StoreOpening() {
         const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
         if (rows.length < 2) { setImportErr("Excel is empty or has no data rows."); return; }
 
-        // Detect header row
         const hdr = rows[0].map((h: any) => String(h).toLowerCase().trim());
         const colIdx = {
-          code: hdr.findIndex(h => h.includes("code")),
-          name: hdr.findIndex(h => h.includes("name")),
-          uom:  hdr.findIndex(h => h.includes("uom") || h.includes("unit")),
-          qty:  hdr.findIndex(h => h.includes("qty") || h.includes("quantity")),
-          rate: hdr.findIndex(h => h.includes("rate") || h.includes("price")),
+          store: hdr.findIndex(h => h.includes("store")),
+          code:  hdr.findIndex(h => h.includes("code")),
+          name:  hdr.findIndex(h => h.includes("name")),
+          uom:   hdr.findIndex(h => h.includes("uom") || h.includes("unit")),
+          qty:   hdr.findIndex(h => h.includes("qty") || h.includes("quantity")),
+          rate:  hdr.findIndex(h => h.includes("rate") || h.includes("price")),
         };
         if (colIdx.code < 0 || colIdx.qty < 0) {
           setImportErr("Required columns not found. Download the template to see expected format.");
           return;
         }
+
+        // ── Multi-store bulk import ──────────────────────────────────────────
+        if (colIdx.store >= 0) {
+          // Group rows by store name
+          const storeMap: Record<string, any[]> = {};
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            const storeName = String(row[colIdx.store] || "").trim();
+            const code = String(row[colIdx.code] || "").trim();
+            const name = String(colIdx.name >= 0 ? row[colIdx.name] || "" : "").trim();
+            const qty  = parseFloat(String(row[colIdx.qty] || "0")) || 0;
+            const rate = parseFloat(String(colIdx.rate >= 0 ? row[colIdx.rate] || "0" : "0")) || 0;
+            const uom  = colIdx.uom >= 0 ? String(row[colIdx.uom] || "Nos").trim() : "Nos";
+            if (!storeName && !code && !name) continue;
+            const key = storeName || "Unknown Store";
+            if (!storeMap[key]) storeMap[key] = [];
+            const prod = prodMap[code.toLowerCase()];
+            storeMap[key].push({
+              item_code: prod?.code || code,
+              item_name: prod?.name || name || code,
+              uom: prod?.uom || prod?.unit || uom,
+              opening_qty: qty, rate,
+            });
+          }
+          const entries = Object.entries(storeMap).map(([store_name, items]) => ({ store_name, items }));
+          if (entries.length === 0) { setImportErr("No valid rows found in the file."); return; }
+
+          setBulkImporting(true);
+          try {
+            const r = await fetch("/api/store-openings/bulk-import", {
+              method: "POST", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ opening_date: form.opening_date, financial_year: form.financial_year, entries }),
+            });
+            const result = await r.json();
+            if (!r.ok) { setImportErr(result.message || "Bulk import failed."); return; }
+            qc.invalidateQueries({ queryKey: ["/api/store-openings"] });
+            qc.invalidateQueries({ queryKey: ["/api/warehouses"] });
+            const newStoreMsg = result.storesCreated?.length > 0
+              ? ` New stores created in master: ${result.storesCreated.join(", ")}.`
+              : "";
+            const summary = (result.created || []).map((c: any) => `${c.sopNo} → ${c.storeName} (${c.itemCount} items)`).join(", ");
+            setImportOk(`✓ ${result.created?.length} SOP entries created across ${entries.length} store(s).${newStoreMsg} Entries: ${summary}`);
+            // Go back to list so the user can see the created entries
+            setMode("list");
+          } catch (ex: any) { setImportErr("Bulk import failed: " + ex.message); }
+          finally { setBulkImporting(false); }
+          return;
+        }
+
+        // ── Single-store import (no Store column) ───────────────────────────
         const imported: SopItem[] = [];
         for (let i = 1; i < rows.length; i++) {
           const row = rows[i];
@@ -181,9 +237,7 @@ export default function StoreOpening() {
           const qty  = parseFloat(String(row[colIdx.qty] || "0")) || 0;
           const rate = parseFloat(String(colIdx.rate >= 0 ? row[colIdx.rate] || "0" : "0")) || 0;
           const uom  = colIdx.uom >= 0 ? String(row[colIdx.uom] || "Nos").trim() : "Nos";
-          if (!code && !name) continue; // skip blank rows
-
-          // Try to match from product master
+          if (!code && !name) continue;
           const prod = prodMap[code.toLowerCase()];
           imported.push(calcItem({
             sno: imported.length + 1,
@@ -195,11 +249,11 @@ export default function StoreOpening() {
         }
         if (imported.length === 0) { setImportErr("No valid rows found in the file."); return; }
         setForm(f => ({ ...f, items: imported }));
-        setImportOk(`${imported.length} item${imported.length !== 1 ? "s" : ""} imported successfully.`);
+        setImportOk(`${imported.length} item${imported.length !== 1 ? "s" : ""} imported. Select a store and save.`);
       } catch (ex: any) { setImportErr("Failed to read file: " + ex.message); }
     };
     reader.readAsArrayBuffer(file);
-    e.target.value = ""; // reset so same file can be re-imported
+    e.target.value = "";
   }
 
   async function handleSave(status?: "Draft"|"Posted") {
@@ -319,10 +373,10 @@ export default function StoreOpening() {
             title="Download Excel template for bulk import" data-testid="btn-download-template">
             <FileSpreadsheet size={13} className="text-green-600"/> Download Template
           </button>
-          <button onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-[#027fa5] rounded-lg font-medium hover:bg-[#e8f6fb]"
+          <button onClick={() => fileRef.current?.click()} disabled={bulkImporting}
+            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-[#027fa5] rounded-lg font-medium hover:bg-[#e8f6fb] disabled:opacity-60"
             style={{ color: SC.primary }} data-testid="btn-import-excel">
-            <Upload size={13}/> Import Excel
+            <Upload size={13}/> {bulkImporting ? "Importing…" : "Import Excel"}
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport}/>
           {form.items.some(it => it.item_code) && (
@@ -541,7 +595,8 @@ export default function StoreOpening() {
           </table>
         </div>
         <p className="text-[10px] text-blue-600 mt-2">
-          * Required. Item Code auto-matches against product master. Unrecognized codes are accepted as-is. Rows with no code or name are skipped.
+          * Required. <strong>Store column enables multi-store bulk import</strong> — rows are grouped by store name and separate SOP entries are created for each store automatically.
+          If a store name is not in the master, it will be created. Item Code auto-matches against product master.
         </p>
       </div>
     </div>
