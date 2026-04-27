@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PencilLine, Plus, Trash2, Info, ChevronDown, ArrowLeft } from "lucide-react";
+import { PencilLine, Plus, Trash2, Info, ChevronDown, ArrowLeft, TrendingUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import DatePicker from "@/components/DatePicker";
@@ -53,6 +53,13 @@ function LedgerForm({
 
   const { data: generalLedgersList = [] } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
   const { data: categoriesList = [] } = useQuery<any[]>({ queryKey: ["/api/ledger-categories"] });
+
+  // Live account statement (edit mode only)
+  const { data: stmtData, isLoading: stmtLoading } = useQuery<any>({
+    queryKey: ["/api/sub-ledgers", item?.id, "statement"],
+    queryFn: () => fetch(`/api/sub-ledgers/${item.id}/statement`, { credentials: "include" }).then(r => r.json()),
+    enabled: isEdit && !!item?.id,
+  });
 
   const [name, setName] = useState(item?.name || "");
   const [glId, setGlId] = useState(item?.generalLedgerId || initialGlId || "");
@@ -388,6 +395,129 @@ function LedgerForm({
           </div>
 
           {error && <p className="text-red-500 text-xs">{error}</p>}
+
+          {/* ── Live Account Statement (edit only) ── */}
+          {isEdit && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-2.5" style={{ background: SC.tonal }}>
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={14} style={{ color: SC.primary }} />
+                  <span className="text-sm font-semibold text-gray-800">Account Statement</span>
+                  <span className="text-xs text-gray-500 ml-1">— Purchases, Sales, Payments &amp; Receipts</span>
+                </div>
+                {stmtData && (
+                  <div className="flex items-center gap-4 text-xs text-gray-600">
+                    <span>OB: <strong>₹{fmt(stmtData.openingBalance)}</strong> <span className="text-gray-400">{stmtData.openingBalanceType?.slice(0,2)}</span></span>
+                    {stmtData.statement?.length > 0 && (
+                      <span>Closing: <strong className="font-mono" style={{ color: SC.primary }}>
+                        ₹{fmt(stmtData.statement[stmtData.statement.length - 1]?.balance)}
+                      </strong> <span className="text-gray-400">{stmtData.statement[stmtData.statement.length - 1]?.balanceType}</span></span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold w-8">#</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">Date</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">Voucher / Ref No</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">Narration / Source</th>
+                      <th className="px-3 py-2 text-right text-gray-500 font-semibold">Debit ₹</th>
+                      <th className="px-3 py-2 text-right text-gray-500 font-semibold">Credit ₹</th>
+                      <th className="px-3 py-2 text-right text-gray-500 font-semibold">Balance ₹</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Opening balance row */}
+                    {stmtData && (
+                      <tr className="border-b border-gray-50 bg-blue-50/30">
+                        <td className="px-3 py-1.5 text-gray-400">—</td>
+                        <td className="px-3 py-1.5 text-gray-500 italic">Opening</td>
+                        <td className="px-3 py-1.5 text-gray-500 italic" colSpan={2}>Opening Balance</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-gray-600">
+                          {stmtData.openingBalanceType !== "Credit" ? fmt(stmtData.openingBalance) : "—"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-mono text-gray-600">
+                          {stmtData.openingBalanceType === "Credit" ? fmt(stmtData.openingBalance) : "—"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
+                          {fmt(stmtData.openingBalance)} <span className="text-gray-400 text-[10px]">{stmtData.openingBalanceType?.slice(0,2)}</span>
+                        </td>
+                      </tr>
+                    )}
+
+                    {stmtLoading && (
+                      <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">Loading statement…</td></tr>
+                    )}
+
+                    {!stmtLoading && stmtData?.statement?.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-5 text-center text-gray-400">
+                          No transactions posted yet. Purchases, sales, payments and receipts will appear here.
+                        </td>
+                      </tr>
+                    )}
+
+                    {stmtData?.statement?.map((r: any, i: number) => (
+                      <tr key={i} className={`border-b border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
+                        data-testid={`stmt-row-${i}`}>
+                        <td className="px-3 py-1.5 text-gray-400 text-center">{i + 1}</td>
+                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
+                          {r.txnDate ? new Date(r.txnDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <div className="font-semibold text-gray-700">{r.voucherNo || r.refNo || "—"}</div>
+                          {r.refNo && r.refNo !== r.voucherNo && <div className="text-gray-400 text-[10px]">Ref: {r.refNo}</div>}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <div className="text-gray-600 truncate max-w-[200px]">{r.narration || "—"}</div>
+                          {r.sourceType && (
+                            <span className="inline-block text-[10px] px-1.5 py-0.5 rounded mt-0.5 font-medium"
+                              style={{ background: SC.tonal, color: SC.primary }}>
+                              {r.sourceType === "grn" ? "Purchase" : r.sourceType === "Opening Bill" ? "Opening Bill" : r.sourceType}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-mono text-red-600">
+                          {r.debit > 0 ? fmt(r.debit) : "—"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-mono text-green-700">
+                          {r.credit > 0 ? fmt(r.credit) : "—"}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
+                          {fmt(r.balance)} <span className="text-gray-400 text-[10px]">{r.balanceType}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {stmtData?.statement?.length > 0 && (
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 bg-gray-50">
+                        <td colSpan={4} className="px-3 py-2 text-xs font-semibold text-gray-600">Closing Balance</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-600">
+                          {fmt(stmtData.statement.reduce((s: number, r: any) => s + r.debit, 0))}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-green-700">
+                          {fmt(stmtData.statement.reduce((s: number, r: any) => s + r.credit, 0))}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-sm font-bold" style={{ color: SC.primary }}>
+                          {fmt(stmtData.statement[stmtData.statement.length - 1]?.balance)}{" "}
+                          <span className="text-xs font-semibold text-gray-500">
+                            {stmtData.statement[stmtData.statement.length - 1]?.balanceType}
+                          </span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Card Footer */}

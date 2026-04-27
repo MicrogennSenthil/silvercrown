@@ -861,6 +861,91 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const bills = await storage.listSubLedgerBills(s.id);
     res.json({ ...s, bills });
   });
+
+  // Ledger account statement — opening bills + posted voucher transactions
+  app.get("/api/sub-ledgers/:id/statement", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const slId = req.params.id;
+
+      // Opening balance bills (manually entered)
+      const billsRes = await pool.query(`
+        SELECT
+          ref_no        AS ref_no,
+          ref_date      AS txn_date,
+          voucher_no    AS voucher_no,
+          voucher_date  AS voucher_date,
+          amount        AS amount,
+          cr_dr         AS dr_cr,
+          'Opening Bill' AS source_type,
+          ''             AS narration
+        FROM sub_ledger_bills
+        WHERE sub_ledger_id = $1
+        ORDER BY ref_date NULLS FIRST, id
+      `, [slId]);
+
+      // Posted voucher transactions
+      const voucherRes = await pool.query(`
+        SELECT
+          vm.ref_no,
+          vm.voucher_date AS txn_date,
+          vm.voucher_no,
+          vm.voucher_date,
+          vd.amount,
+          vd.dr_cr,
+          vm.source_type,
+          vm.narration
+        FROM voucher_det vd
+        JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+        WHERE vd.sub_ledger_id = $1
+        ORDER BY vm.voucher_date, vm.voucher_no, vd.seq_no
+      `, [slId]);
+
+      // Get sub-ledger opening balance for running total seed
+      const slRes = await pool.query(
+        `SELECT opening_balance, opening_balance_type FROM sub_ledgers WHERE id=$1`, [slId]
+      );
+      const sl = slRes.rows[0];
+      const obAmt = parseFloat(sl?.opening_balance || "0");
+      const obType = sl?.opening_balance_type || "Credit";
+
+      // Merge and sort all rows
+      const rows = [
+        ...billsRes.rows,
+        ...voucherRes.rows,
+      ].sort((a, b) => {
+        const da = new Date(a.txn_date || "1900-01-01").getTime();
+        const db2 = new Date(b.txn_date || "1900-01-01").getTime();
+        return da - db2;
+      });
+
+      // Compute running balance (Credit positive, Debit negative from opening)
+      let balance = obType === "Credit" ? obAmt : -obAmt;
+      const statement = rows.map(r => {
+        const amt = parseFloat(r.amount || "0");
+        const drCr = (r.dr_cr || "CR").toUpperCase();
+        if (drCr === "CR") balance += amt;
+        else balance -= amt;
+        return {
+          refNo: r.ref_no || "",
+          txnDate: r.txn_date ? String(r.txn_date).slice(0, 10) : "",
+          voucherNo: r.voucher_no || "",
+          narration: r.narration || "",
+          sourceType: r.source_type || "",
+          debit: drCr === "DR" ? amt : 0,
+          credit: drCr === "CR" ? amt : 0,
+          balance: Math.abs(balance),
+          balanceType: balance >= 0 ? "Cr" : "Dr",
+        };
+      });
+
+      res.json({
+        openingBalance: obAmt,
+        openingBalanceType: obType,
+        statement,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
   app.post("/api/sub-ledgers", requireAuth, async (req, res) => {
     try {
       const { bills = [], ...data } = req.body;
