@@ -42,21 +42,35 @@ function calcItem(it: SopItem): SopItem {
 }
 
 // ─── Excel template definition ──────────────────────────────────────────────
-// Store column is first — allows multi-store bulk import in a single file
-const TEMPLATE_HEADERS = ["Store *", "Item Code *", "Item Name *", "UOM", "Opening Qty *", "Rate (₹)"];
-const TEMPLATE_SAMPLE   = [
-  ["Main Store",  "RM-001", "MS Pipe 2 inch",   "Kg",  100, 45.50],
-  ["Main Store",  "RM-002", "Copper Wire 2mm",  "Mtr", 200, 120.00],
-  ["Branch Store","IC-001", "Ace A1-Smartphone", "Nos",  10, 200.00],
+// Single template covers masters (category, sub-cat, product) + stock opening
+const TEMPLATE_HEADERS = [
+  "Store *", "Category", "Sub Category",
+  "Item Code *", "Item Name *", "UOM",
+  "DRG No", "SAP No", "HSN Code", "Location",
+  "Rate ₹", "Cost ₹", "Min Qty", "Max Qty",
+  "CGST %", "SGST %", "IGST %",
+  "Opening Qty *",
+];
+const TEMPLATE_SAMPLE = [
+  ["Main Store",  "Raw Materials", "Steel",   "RM-001", "MS Pipe 2 inch",    "Kg",  "DRG-001", "SAP-001", "HSN0000", "A-01-01", 45.50, 40.00, 10, 500, 9, 9, 0, 100],
+  ["Main Store",  "Raw Materials", "Copper",  "RM-002", "Copper Wire 2mm",   "Mtr", "",        "",        "HSN0001", "A-02-01", 120.00,110.00,  5, 200, 9, 9, 0, 200],
+  ["Branch Store","Electronics",   "Phones",  "IC-001", "Ace A1 Smartphone", "Nos", "",        "SAP-002", "HSN0002", "B-01-01", 200.00,190.00,  2,  50, 9, 9, 0,  10],
 ];
 
 function downloadTemplate() {
   const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_SAMPLE]);
-  ws["!cols"] = [{ wch: 18 }, { wch: 14 }, { wch: 28 }, { wch: 8 }, { wch: 14 }, { wch: 12 }];
+  ws["!cols"] = [
+    { wch: 16 }, { wch: 16 }, { wch: 14 },
+    { wch: 12 }, { wch: 28 }, { wch: 8 },
+    { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+    { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+    { wch: 8 },  { wch: 8 },  { wch: 8 },
+    { wch: 14 },
+  ];
   TEMPLATE_HEADERS.forEach((_, i) => {
     const cell = XLSX.utils.encode_cell({ r: 0, c: i });
     if (!ws[cell]) return;
-    ws[cell].s = { fill: { fgColor: { rgb: "FFF9C4" } }, font: { bold: true } };
+    ws[cell].s = { fill: { fgColor: { rgb: "027FA5" } }, font: { bold: true, color: { rgb: "FFFFFF" } } };
   });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Store Opening");
@@ -165,19 +179,35 @@ export default function StoreOpening() {
         const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
         if (rows.length < 2) { setImportErr("Excel is empty or has no data rows."); return; }
 
-        const hdr = rows[0].map((h: any) => String(h).toLowerCase().trim());
+        const hdr = rows[0].map((h: any) => String(h).toLowerCase().replace(/[₹*]/g, "").trim());
+        const g = (keywords: string[]) => hdr.findIndex(h => keywords.some(k => h.includes(k)));
         const colIdx = {
-          store: hdr.findIndex(h => h.includes("store")),
-          code:  hdr.findIndex(h => h.includes("code")),
-          name:  hdr.findIndex(h => h.includes("name")),
-          uom:   hdr.findIndex(h => h.includes("uom") || h.includes("unit")),
-          qty:   hdr.findIndex(h => h.includes("qty") || h.includes("quantity")),
-          rate:  hdr.findIndex(h => h.includes("rate") || h.includes("price")),
+          store:    g(["store"]),
+          category: g(["category"]) ,
+          subcat:   g(["sub category","sub_category","subcategory"]),
+          code:     g(["item code","code"]),
+          name:     g(["item name","name"]),
+          uom:      g(["uom","unit"]),
+          drg:      g(["drg"]),
+          sap:      g(["sap"]),
+          hsn:      g(["hsn"]),
+          location: g(["location"]),
+          rate:     g(["rate"]),
+          cost:     g(["cost"]),
+          minqty:   g(["min qty","min_qty"]),
+          maxqty:   g(["max qty","max_qty"]),
+          cgst:     g(["cgst"]),
+          sgst:     g(["sgst"]),
+          igst:     g(["igst"]),
+          qty:      g(["opening qty","qty","quantity"]),
         };
         if (colIdx.code < 0 || colIdx.qty < 0) {
           setImportErr("Required columns not found. Download the template to see expected format.");
           return;
         }
+
+        const getStr = (row: any[], idx: number) => idx >= 0 ? String(row[idx] || "").trim() : "";
+        const getNum = (row: any[], idx: number) => idx >= 0 ? parseFloat(String(row[idx] || "0")) || 0 : 0;
 
         // ── Multi-store bulk import ──────────────────────────────────────────
         if (colIdx.store >= 0) {
@@ -185,21 +215,33 @@ export default function StoreOpening() {
           const storeMap: Record<string, any[]> = {};
           for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
-            const storeName = String(row[colIdx.store] || "").trim();
-            const code = String(row[colIdx.code] || "").trim();
-            const name = String(colIdx.name >= 0 ? row[colIdx.name] || "" : "").trim();
-            const qty  = parseFloat(String(row[colIdx.qty] || "0")) || 0;
-            const rate = parseFloat(String(colIdx.rate >= 0 ? row[colIdx.rate] || "0" : "0")) || 0;
-            const uom  = colIdx.uom >= 0 ? String(row[colIdx.uom] || "Nos").trim() : "Nos";
+            const storeName = getStr(row, colIdx.store);
+            const code      = getStr(row, colIdx.code);
+            const name      = getStr(row, colIdx.name);
+            const qty       = getNum(row, colIdx.qty);
             if (!storeName && !code && !name) continue;
             const key = storeName || "Unknown Store";
             if (!storeMap[key]) storeMap[key] = [];
             const prod = prodMap[code.toLowerCase()];
             storeMap[key].push({
-              item_code: prod?.code || code,
-              item_name: prod?.name || name || code,
-              uom: prod?.uom || prod?.unit || uom,
-              opening_qty: qty, rate,
+              item_code:    prod?.code || code,
+              item_name:    prod?.name || name || code,
+              uom:          getStr(row, colIdx.uom) || prod?.uom || prod?.unit || "Nos",
+              opening_qty:  qty,
+              rate:         getNum(row, colIdx.rate) || prod?.selling_price || 0,
+              // Product master fields (for auto-create/update)
+              category:     getStr(row, colIdx.category),
+              sub_category: getStr(row, colIdx.subcat),
+              drg_no:       getStr(row, colIdx.drg),
+              sap_no:       getStr(row, colIdx.sap),
+              hsn_code:     getStr(row, colIdx.hsn),
+              location:     getStr(row, colIdx.location),
+              cost_price:   getNum(row, colIdx.cost),
+              min_qty:      getNum(row, colIdx.minqty),
+              max_qty:      getNum(row, colIdx.maxqty),
+              cgst_rate:    getNum(row, colIdx.cgst),
+              sgst_rate:    getNum(row, colIdx.sgst),
+              igst_rate:    getNum(row, colIdx.igst),
             });
           }
           const entries = Object.entries(storeMap).map(([store_name, items]) => ({ store_name, items }));
@@ -595,8 +637,9 @@ export default function StoreOpening() {
           </table>
         </div>
         <p className="text-[10px] text-blue-600 mt-2">
-          * Required. <strong>Store column enables multi-store bulk import</strong> — rows are grouped by store name and separate SOP entries are created for each store automatically.
-          If a store name is not in the master, it will be created. Item Code auto-matches against product master.
+          * Required. <strong>One Excel, everything in one click</strong> — Category &amp; Sub Category are auto-created if not in master.
+          Products are auto-created (or updated) using the Item Code as the unique key.
+          Store names are auto-created if not found. Multiple stores can appear in the same file — rows are grouped per store automatically.
         </p>
       </div>
     </div>

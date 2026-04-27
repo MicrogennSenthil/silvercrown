@@ -3498,6 +3498,111 @@ Return ONLY valid JSON (no markdown, no explanation):
           }
           const storeId = wRow.id;
           const items: any[] = entry.items || [];
+
+          // ── Category / Sub-category / Product auto-create ─────────────────
+          // Cache category IDs within this bulk run
+          const catCache: Record<string, string>    = {};
+          const subcatCache: Record<string, string> = {};
+
+          for (const it of items) {
+            if (!it.item_code) continue;
+
+            // 1. Resolve Category
+            let categoryId: string | null = null;
+            if (it.category) {
+              const catKey = String(it.category).trim().toLowerCase();
+              if (catCache[catKey]) {
+                categoryId = catCache[catKey];
+              } else {
+                let catRow = (await client.query(
+                  `SELECT id FROM categories WHERE LOWER(name)=LOWER($1) LIMIT 1`, [it.category]
+                )).rows[0];
+                if (!catRow) {
+                  const code = String(it.category).toUpperCase().replace(/[^A-Z0-9]/g,'_').substring(0,20)
+                    + '_' + Date.now().toString().slice(-4);
+                  catRow = (await client.query(
+                    `INSERT INTO categories(id,code,name,is_active) VALUES(gen_random_uuid()::text,$1,$2,true) RETURNING id`,
+                    [code, it.category.trim()]
+                  )).rows[0];
+                }
+                catCache[catKey] = catRow.id;
+                categoryId = catRow.id;
+              }
+            }
+
+            // 2. Resolve Sub-category
+            let subCategoryId: string | null = null;
+            if (it.sub_category && categoryId) {
+              const subcatKey = String(it.sub_category).trim().toLowerCase() + "|" + categoryId;
+              if (subcatCache[subcatKey]) {
+                subCategoryId = subcatCache[subcatKey];
+              } else {
+                let scRow = (await client.query(
+                  `SELECT id FROM sub_categories WHERE LOWER(name)=LOWER($1) AND category_id=$2 LIMIT 1`,
+                  [it.sub_category, categoryId]
+                )).rows[0];
+                if (!scRow) {
+                  const code = String(it.sub_category).toUpperCase().replace(/[^A-Z0-9]/g,'_').substring(0,20)
+                    + '_' + Date.now().toString().slice(-4);
+                  scRow = (await client.query(
+                    `INSERT INTO sub_categories(id,code,name,category_id,is_active) VALUES(gen_random_uuid()::text,$1,$2,$3,true) RETURNING id`,
+                    [code, it.sub_category.trim(), categoryId]
+                  )).rows[0];
+                }
+                subcatCache[subcatKey] = scRow.id;
+                subCategoryId = scRow.id;
+              }
+            }
+
+            // 3. Upsert Product by code
+            const existingProd = (await client.query(
+              `SELECT id FROM products WHERE LOWER(code)=LOWER($1) LIMIT 1`, [it.item_code]
+            )).rows[0];
+            if (!existingProd) {
+              await client.query(`
+                INSERT INTO products(id,code,name,category_id,sub_category_id,uom,unit,hsn_code,location,
+                  selling_price,cost_price,min_stock_level,max_stock_level,cgst_rate,sgst_rate,igst_rate,
+                  drg_no,sap_no,is_active)
+                VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true)`,
+                [it.item_code||"", it.item_name||it.item_code||"",
+                 categoryId||null, subCategoryId||null,
+                 it.uom||"Nos", it.hsn_code||"", it.location||"",
+                 +it.rate||0, +it.cost_price||0,
+                 +it.min_qty||0, +it.max_qty||0,
+                 +it.cgst_rate||0, +it.sgst_rate||0, +it.igst_rate||0,
+                 it.drg_no||"", it.sap_no||""]
+              );
+            } else {
+              // Update master fields if provided
+              await client.query(`
+                UPDATE products SET
+                  name=COALESCE(NULLIF($1,''),name),
+                  category_id=COALESCE($2,category_id),
+                  sub_category_id=COALESCE($3,sub_category_id),
+                  uom=COALESCE(NULLIF($4,''),uom), unit=COALESCE(NULLIF($4,''),unit),
+                  hsn_code=COALESCE(NULLIF($5,''),hsn_code),
+                  location=COALESCE(NULLIF($6,''),location),
+                  selling_price=CASE WHEN $7>0 THEN $7 ELSE selling_price END,
+                  cost_price=CASE WHEN $8>0 THEN $8 ELSE cost_price END,
+                  min_stock_level=CASE WHEN $9>0 THEN $9 ELSE min_stock_level END,
+                  max_stock_level=CASE WHEN $10>0 THEN $10 ELSE max_stock_level END,
+                  cgst_rate=CASE WHEN $11>0 THEN $11 ELSE cgst_rate END,
+                  sgst_rate=CASE WHEN $12>0 THEN $12 ELSE sgst_rate END,
+                  igst_rate=CASE WHEN $13>0 THEN $13 ELSE igst_rate END,
+                  drg_no=COALESCE(NULLIF($14,''),drg_no),
+                  sap_no=COALESCE(NULLIF($15,''),sap_no)
+                WHERE id=$16`,
+                [it.item_name||"", categoryId||null, subCategoryId||null, it.uom||"",
+                 it.hsn_code||"", it.location||"",
+                 +it.rate||0, +it.cost_price||0,
+                 +it.min_qty||0, +it.max_qty||0,
+                 +it.cgst_rate||0, +it.sgst_rate||0, +it.igst_rate||0,
+                 it.drg_no||"", it.sap_no||"", existingProd.id]
+              );
+            }
+          }
+          // ─────────────────────────────────────────────────────────────────
+
           const totalQty    = items.reduce((s: number, it: any) => s + (+it.opening_qty || 0), 0);
           const totalAmount = items.reduce((s: number, it: any) => s + ((+it.opening_qty || 0) * (+it.rate || 0)), 0);
           const voucherNo = await generateVoucherNo("store_opening", client);
