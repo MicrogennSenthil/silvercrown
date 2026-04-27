@@ -1481,7 +1481,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           d.id                   AS despatch_id,
           d.voucher_no           AS despatch_no,
           d.despatch_date,
+          j.id                   AS inward_id,
           j.voucher_no           AS jw_no,
+          j.inward_date          AS jw_date,
           j.work_order_no,
           COALESCE(c.name, d.party_name_manual, '') AS party_name,
           di.id                  AS item_id,
@@ -1490,20 +1492,23 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           di.item_name,
           di.unit,
           di.process,
-          di.qty_despatched      AS des_qty,
+          COALESCE(jwi.qty, 0)                                          AS order_qty,
+          di.qty_despatched                                             AS des_qty,
           COALESCE(SUM(ii.qty_despatched), 0)                           AS inv_qty,
           di.qty_despatched - COALESCE(SUM(ii.qty_despatched), 0)       AS pending_qty
         FROM job_work_despatch d
-        LEFT JOIN job_work_inward        j  ON j.id  = d.inward_id
-        LEFT JOIN customers              c  ON c.id  = d.party_id
-        LEFT JOIN job_work_despatch_items di ON di.despatch_id = d.id
-        LEFT JOIN job_work_invoice_items  ii ON ii.inward_item_id = di.inward_item_id
-                                             AND ii.despatch_id   = d.id
+        LEFT JOIN job_work_inward        j   ON j.id  = d.inward_id
+        LEFT JOIN customers              c   ON c.id  = d.party_id
+        LEFT JOIN job_work_despatch_items di  ON di.despatch_id = d.id
+        LEFT JOIN job_work_inward_items   jwi ON jwi.id = di.inward_item_id
+        LEFT JOIN job_work_invoice_items  ii  ON ii.inward_item_id = di.inward_item_id
+                                              AND ii.despatch_id   = d.id
         WHERE d.despatch_date BETWEEN $1 AND $2
         GROUP BY d.id, d.voucher_no, d.despatch_date,
-                 j.voucher_no, j.work_order_no,
+                 j.id, j.voucher_no, j.inward_date, j.work_order_no,
                  c.name, d.party_name_manual,
-                 di.id, di.seq_no, di.item_code, di.item_name, di.unit, di.process, di.qty_despatched
+                 di.id, di.seq_no, di.item_code, di.item_name, di.unit, di.process, di.qty_despatched,
+                 jwi.qty
         HAVING di.qty_despatched - COALESCE(SUM(ii.qty_despatched), 0) > 0
         ORDER BY d.despatch_date DESC, d.created_at DESC, di.seq_no
       `, [from, to])).rows;
