@@ -1,6 +1,13 @@
 /**
  * ReportShell — Standard report wrapper used by ALL reports in the system.
- * Provides: search, date range, party/item filters, print, Excel, PDF export.
+ *
+ * STANDARD PROCEDURES (enforced centrally):
+ *  • Search bar + From/To date range + Party/Item filter slot
+ *  • Print button → opens print window with:
+ *      – Company name, address, GSTIN, phone, email in header
+ *      – Report title + date range sub-header
+ *      – "Powered by Microgenn" footer with Page X / Y
+ *  • Export dropdown → Excel/CSV | PDF (print) | View on Screen
  */
 import { useState, useRef, useEffect } from "react";
 import {
@@ -16,17 +23,24 @@ export interface ReportShellProps {
   toDate: string;
   onFromDate: (v: string) => void;
   onToDate: (v: string) => void;
-  onPrint: () => void;
+  /** @deprecated — print is now handled internally by ReportShell */
+  onPrint?: () => void;
   onExcelExport: () => void;
-  onPdfExport: () => void;
+  /** @deprecated — PDF uses internal print */
+  onPdfExport?: () => void;
   recordCount?: number;
-  /** Slot for extra filter dropdowns (party, item, status…) */
   extraFilters?: React.ReactNode;
   children: React.ReactNode;
 }
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
+function fmtDisplayDate(iso: string) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// ── DateField helper ──────────────────────────────────────────────────────────
 function DateField({ label, value, onChange }: {
   label: string; value: string; onChange: (v: string) => void;
 }) {
@@ -41,16 +55,15 @@ function DateField({ label, value, onChange }: {
   );
 }
 
+// ── ReportShell ───────────────────────────────────────────────────────────────
 export function ReportShell({
   title, search, onSearch,
   fromDate, toDate, onFromDate, onToDate,
-  onPrint, onExcelExport, onPdfExport,
-  recordCount, extraFilters, children,
+  onExcelExport, recordCount, extraFilters, children,
 }: ReportShellProps) {
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
 
-  // Close export menu on outside click
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
@@ -58,6 +71,10 @@ export function ReportShell({
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  function handlePrint() {
+    printReport(title, fromDate, toDate);
+  }
 
   return (
     <div className="p-4" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
@@ -75,7 +92,7 @@ export function ReportShell({
           </div>
         </div>
 
-        {/* Primary filter bar: search + dates + export + print */}
+        {/* Primary filter bar */}
         <div className="flex items-center gap-3 px-5 py-2.5 border-b border-gray-100 flex-wrap bg-white">
           {/* Search */}
           <div className="relative min-w-[200px] max-w-xs flex-1">
@@ -113,12 +130,12 @@ export function ReportShell({
                   data-testid="btn-export-excel">
                   <FileText size={14} className="text-green-600" /> Excel / CSV
                 </button>
-                <button onClick={() => { onPdfExport(); setExportOpen(false); }}
+                <button onClick={() => { handlePrint(); setExportOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-[#d2f1fa] text-left"
                   data-testid="btn-export-pdf">
                   <FileText size={14} className="text-red-600" /> PDF
                 </button>
-                <button onClick={() => { onPrint(); setExportOpen(false); }}
+                <button onClick={() => { handlePrint(); setExportOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-[#d2f1fa] text-left"
                   data-testid="btn-view-screen">
                   <Monitor size={14} className="text-blue-500" /> View on Screen
@@ -128,14 +145,14 @@ export function ReportShell({
           </div>
 
           {/* Print */}
-          <button onClick={onPrint}
+          <button onClick={handlePrint}
             className="flex items-center gap-1.5 h-[36px] px-3 rounded-lg text-white text-sm font-semibold shadow-sm hover:opacity-90"
             style={{ background: SC.primary }} data-testid="btn-report-print">
             <Printer size={14} /> Print
           </button>
         </div>
 
-        {/* Secondary filter bar — only rendered when extraFilters is provided */}
+        {/* Secondary filter bar */}
         {extraFilters && (
           <div className="flex items-center gap-3 px-5 py-2 border-b border-gray-100 bg-gray-50/40 flex-wrap">
             <div className="flex items-center gap-1.5 text-xs text-gray-500 font-semibold">
@@ -145,7 +162,7 @@ export function ReportShell({
           </div>
         )}
 
-        {/* Report table body */}
+        {/* Report body */}
         <div className="overflow-x-auto" id="report-printable">
           {children}
         </div>
@@ -154,20 +171,17 @@ export function ReportShell({
   );
 }
 
-// ── ReportFilterSelect — dropdown pill used in the extra filter bar ─────────
+// ── ReportFilterSelect ────────────────────────────────────────────────────────
 export function ReportFilterSelect({
   label, value, onChange, options, allLabel = "All",
 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-  allLabel?: string;
+  label: string; value: string; onChange: (v: string) => void;
+  options: string[]; allLabel?: string;
 }) {
-  const [open, setOpen]   = useState(false);
-  const [q, setQ]         = useState("");
-  const ref               = useRef<HTMLDivElement>(null);
-  const inputRef          = useRef<HTMLInputElement>(null);
+  const [open, setOpen]     = useState(false);
+  const [q, setQ]           = useState("");
+  const ref                 = useRef<HTMLDivElement>(null);
+  const inputRef            = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -178,7 +192,6 @@ export function ReportFilterSelect({
   }, []);
 
   const filtered = options.filter(o => !q || o.toLowerCase().includes(q.toLowerCase()));
-  const display  = value || allLabel;
   const isActive = !!value;
 
   function openMenu() {
@@ -196,7 +209,7 @@ export function ReportFilterSelect({
         }`}
         data-testid={`filter-${label.toLowerCase().replace(/\s/g, "-")}`}>
         <span className={isActive ? "text-white/70" : "text-gray-400"}>{label}:</span>
-        <span className="max-w-[140px] truncate">{display}</span>
+        <span className="max-w-[140px] truncate">{value || allLabel}</span>
         {!isActive && <ChevronDown size={11} />}
       </button>
       {isActive && (
@@ -206,7 +219,6 @@ export function ReportFilterSelect({
           <X size={11} />
         </button>
       )}
-
       {open && (
         <div className="absolute left-0 top-full mt-1 z-[100] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden w-64">
           <div className="px-2.5 py-1.5 border-b border-gray-100">
@@ -236,8 +248,7 @@ export function ReportFilterSelect({
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
+// ── Table helpers ─────────────────────────────────────────────────────────────
 export function RTh({ children, right }: { children: React.ReactNode; right?: boolean }) {
   return (
     <th className={`px-4 py-2.5 text-xs font-bold text-gray-700 whitespace-nowrap ${right ? "text-right" : "text-left"}`}
@@ -259,6 +270,7 @@ export function RTd({ children, right, muted, bold, className = "", colSpan }: {
   );
 }
 
+// ── CSV export ────────────────────────────────────────────────────────────────
 export function exportToCSV(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
   const esc = (v: string | number | null | undefined) => {
     const s = String(v ?? "");
@@ -267,29 +279,180 @@ export function exportToCSV(filename: string, headers: string[], rows: (string |
   const csv  = [headers, ...rows].map(r => r.map(esc).join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
+  const a    = document.createElement("a"); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
 
-export function printReport(title: string) {
+// ── printReport — async, fetches company settings, adds header + footer ───────
+export async function printReport(title: string, fromDate?: string, toDate?: string) {
+  // Fetch company settings from the server
+  let settingsMap: Record<string, string> = {};
+  try {
+    const res = await fetch("/api/settings", { credentials: "include" });
+    if (res.ok) {
+      const list: { key: string; value: string }[] = await res.json();
+      settingsMap = Object.fromEntries(list.map(s => [s.key, s.value]));
+    }
+  } catch { /* silently ignore */ }
+
+  const companyName    = settingsMap["company_name"]    || "Silver Crown Group of Companies";
+  const companyAddr    = settingsMap["company_address"] || "";
+  const companyCity    = settingsMap["company_city"]    || "";
+  const companyState   = settingsMap["company_state"]   || "";
+  const companyPin     = settingsMap["company_pincode"] || "";
+  const companyGstin   = settingsMap["company_gstin"]   || "";
+  const companyPhone   = settingsMap["company_phone"]   || "";
+  const companyEmail   = settingsMap["company_email"]   || "";
+
+  const addrParts = [companyAddr, companyCity, companyState, companyPin].filter(Boolean);
+  const addrLine  = addrParts.join(", ");
+
+  const dateRange = fromDate && toDate
+    ? `Period: ${fmtDisplayDate(fromDate)} — ${fmtDisplayDate(toDate)}`
+    : "";
+
+  const printedOn = new Date().toLocaleDateString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
   const content = document.getElementById("report-printable")?.innerHTML || "";
-  const win = window.open("", "_blank", "width=1000,height=750");
+
+  const win = window.open("", "_blank", "width=1100,height=800");
   if (!win) return;
-  win.document.write(`
-    <html><head><title>${title}</title>
-    <style>
-      body { font-family: 'Source Sans Pro', Arial, sans-serif; font-size: 12px; color: #111; margin: 20px; }
-      h2   { font-size: 15px; margin-bottom: 10px; color: #027fa5; }
-      table { width: 100%; border-collapse: collapse; }
-      th  { background: #d2f1fa; font-weight: bold; padding: 7px 9px; text-align: left; font-size: 11px; border-bottom: 2px solid #027fa5; }
-      td  { padding: 6px 9px; font-size: 11px; border-bottom: 1px solid #e5e7eb; }
-      tr:nth-child(even) td { background: #f8fafc; }
-      @media print { @page { size: A4 landscape; margin: 12mm; } }
-    </style></head>
-    <body><h2>${title}</h2>${content}</body></html>
-  `);
+
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${title} — ${companyName}</title>
+  <style>
+    /* ── Base ── */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 12px;
+      color: #111;
+      background: #fff;
+    }
+
+    /* ── Company header ── */
+    .print-header {
+      border-bottom: 2px solid #027fa5;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .company-name {
+      font-size: 17px;
+      font-weight: 700;
+      color: #027fa5;
+      letter-spacing: 0.3px;
+    }
+    .company-meta {
+      font-size: 10.5px;
+      color: #555;
+      margin-top: 2px;
+      line-height: 1.5;
+    }
+    .report-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-top: 8px;
+    }
+    .report-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #111;
+    }
+    .report-meta {
+      font-size: 10px;
+      color: #666;
+      text-align: right;
+    }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    thead th {
+      background: #d2f1fa;
+      font-weight: 700;
+      padding: 6px 8px;
+      text-align: left;
+      font-size: 11px;
+      border-bottom: 2px solid #027fa5;
+      white-space: nowrap;
+    }
+    thead th.right { text-align: right; }
+    td {
+      padding: 5px 8px;
+      font-size: 11px;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: top;
+    }
+    tbody tr:nth-child(even) td { background: #f8fafc; }
+    tfoot td, tfoot th {
+      background: #d2f1fa;
+      font-weight: 700;
+      padding: 6px 8px;
+      font-size: 11px;
+      border-top: 2px solid #027fa5;
+    }
+
+    /* ── Footer via @page paged media ── */
+    @page {
+      size: A4 landscape;
+      margin: 15mm 12mm 20mm 12mm;
+
+      @bottom-left {
+        content: "Powered by Microgenn";
+        font-size: 9px;
+        color: #888;
+        font-family: Arial, sans-serif;
+      }
+      @bottom-center {
+        content: "Page " counter(page) " of " counter(pages);
+        font-size: 9px;
+        color: #888;
+        font-family: Arial, sans-serif;
+      }
+      @bottom-right {
+        content: "Printed: ${printedOn.replace(/"/g, "'")}";
+        font-size: 9px;
+        color: #888;
+        font-family: Arial, sans-serif;
+      }
+    }
+
+    /* Hide screen-only elements */
+    .no-print { display: none !important; }
+
+    /* Page break before each new page of table */
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
+  </style>
+</head>
+<body>
+  <div class="print-header">
+    <div class="company-name">${companyName}</div>
+    <div class="company-meta">
+      ${addrLine ? `<span>${addrLine}</span>` : ""}
+      ${companyGstin ? `&nbsp;|&nbsp; GSTIN: <strong>${companyGstin}</strong>` : ""}
+      ${companyPhone ? `&nbsp;|&nbsp; Ph: ${companyPhone}` : ""}
+      ${companyEmail ? `&nbsp;|&nbsp; ${companyEmail}` : ""}
+    </div>
+    <div class="report-title-row">
+      <div class="report-title">${title}</div>
+      <div class="report-meta">
+        ${dateRange ? `<div>${dateRange}</div>` : ""}
+      </div>
+    </div>
+  </div>
+
+  ${content}
+</body>
+</html>`);
+
   win.document.close();
   win.focus();
-  setTimeout(() => { win.print(); win.close(); }, 400);
+  setTimeout(() => { win.print(); }, 600);
 }
