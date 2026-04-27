@@ -1858,6 +1858,118 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── Reprint API ────────────────────────────────────────────────────────────
+  // GET /api/reprint?type=invoice|purchase_order|despatch_note&from=YYYY-MM-DD&to=YYYY-MM-DD
+  app.get("/api/reprint", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const type = (req.query.type as string) || "invoice";
+      const from = (req.query.from as string) || "1900-01-01";
+      const to   = (req.query.to   as string) || "2099-12-31";
+
+      let rows: any[] = [];
+
+      if (type === "invoice") {
+        rows = (await pool.query(`
+          SELECT jwi.id, jwi.voucher_no AS txn_no, jwi.invoice_date AS txn_date,
+            COALESCE(c.name, jwi.party_name_manual, '') AS party_name,
+            COALESCE(c.email, '') AS party_email,
+            COALESCE(SUM(ii.amount + COALESCE(ii.cgst_amt,0) + COALESCE(ii.sgst_amt,0) + COALESCE(ii.igst_amt,0)), 0) AS amount
+          FROM job_work_invoices jwi
+          LEFT JOIN customers c ON c.id = jwi.party_id
+          LEFT JOIN job_work_invoice_items ii ON ii.invoice_id = jwi.id
+          WHERE jwi.invoice_date BETWEEN $1 AND $2
+          GROUP BY jwi.id, jwi.voucher_no, jwi.invoice_date, c.name, jwi.party_name_manual, c.email
+          ORDER BY jwi.invoice_date DESC, jwi.voucher_no DESC
+        `, [from, to])).rows;
+
+      } else if (type === "despatch_note") {
+        rows = (await pool.query(`
+          SELECT jwd.id, jwd.voucher_no AS txn_no, jwd.despatch_date AS txn_date,
+            COALESCE(c.name, jwd.party_name_manual, jwd.party_name_manual2, '') AS party_name,
+            COALESCE(c.email, '') AS party_email,
+            COALESCE(SUM(
+              COALESCE(di.qty_despatched,0) * COALESCE(di.rate,0)
+              + COALESCE(di.cgst_amt,0) + COALESCE(di.sgst_amt,0) + COALESCE(di.igst_amt,0)
+            ), 0) AS amount
+          FROM job_work_despatch jwd
+          LEFT JOIN customers c ON c.id = jwd.party_id
+          LEFT JOIN job_work_despatch_items di ON di.despatch_id = jwd.id
+          WHERE jwd.despatch_date BETWEEN $1 AND $2
+          GROUP BY jwd.id, jwd.voucher_no, jwd.despatch_date, c.name, jwd.party_name_manual, jwd.party_name_manual2, c.email
+          ORDER BY jwd.despatch_date DESC, jwd.voucher_no DESC
+        `, [from, to])).rows;
+
+      } else if (type === "purchase_order") {
+        rows = (await pool.query(`
+          SELECT po.id, po.voucher_no AS txn_no, po.po_date AS txn_date,
+            COALESCE(s.name, po.supplier_name_manual, '') AS party_name,
+            COALESCE(s.email, '') AS party_email,
+            COALESCE(SUM(poi.total), 0) AS amount
+          FROM purchase_orders po
+          LEFT JOIN suppliers s ON s.id = po.supplier_id
+          LEFT JOIN purchase_order_items poi ON poi.po_id = po.id
+          WHERE po.po_date BETWEEN $1 AND $2
+          GROUP BY po.id, po.voucher_no, po.po_date, s.name, po.supplier_name_manual, s.email
+          ORDER BY po.po_date DESC, po.voucher_no DESC
+        `, [from, to])).rows;
+      }
+
+      res.json(rows.map(r => ({
+        id:          r.id,
+        txn_no:      r.txn_no,
+        txn_date:    r.txn_date,
+        party_name:  r.party_name,
+        party_email: r.party_email,
+        amount:      parseFloat(r.amount || "0"),
+      })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/reprint/:type/:id — full document for print/view modal
+  app.get("/api/reprint/:type/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { type, id } = req.params;
+
+      if (type === "invoice") {
+        const h = (await pool.query(`
+          SELECT jwi.*, COALESCE(c.name, jwi.party_name_manual,'') AS party_name_db,
+            COALESCE(c.email,'') AS party_email, COALESCE(c.phone,'') AS party_phone,
+            COALESCE(c.address,'') AS party_address
+          FROM job_work_invoices jwi LEFT JOIN customers c ON c.id = jwi.party_id WHERE jwi.id=$1
+        `, [id])).rows[0];
+        if (!h) return res.status(404).json({ message: "Not found" });
+        const items = (await pool.query(`SELECT * FROM job_work_invoice_items WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
+        const charges = (await pool.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
+        return res.json({ ...h, items, charges });
+
+      } else if (type === "despatch_note") {
+        const h = (await pool.query(`
+          SELECT jwd.*, COALESCE(c.name, jwd.party_name_manual,'') AS party_name_db,
+            COALESCE(c.email,'') AS party_email, COALESCE(c.phone,'') AS party_phone
+          FROM job_work_despatch jwd LEFT JOIN customers c ON c.id = jwd.party_id WHERE jwd.id=$1
+        `, [id])).rows[0];
+        if (!h) return res.status(404).json({ message: "Not found" });
+        const items = (await pool.query(`SELECT * FROM job_work_despatch_items WHERE despatch_id=$1 ORDER BY seq_no`, [id])).rows;
+        return res.json({ ...h, items });
+
+      } else if (type === "purchase_order") {
+        const h = (await pool.query(`
+          SELECT po.*, COALESCE(s.name, po.supplier_name_manual,'') AS party_name_db,
+            COALESCE(s.email,'') AS party_email, COALESCE(s.phone,'') AS party_phone
+          FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id WHERE po.id=$1
+        `, [id])).rows[0];
+        if (!h) return res.status(404).json({ message: "Not found" });
+        const items = (await pool.query(`SELECT * FROM purchase_order_items WHERE po_id=$1 ORDER BY seq_no`, [id])).rows;
+        const terms = (await pool.query(`SELECT * FROM purchase_order_terms WHERE po_id=$1 ORDER BY seq_no`, [id])).rows;
+        const charges = (await pool.query(`SELECT * FROM purchase_order_charges WHERE po_id=$1 ORDER BY seq_no`, [id])).rows;
+        return res.json({ ...h, items, terms, charges });
+      }
+      res.status(400).json({ message: "Unknown type" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/ageing-list — customer aging with custom bucket ranges
   // ?ranges=0-7,7-14,14-21,21-28   (last bucket becomes "above last.to")
   app.get("/api/reports/ageing-list", requireAuth, async (req, res) => {

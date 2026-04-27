@@ -66,6 +66,7 @@ import ExpiryItemList          from "@/pages/reports/ExpiryItemList";
 import CustomerReceivable      from "@/pages/reports/CustomerReceivable";
 import SupplierPayables        from "@/pages/reports/SupplierPayables";
 import AgeingList              from "@/pages/reports/AgeingList";
+import Reprint                 from "@/pages/Reprint";
 // User Management
 import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
@@ -174,6 +175,7 @@ function Router() {
       <Route path="/reports/accounts/customer-receivable"><ProtectedRoute component={CustomerReceivable} /></Route>
       <Route path="/reports/accounts/supplier-payables"><ProtectedRoute component={SupplierPayables} /></Route>
       <Route path="/reports/accounts/ageing-list"><ProtectedRoute component={AgeingList} /></Route>
+      <Route path="/reprint"><ProtectedRoute component={Reprint} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/customers"><ProtectedRoute component={Customers} /></Route>
