@@ -89,20 +89,6 @@ const NAV: any[] = [
     ]
   },
   {
-    label: "Purchase", icon: ShoppingCart, children: [
-      { label: "Purchase Order", href: "/purchase/orders" },
-      { label: "Purchase Invoice", href: "/purchase/invoices" },
-      { label: "Purchase Return", href: "/purchase/returns" },
-    ]
-  },
-  {
-    label: "Sales", icon: TrendingUp, children: [
-      { label: "Sales Order", href: "/sales/orders" },
-      { label: "Sales Invoice", href: "/sales/invoices" },
-      { label: "Sales Return", href: "/sales/returns" },
-    ]
-  },
-  {
     label: "Accounts", icon: BookOpen, children: [
       { label: "Journal Entries", href: "/accounts/journal" },
       { label: "Ledger", href: "/accounts/ledger" },
