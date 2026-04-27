@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PencilLine, Plus, Trash2, Info, ChevronDown } from "lucide-react";
+import { PencilLine, Plus, Trash2, Info, ChevronDown, ArrowLeft } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
@@ -45,8 +46,8 @@ function newBill(): BillRow {
 
 // ── Ledger Form ────────────────────────────────────────────────────────────
 function LedgerForm({
-  item, onBack,
-}: { item?: any; onBack: () => void }) {
+  item, onBack, initialGlId, initialCatId,
+}: { item?: any; onBack: () => void; initialGlId?: string; initialCatId?: string }) {
   const qc = useQueryClient();
   const isEdit = !!item?.id;
 
@@ -54,8 +55,8 @@ function LedgerForm({
   const { data: categoriesList = [] } = useQuery<any[]>({ queryKey: ["/api/ledger-categories"] });
 
   const [name, setName] = useState(item?.name || "");
-  const [glId, setGlId] = useState(item?.generalLedgerId || "");
-  const [catId, setCatId] = useState(item?.categoryId || "");
+  const [glId, setGlId] = useState(item?.generalLedgerId || initialGlId || "");
+  const [catId, setCatId] = useState(item?.categoryId || initialCatId || "");
   const [levelType, setLevelType] = useState(item?.levelType || "Same");
   const [paymentType, setPaymentType] = useState(item?.paymentType || "OnAccount");
   const [obEntry, setObEntry] = useState<boolean>(item?.openingBalanceEntry ?? false);
@@ -137,12 +138,30 @@ function LedgerForm({
     onError: (e: any) => setError(e.message),
   });
 
+  const parentGL = generalLedgersList.find((g: any) => g.id === glId);
+  const parentCat = categoriesList.find((c: any) => c.id === (parentGL?.categoryId || catId));
+
   return (
     <div className="p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
       <div className="max-w-5xl mx-auto bg-white rounded-xl shadow-sm">
         {/* Card Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800 text-base">Ledger</h2>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onBack}
+              className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700">
+              <ArrowLeft size={16}/>
+            </button>
+            <div>
+              <h2 className="font-semibold text-gray-800 text-base">Ledger</h2>
+              {initialGlId && parentGL && (
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {parentCat?.name && <span>{parentCat.name} › </span>}
+                  <span className="text-[#027fa5] font-medium">{parentGL.name}</span>
+                  <span> › New Ledger</span>
+                </div>
+              )}
+            </div>
+          </div>
           <Info size={16} className="text-gray-400 cursor-pointer" />
         </div>
 
@@ -393,9 +412,32 @@ function LedgerForm({
 
 // ── Sub Ledger List ──────────────────────────────────────────────────────────
 export default function SubLedgerMaster() {
-  const [view, setView] = useState<"list" | "add" | "edit">("list");
+  const [location, setLocation] = useLocation();
+
+  // Parse URL query params for pre-fill from GL tree
+  const params = new URLSearchParams(
+    typeof window !== "undefined" ? window.location.search : ""
+  );
+  const urlMode   = params.get("mode");        // "new"
+  const urlGlId   = params.get("glId") || "";
+  const urlCatId  = params.get("catId") || "";
+  const urlFrom   = params.get("from") || "";  // "gl-tree"
+
+  const [view, setView] = useState<"list" | "add" | "edit">(
+    urlMode === "new" ? "add" : "list"
+  );
   const [editItem, setEditItem] = useState<any>(null);
   const [search, setSearch] = useState("");
+
+  // Back handler: if came from GL tree, navigate back there
+  function handleBack() {
+    if (urlFrom === "gl-tree") {
+      setLocation("/accounts/general-ledger");
+    } else {
+      setEditItem(null);
+      setView("list");
+    }
+  }
 
   const { data: ledgers = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
   const { data: glList = [] } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
@@ -425,8 +467,19 @@ export default function SubLedgerMaster() {
     r.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (view === "add") return <LedgerForm onBack={() => setView("list")} />;
-  if (view === "edit") return <LedgerForm item={editItem} onBack={() => { setEditItem(null); setView("list"); }} />;
+  if (view === "add") return (
+    <LedgerForm
+      onBack={handleBack}
+      initialGlId={urlGlId}
+      initialCatId={urlCatId}
+    />
+  );
+  if (view === "edit") return (
+    <LedgerForm
+      item={editItem}
+      onBack={handleBack}
+    />
+  );
 
   return (
     <div className="p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>

@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
   ChevronRight, ChevronDown, Folder, FolderOpen, FileText,
   Plus, Pencil, Trash2, X, Save, AlertTriangle, CheckCircle,
@@ -422,6 +423,7 @@ type PanelMode = "edit-gl" | "edit-sl" | "add-gl" | "add-sl" | null;
 
 export default function GeneralLedgerTree() {
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const { data: categories = [], isLoading: loadingCat } = useQuery<any[]>({ queryKey: ["/api/ledger-categories"] });
   const { data: generalLedgers = [], isLoading: loadingGL } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
@@ -604,7 +606,10 @@ export default function GeneralLedgerTree() {
                         </span>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
-                            onClick={() => { setAddSLGLId(gl.id); setAddSLCatId(cat.id); setPanel("add-sl"); setExpandedGLs(s => { const n = new Set(s); n.add(gl.id); return n; }); }}
+                            onClick={() => {
+                              setExpandedGLs(s => { const n = new Set(s); n.add(gl.id); return n; });
+                              setLocation(`/accounts/ledger?mode=new&glId=${gl.id}&catId=${cat.id}&from=gl-tree`);
+                            }}
                             className="text-xs px-1.5 py-0.5 rounded border border-green-500 text-green-700 hover:bg-green-50 flex items-center gap-0.5"
                             title="Add sub-ledger" data-testid={`btn-add-sl-${gl.id}`}
                           ><Plus size={10}/>SL</button>
