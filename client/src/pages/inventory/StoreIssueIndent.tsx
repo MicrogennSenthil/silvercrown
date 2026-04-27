@@ -61,8 +61,12 @@ export default function StoreIssueIndent() {
 
   const products = (allProducts as any[]).filter((p: any) => p.is_active !== false);
 
-  // Unissued SRNs (Draft or Approved, not already issued)
+  // For Goods Request mode: SRNs filtered by selected store
+  const selectedStoreName = (warehouses as any[]).find((w: any) => w.id === form.store_id)?.name || "";
   const availableSrns = (allSrns as any[]).filter((s: any) => s.status !== "Issued");
+  const storeSrns = form.store_id
+    ? availableSrns.filter((s: any) => s.store_id === form.store_id || s.store_name === selectedStoreName)
+    : [];
 
   useEffect(() => {
     function h(e: MouseEvent) {
@@ -172,6 +176,21 @@ export default function StoreIssueIndent() {
 
   async function handleSave() {
     setErr(""); setSaving(true);
+
+    // Stock validation — common for both Direct and Goods Request
+    const overStock = form.items.filter(it => it.issued_qty > 0 && it.issued_qty > it.stock);
+    if (overStock.length > 0) {
+      setErr(`Insufficient stock for: ${overStock.map(it => it.item_name || it.item_code).join(", ")}. Cannot issue more than available stock.`);
+      setSaving(false);
+      return;
+    }
+    const zeroQty = form.items.filter(it => it.issued_qty <= 0);
+    if (form.items.length > 0 && zeroQty.length === form.items.length) {
+      setErr("Please enter issued quantity for at least one item.");
+      setSaving(false);
+      return;
+    }
+
     const payload = { ...form, total_qty: totalQty, grand_total: grandTotal };
     const url = editId ? `/api/store-issue-indents/${editId}` : "/api/store-issue-indents";
     const method = editId ? "PATCH" : "POST";
@@ -315,7 +334,16 @@ export default function StoreIssueIndent() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-gray-500 font-medium">Store</label>
-              <select value={form.store_id} onChange={e => setForm(f => ({ ...f, store_id: e.target.value }))}
+              <select value={form.store_id}
+                onChange={e => {
+                  const newStore = e.target.value;
+                  setForm(f => ({
+                    ...f,
+                    store_id: newStore,
+                    // clear linked SRNs/items when store changes in Goods Request mode
+                    ...(f.issue_type === "Goods Request" ? { linked_srns: [], items: [] } : {}),
+                  }));
+                }}
                 className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
                 data-testid="select-store">
                 <option value="">Select Store</option>
@@ -352,6 +380,14 @@ export default function StoreIssueIndent() {
             <div className="flex items-center justify-center h-20 border border-dashed border-gray-200 rounded-lg text-sm text-gray-400">
               Select items directly in the grid below
             </div>
+          ) : !form.store_id ? (
+            <div className="flex items-center justify-center h-20 border border-dashed border-amber-200 rounded-lg bg-amber-50">
+              <p className="text-xs text-amber-600 font-medium">Please select a store first to view pending requests</p>
+            </div>
+          ) : storeSrns.length === 0 ? (
+            <div className="flex items-center justify-center h-20 border border-dashed border-red-200 rounded-lg bg-red-50">
+              <p className="text-xs text-red-500 font-medium">No pending requests found for <span className="font-bold">{selectedStoreName}</span></p>
+            </div>
           ) : (
             <div className="overflow-y-auto max-h-40">
               <table className="w-full text-xs">
@@ -364,27 +400,23 @@ export default function StoreIssueIndent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {availableSrns.length === 0 ? (
-                    <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">No pending store requests</td></tr>
-                  ) : (
-                    availableSrns.map((srn: any) => {
-                      const linked = isLinked(srn.id);
-                      return (
-                        <tr key={srn.id} className={`border-b cursor-pointer ${linked ? "bg-[#e8f6fb]" : "hover:bg-gray-50"}`}
-                          onClick={() => toggleSrn(srn, !linked)}>
-                          <td className="px-3 py-2 font-semibold" style={{ color: SC.primary }}>{srn.voucher_no}</td>
-                          <td className="px-3 py-2 text-gray-600">{srn.request_date?.slice(0, 10)}</td>
-                          <td className="px-3 py-2 text-gray-600">{srn.store_name || "—"}</td>
-                          <td className="px-3 py-2 text-center">
-                            <button onClick={e => { e.stopPropagation(); toggleSrn(srn, !linked); }}
-                              className={linked ? "text-[#027fa5]" : "text-gray-300"} data-testid={`chk-srn-${srn.id}`}>
-                              {linked ? <CheckSquare size={15}/> : <Square size={15}/>}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
+                  {storeSrns.map((srn: any) => {
+                    const linked = isLinked(srn.id);
+                    return (
+                      <tr key={srn.id} className={`border-b cursor-pointer ${linked ? "bg-[#e8f6fb]" : "hover:bg-gray-50"}`}
+                        onClick={() => toggleSrn(srn, !linked)}>
+                        <td className="px-3 py-2 font-semibold" style={{ color: SC.primary }}>{srn.voucher_no}</td>
+                        <td className="px-3 py-2 text-gray-600">{srn.request_date?.slice(0, 10)}</td>
+                        <td className="px-3 py-2 text-gray-600">{srn.store_name || "—"}</td>
+                        <td className="px-3 py-2 text-center">
+                          <button onClick={e => { e.stopPropagation(); toggleSrn(srn, !linked); }}
+                            className={linked ? "text-[#027fa5]" : "text-gray-300"} data-testid={`chk-srn-${srn.id}`}>
+                            {linked ? <CheckSquare size={15}/> : <Square size={15}/>}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -476,8 +508,11 @@ export default function StoreIssueIndent() {
                   {/* Issued Qty */}
                   <td className="px-1 py-1">
                     <input type="number" value={it.issued_qty || ""}
-                      onChange={e => updItem(i, "issued_qty", parseFloat(e.target.value) || 0)}
-                      className="border border-gray-300 rounded px-2 py-1.5 w-16 outline-none focus:border-[#027fa5] text-xs text-right"
+                      onChange={e => {
+                        const val = parseFloat(e.target.value) || 0;
+                        updItem(i, "issued_qty", val);
+                      }}
+                      className={`border rounded px-2 py-1.5 w-16 outline-none text-xs text-right ${it.issued_qty > it.stock && it.issued_qty > 0 ? "border-red-400 bg-red-50 focus:border-red-500" : "border-gray-300 focus:border-[#027fa5]"}`}
                       data-testid={`input-qty-${i}`}/>
                   </td>
 
