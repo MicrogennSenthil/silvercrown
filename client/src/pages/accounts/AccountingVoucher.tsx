@@ -17,6 +17,37 @@ function getVoucherNature(name: string): "payment" | "receipt" | "contra" | "jou
   return "journal";
 }
 
+// Returns which category of ledgers to show per line
+// "bank"      → only sub-ledgers under a GL with "bank" in name
+// "cash"      → only sub-ledgers under a GL with "cash" in name
+// "bank_cash" → bank OR cash (for contra vouchers)
+// "all"       → no restriction
+function getLineFilter(vtName: string, drCr: "DR" | "CR"): "bank" | "cash" | "bank_cash" | "all" {
+  const n = vtName.toLowerCase();
+  if (n.includes("contra")) return "bank_cash";
+  if (n.includes("bank"))   return drCr === "DR" ? "bank"  : "all";
+  if (n.includes("cash"))   return drCr === "DR" ? "cash"  : "all";
+  return "all";
+}
+
+function applyLedgerFilter(subLedgers: any[], filter: "bank" | "cash" | "bank_cash" | "all"): any[] {
+  if (filter === "all") return subLedgers;
+  return subLedgers.filter(s => {
+    const glName = (s.gl_name || "").toLowerCase();
+    if (filter === "bank")      return glName.includes("bank");
+    if (filter === "cash")      return glName.includes("cash");
+    if (filter === "bank_cash") return glName.includes("bank") || glName.includes("cash");
+    return true;
+  });
+}
+
+function filterLabel(filter: "bank" | "cash" | "bank_cash" | "all"): string {
+  if (filter === "bank")      return "Bank accounts only";
+  if (filter === "cash")      return "Cash accounts only";
+  if (filter === "bank_cash") return "Bank / Cash accounts";
+  return "";
+}
+
 function defaultLines(nature: string) {
   if (nature === "payment") return [
     { _key: crypto.randomUUID(), drCr: "CR", subLedgerId: "", subLedgerName: "", amount: "", narration: "" },
@@ -35,10 +66,11 @@ function defaultLines(nature: string) {
 type VLine = { _key: string; drCr: "DR" | "CR"; subLedgerId: string; subLedgerName: string; amount: string; narration: string };
 
 // ── Sub-ledger searchable picker ──────────────────────────────────────────────
-function SlPicker({ value, name, onChange, subLedgers }: {
+function SlPicker({ value, name, onChange, subLedgers, filterHint }: {
   value: string; name: string;
   onChange: (id: string, name: string) => void;
   subLedgers: any[];
+  filterHint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -56,7 +88,7 @@ function SlPicker({ value, name, onChange, subLedgers }: {
 
   const filtered = subLedgers.filter(s =>
     !q || s.name.toLowerCase().includes(q.toLowerCase()) || (s.code||"").toLowerCase().includes(q.toLowerCase())
-  ).slice(0, 30);
+  ).slice(0, 60);
 
   function openDrop() {
     if (ref.current) setRect(ref.current.getBoundingClientRect());
@@ -75,20 +107,31 @@ function SlPicker({ value, name, onChange, subLedgers }: {
       </button>
       {open && rect && (
         <div className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
-          style={{ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 260), maxHeight: 260 }}>
+          style={{ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 280), maxHeight: 300 }}>
           <div className="px-2 py-1.5 border-b border-gray-100 flex items-center gap-1.5">
             <Search size={12} className="text-gray-400" />
             <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
               placeholder="Search ledger…" className="flex-1 text-xs outline-none py-0.5" />
+            {filterHint && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0"
+                style={{ background: "#fef3c7", color: "#92400e" }}>{filterHint}</span>
+            )}
           </div>
-          <div className="overflow-y-auto" style={{ maxHeight: 210 }}>
-            {filtered.length === 0 && <div className="px-3 py-4 text-xs text-gray-400 text-center">No results</div>}
+          <div className="overflow-y-auto" style={{ maxHeight: 250 }}>
+            {filtered.length === 0 && (
+              <div className="px-3 py-4 text-xs text-gray-400 text-center">
+                {filterHint ? `No ${filterHint} ledgers found` : "No results"}
+              </div>
+            )}
             {filtered.map(s => (
               <button key={s.id} type="button"
                 onClick={() => { onChange(s.id, s.name); setOpen(false); }}
                 className={`w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] flex items-center gap-2 ${s.id === value ? "bg-[#d2f1fa] font-semibold" : ""}`}>
-                <span className="text-gray-400 font-mono text-[10px]">{s.code}</span>
-                <span className="text-gray-800 truncate">{s.name}</span>
+                <span className="text-gray-400 font-mono text-[10px] w-16 flex-shrink-0">{s.code}</span>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-gray-800 truncate">{s.name}</span>
+                  {s.gl_name && <span className="text-gray-400 text-[10px] truncate">{s.gl_name}</span>}
+                </div>
               </button>
             ))}
           </div>
@@ -104,7 +147,8 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   const isEdit = !!editData?.id;
 
   const { data: voucherTypes = [] } = useQuery<any[]>({ queryKey: ["/api/voucher-types"] });
-  const { data: subLedgers = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
+  // Use enriched endpoint that includes gl_name for per-line filtering
+  const { data: subLedgers = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/with-gl"] });
 
   const [vtId, setVtId] = useState(editData?.voucherTypeId || "");
   const [vtCode, setVtCode] = useState(editData?.voucher_type || "");
@@ -147,7 +191,12 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   }, [vtCode, isEdit]);
 
   function setLine(key: string, field: keyof VLine, val: string) {
-    setLines(prev => prev.map(l => l._key === key ? { ...l, [field]: val } : l));
+    setLines(prev => prev.map(l => {
+      if (l._key !== key) return l;
+      // When toggling drCr, clear account selection since filter will change
+      if (field === "drCr") return { ...l, drCr: val as "DR" | "CR", subLedgerId: "", subLedgerName: "" };
+      return { ...l, [field]: val };
+    }));
   }
   function setLineSl(key: string, id: string, name: string) {
     setLines(prev => prev.map(l => l._key === key ? { ...l, subLedgerId: id, subLedgerName: name } : l));
@@ -309,6 +358,9 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               <tbody>
                 {lines.map((l, i) => {
                   const isDr = l.drCr === "DR";
+                  const lineFilter = vtName ? getLineFilter(vtName, l.drCr) : "all";
+                  const filteredSls = applyLedgerFilter(subLedgers, lineFilter);
+                  const hint = filterLabel(lineFilter);
                   return (
                     <tr key={l._key} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
                       data-testid={`row-voucher-line-${i}`}>
@@ -331,7 +383,8 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                           value={l.subLedgerId}
                           name={l.subLedgerName}
                           onChange={(id, name) => setLineSl(l._key, id, name)}
-                          subLedgers={subLedgers}
+                          subLedgers={filteredSls}
+                          filterHint={hint || undefined}
                         />
                       </td>
                       <td className="px-2 py-2">

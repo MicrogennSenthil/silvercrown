@@ -813,6 +813,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Sub Ledgers
   app.get("/api/sub-ledgers", requireAuth, async (req, res) => { res.json(await storage.listSubLedgers()); });
 
+  // Sub-ledgers enriched with GL name — used for voucher entry filtering
+  app.get("/api/sub-ledgers/with-gl", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT sl.id, sl.code, sl.name, sl.general_ledger_id,
+               gl.name AS gl_name, gl.code AS gl_code
+        FROM sub_ledgers sl
+        LEFT JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+        WHERE sl.is_active = true
+        ORDER BY sl.name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Named sub-ledger filters — MUST be before /:id wildcard
   app.get("/api/sub-ledgers/debtors", requireAuth, async (_req, res) => {
     try {
