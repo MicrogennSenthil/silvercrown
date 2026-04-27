@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Search, Edit2, FileText, X, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Plus, Trash2, Search, Edit2, FileText, X, TrendingDown, TrendingUp, Minus, Info, AlertTriangle, CheckCircle } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700" };
@@ -126,12 +126,13 @@ export default function PhyReconciliation() {
     setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i).map((it, idx) => ({ ...it, sno: idx + 1 })) }));
   }
 
-  async function handleSave() {
+  async function handleSave(overrideStatus?: string) {
     setErr(""); setSaving(true);
+    const payload = { ...form, ...(overrideStatus ? { status: overrideStatus } : {}) };
     const url = editId ? `/api/phy-reconciliations/${editId}` : "/api/phy-reconciliations";
     const method = editId ? "PATCH" : "POST";
     try {
-      const r = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const r = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!r.ok) { const d = await r.json(); setErr(d.message || "Save failed"); return; }
       qc.invalidateQueries({ queryKey: ["/api/phy-reconciliations"] });
       qc.invalidateQueries({ queryKey: ["/api/products"] });
@@ -141,7 +142,7 @@ export default function PhyReconciliation() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this reconciliation? Stock will be restored.")) return;
+    if (!confirm("Delete this reconciliation?")) return;
     await fetch(`/api/phy-reconciliations/${id}`, { method: "DELETE", credentials: "include" });
     qc.invalidateQueries({ queryKey: ["/api/phy-reconciliations"] });
     qc.invalidateQueries({ queryKey: ["/api/products"] });
@@ -197,7 +198,7 @@ export default function PhyReconciliation() {
                   <td className="px-4 py-3 text-gray-700">{r.store_name || "—"}</td>
                   <td className="px-4 py-3 text-gray-500">—</td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.status === "Posted" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.status === "Posted" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                       {r.status}
                     </span>
                   </td>
@@ -219,27 +220,18 @@ export default function PhyReconciliation() {
   // ── Form ──────────────────────────────────────────────────────────────────
   const totalShortage = form.items.filter(it => it.adj_type === "Shortage").reduce((s, it) => s + Math.abs(it.difference), 0);
   const totalSurplus  = form.items.filter(it => it.adj_type === "Surplus").reduce((s, it) => s + it.difference, 0);
+  const isDraft = form.status === "Draft";
 
   return (
     <div className="p-6 space-y-4">
       {/* Top bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setMode("list")} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">Physical Inventory Reconciliation</h1>
-            <p className="text-xs text-gray-400">
-              {editId ? `Editing ${recNo}` : "New reconciliation — verify physical counts against system stock"}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setMode("list")} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={handleSave} disabled={saving}
-            className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-            style={{ background: SC.primary }} data-testid="btn-save-rec">
-            {saving ? "Saving…" : editId ? "Update & Adjust Stock" : "Save & Adjust Stock"}
-          </button>
+      <div className="flex items-center gap-3">
+        <button onClick={() => setMode("list")} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
+        <div>
+          <h1 className="text-xl font-bold text-gray-800">Physical Inventory Reconciliation</h1>
+          <p className="text-xs text-gray-400">
+            {editId ? `Editing ${recNo}` : "New reconciliation — verify physical counts against system stock"}
+          </p>
         </div>
       </div>
 
@@ -278,10 +270,43 @@ export default function PhyReconciliation() {
         </div>
       </div>
 
-      {/* Warning banner */}
-      <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2.5 rounded-lg flex items-center gap-2">
-        <span className="font-semibold">⚠ Important:</span>
-        Saving this form will permanently update the system closing stock to match the physical quantities entered. This action cannot be undone without re-opening a new reconciliation.
+      {/* Status-aware info banner */}
+      {isDraft ? (
+        <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 text-blue-800 text-xs px-4 py-3 rounded-lg">
+          <Info size={15} className="shrink-0 mt-0.5 text-blue-500"/>
+          <div>
+            <span className="font-semibold">Draft Mode — Stock Not Affected.</span>{" "}
+            This reconciliation will be saved as a draft. Actual stock quantities will <span className="font-semibold">not</span> be changed.
+            You can reopen this draft at any time, update the physical counts, and then change the status to <span className="font-semibold">Posted</span> to apply the adjustments to actual stock.
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-3 rounded-lg">
+          <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-500"/>
+          <div>
+            <span className="font-semibold">Post Mode — Stock Will Be Adjusted.</span>{" "}
+            Saving in Posted status will permanently update the closing stock for each item.
+            The <span className="font-semibold">Adjustment Qty (Difference = Physical Qty − System Qty)</span> will be applied:
+            a positive difference increases stock (Surplus) and a negative difference reduces stock (Shortage).
+            This action cannot be undone without creating a new reconciliation.
+          </div>
+        </div>
+      )}
+
+      {/* How it works — legend row */}
+      <div className="flex items-center gap-6 px-1 text-xs text-gray-500">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-300"></span>
+          <span><span className="font-semibold text-gray-700">System Qty</span> — current closing stock in the system</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-[#027fa5]"></span>
+          <span><span className="font-semibold text-gray-700">Physical Qty</span> — actual count entered by user</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#d74700]"></span>
+          <span><span className="font-semibold text-gray-700">Difference</span> — Physical − System (adjustment qty, ± value)</span>
+        </span>
       </div>
 
       {/* Items grid */}
@@ -300,7 +325,7 @@ export default function PhyReconciliation() {
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-600">UOM</th>
                 <th className="px-3 py-2.5 text-right font-semibold text-gray-600">System Qty</th>
                 <th className="px-3 py-2.5 text-right font-semibold text-gray-600">Physical Qty</th>
-                <th className="px-3 py-2.5 text-right font-semibold text-gray-600">Difference</th>
+                <th className="px-3 py-2.5 text-right font-semibold text-gray-600">Difference (Adj Qty)</th>
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-600">Type</th>
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-600">Reason</th>
                 <th className="px-3 py-2.5 w-8"></th>
@@ -371,7 +396,7 @@ export default function PhyReconciliation() {
                       placeholder="0.000" data-testid={`input-phy-${i}`}/>
                   </td>
 
-                  {/* Difference */}
+                  {/* Difference / Adjustment Qty */}
                   <td className="px-2 py-1 text-right">
                     <span className={`font-semibold tabular-nums ${it.difference < 0 ? "text-red-600" : it.difference > 0 ? "text-green-600" : "text-gray-400"}`}>
                       {it.difference > 0 ? "+" : ""}{n3(it.difference)}
@@ -432,6 +457,37 @@ export default function PhyReconciliation() {
           rows={2} placeholder="Optional overall remark for this reconciliation…"
           className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
           data-testid="textarea-remark"/>
+      </div>
+
+      {/* Save / Cancel */}
+      <div className="flex items-center justify-end gap-2 pb-2">
+        <button onClick={() => setMode("list")}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+          data-testid="btn-cancel-rec">
+          Cancel
+        </button>
+        {isDraft ? (
+          <>
+            <button onClick={() => handleSave("Draft")} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+              style={{ background: "#6b7280" }} data-testid="btn-save-draft">
+              {saving ? "Saving…" : editId ? "Update Draft" : "Save as Draft"}
+            </button>
+            <button onClick={() => handleSave("Posted")} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+              style={{ background: SC.orange }} data-testid="btn-post-rec">
+              <CheckCircle size={14}/>
+              {saving ? "Posting…" : "Post & Adjust Stock"}
+            </button>
+          </>
+        ) : (
+          <button onClick={() => handleSave()} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background: SC.orange }} data-testid="btn-save-rec">
+            <CheckCircle size={14}/>
+            {saving ? "Saving…" : editId ? "Update & Adjust Stock" : "Post & Adjust Stock"}
+          </button>
+        )}
       </div>
     </div>
   );

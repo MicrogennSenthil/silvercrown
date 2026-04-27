@@ -3561,6 +3561,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const b = req.body;
       const voucherNo = await generateVoucherNo("phy_reconciliation", pool);
       const client = await pool.connect();
+      const isPosted = (b.status || "Draft") === "Posted";
       try {
         await client.query("BEGIN");
         const hdrRes = await client.query(`
@@ -3575,8 +3576,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             INSERT INTO phy_reconciliation_items(id,rec_id,sno,item_code,item_name,uom,system_qty,physical_qty,difference,adj_type,reason)
             VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
           `, [hdr.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos", +(it.system_qty||0), +(it.physical_qty||0), diff, adjType, it.reason||""]);
-          // Update product current_stock to physical count
-          if (it.item_code) {
+          // Only update stock when status is Posted
+          if (isPosted && it.item_code) {
             await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(it.physical_qty||0), it.item_code]);
           }
         }
@@ -3591,16 +3592,23 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       const { pool } = await import("./db");
       const b = req.body;
+      const newStatus = b.status || "Draft";
+      const isPosted = newStatus === "Posted";
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        // Restore old stock (set back to system_qty captured at time of reconciliation)
-        const oldItems = await client.query(`SELECT item_code, system_qty FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
-        for (const oi of oldItems.rows) {
-          if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.system_qty||0), oi.item_code]);
+        // Check if the existing record was Posted so we know whether to reverse stock
+        const oldRec = await client.query(`SELECT status FROM phy_reconciliations WHERE id=$1`, [req.params.id]);
+        const wasPosted = oldRec.rows[0]?.status === "Posted";
+        // If old record had applied stock changes, restore them before re-applying
+        if (wasPosted) {
+          const oldItems = await client.query(`SELECT item_code, system_qty FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
+          for (const oi of oldItems.rows) {
+            if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.system_qty||0), oi.item_code]);
+          }
         }
         await client.query(`UPDATE phy_reconciliations SET rec_date=$1,store_id=$2,status=$3,remark=$4,updated_at=NOW() WHERE id=$5`,
-          [b.rec_date, b.store_id||null, b.status||"Draft", b.remark||"", req.params.id]);
+          [b.rec_date, b.store_id||null, newStatus, b.remark||"", req.params.id]);
         await client.query(`DELETE FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
         for (const it of (b.items||[])) {
           const diff = +(it.physical_qty||0) - +(it.system_qty||0);
@@ -3609,7 +3617,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             INSERT INTO phy_reconciliation_items(id,rec_id,sno,item_code,item_name,uom,system_qty,physical_qty,difference,adj_type,reason)
             VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
           `, [req.params.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos", +(it.system_qty||0), +(it.physical_qty||0), diff, adjType, it.reason||""]);
-          if (it.item_code) {
+          // Only apply stock adjustment when Posted
+          if (isPosted && it.item_code) {
             await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(it.physical_qty||0), it.item_code]);
           }
         }
@@ -3626,10 +3635,14 @@ Return ONLY valid JSON (no markdown, no explanation):
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        // Restore stock to pre-reconciliation values
-        const oldItems = await client.query(`SELECT item_code, system_qty FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
-        for (const oi of oldItems.rows) {
-          if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.system_qty||0), oi.item_code]);
+        // Only restore stock if the record was Posted (Draft never touched stock)
+        const recRes = await client.query(`SELECT status FROM phy_reconciliations WHERE id=$1`, [req.params.id]);
+        const wasPosted = recRes.rows[0]?.status === "Posted";
+        if (wasPosted) {
+          const oldItems = await client.query(`SELECT item_code, system_qty FROM phy_reconciliation_items WHERE rec_id=$1`, [req.params.id]);
+          for (const oi of oldItems.rows) {
+            if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.system_qty||0), oi.item_code]);
+          }
         }
         await client.query(`DELETE FROM phy_reconciliations WHERE id=$1`, [req.params.id]);
         await client.query("COMMIT");
