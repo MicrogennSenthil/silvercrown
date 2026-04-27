@@ -53,7 +53,10 @@ export default function StoreRequestNote() {
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
 
-  const products = (allProducts as any[]).filter((p: any) => p.is_active !== false);
+  const products = (allProducts as any[]).filter((p: any) =>
+    p.is_active !== false &&
+    p.category_name?.toLowerCase().includes("raw material")
+  );
 
   useEffect(() => {
     function h(e: MouseEvent) {
