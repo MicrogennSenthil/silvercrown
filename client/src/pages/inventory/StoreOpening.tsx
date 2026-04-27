@@ -199,7 +199,7 @@ export default function StoreOpening() {
           cgst:     g(["cgst"]),
           sgst:     g(["sgst"]),
           igst:     g(["igst"]),
-          qty:      g(["opening qty","qty","quantity"]),
+          qty:      g(["opening qty","opening_qty"]) >= 0 ? g(["opening qty","opening_qty"]) : g(["qty","quantity"]),
         };
         if (colIdx.code < 0 || colIdx.qty < 0) {
           setImportErr("Required columns not found. Download the template to see expected format.");

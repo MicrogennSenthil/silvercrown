@@ -3671,10 +3671,38 @@ Return ONLY valid JSON (no markdown, no explanation):
             b.financial_year||"", b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.total_amount||0), (req as any).user?.id||null]);
         const hdr = hdrRes.rows[0];
         for (const it of (b.items||[])) {
+          if (!it.item_code && !it.item_name) continue; // skip fully empty rows
+
+          // Auto-create product in master if it doesn't exist yet
+          if (it.item_code) {
+            const existing = (await client.query(`SELECT id FROM products WHERE LOWER(code)=LOWER($1) LIMIT 1`, [it.item_code])).rows[0];
+            if (!existing) {
+              await client.query(`
+                INSERT INTO products(id,code,name,uom,unit,hsn_code,location,selling_price,cost_price,
+                  min_stock_level,max_stock_level,cgst_rate,sgst_rate,igst_rate,drg_no,sap_no,is_active)
+                VALUES(gen_random_uuid()::text,$1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true)
+              `, [it.item_code, it.item_name||it.item_code, it.uom||it.unit||"Nos",
+                  it.hsn_code||"", it.location||"",
+                  +(it.rate||0), +(it.cost_price||0),
+                  +(it.min_qty||0), +(it.max_qty||0),
+                  +(it.cgst_rate||0), +(it.sgst_rate||0), +(it.igst_rate||0),
+                  it.drg_no||"", it.sap_no||""]);
+            } else {
+              // Update name/uom if they were blank before
+              await client.query(`
+                UPDATE products SET
+                  name=CASE WHEN name='' OR name IS NULL THEN $1 ELSE name END,
+                  uom=CASE WHEN uom='' OR uom IS NULL THEN $2 ELSE uom END,
+                  unit=CASE WHEN unit='' OR unit IS NULL THEN $2 ELSE unit END
+                WHERE id=$3
+              `, [it.item_name||"", it.uom||"Nos", existing.id]);
+            }
+          }
+
           // Snapshot current stock before update (for reversal)
           let prevStock = 0;
           if (it.item_code) {
-            const ps = await client.query(`SELECT COALESCE(current_stock,0) AS cs FROM products WHERE code=$1`, [it.item_code]);
+            const ps = await client.query(`SELECT COALESCE(current_stock,0) AS cs FROM products WHERE LOWER(code)=LOWER($1)`, [it.item_code]);
             if (ps.rows[0]) prevStock = parseFloat(ps.rows[0].cs) || 0;
           }
           await client.query(`
@@ -3684,7 +3712,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               +(it.opening_qty||0), +(it.rate||0), +(it.amount||0), prevStock]);
           // Only update stock if Posted
           if (b.status === "Posted" && it.item_code) {
-            await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(it.opening_qty||0), it.item_code]);
+            await client.query(`UPDATE products SET current_stock=$1 WHERE LOWER(code)=LOWER($2)`, [+(it.opening_qty||0), it.item_code]);
           }
         }
         await client.query("COMMIT");
@@ -3714,9 +3742,28 @@ Return ONLY valid JSON (no markdown, no explanation):
           [b.opening_date, b.store_id||null, b.financial_year||"", b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.total_amount||0), req.params.id]);
         await client.query(`DELETE FROM store_opening_items WHERE sop_id=$1`, [req.params.id]);
         for (const it of (b.items||[])) {
+          if (!it.item_code && !it.item_name) continue;
+
+          // Auto-create product if missing
+          if (it.item_code) {
+            const existing = (await client.query(`SELECT id FROM products WHERE LOWER(code)=LOWER($1) LIMIT 1`, [it.item_code])).rows[0];
+            if (!existing) {
+              await client.query(`
+                INSERT INTO products(id,code,name,uom,unit,hsn_code,location,selling_price,cost_price,
+                  min_stock_level,max_stock_level,cgst_rate,sgst_rate,igst_rate,drg_no,sap_no,is_active)
+                VALUES(gen_random_uuid()::text,$1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true)
+              `, [it.item_code, it.item_name||it.item_code, it.uom||"Nos",
+                  it.hsn_code||"", it.location||"",
+                  +(it.rate||0), +(it.cost_price||0),
+                  +(it.min_qty||0), +(it.max_qty||0),
+                  +(it.cgst_rate||0), +(it.sgst_rate||0), +(it.igst_rate||0),
+                  it.drg_no||"", it.sap_no||""]);
+            }
+          }
+
           let prevStock = 0;
           if (it.item_code) {
-            const ps = await client.query(`SELECT COALESCE(current_stock,0) AS cs FROM products WHERE code=$1`, [it.item_code]);
+            const ps = await client.query(`SELECT COALESCE(current_stock,0) AS cs FROM products WHERE LOWER(code)=LOWER($1)`, [it.item_code]);
             if (ps.rows[0]) prevStock = parseFloat(ps.rows[0].cs) || 0;
           }
           await client.query(`
@@ -3725,7 +3772,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           `, [req.params.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos",
               +(it.opening_qty||0), +(it.rate||0), +(it.amount||0), prevStock]);
           if (b.status === "Posted" && it.item_code)
-            await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(it.opening_qty||0), it.item_code]);
+            await client.query(`UPDATE products SET current_stock=$1 WHERE LOWER(code)=LOWER($2)`, [+(it.opening_qty||0), it.item_code]);
         }
         await client.query("COMMIT");
         res.json({ ok: true });
