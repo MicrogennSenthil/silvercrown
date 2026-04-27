@@ -1470,6 +1470,47 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/invoice-pending — despatched items not yet fully invoiced
+  app.get("/api/reports/invoice-pending", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to   = (req.query.to   as string) || "2099-12-31";
+      const rows = (await pool.query(`
+        SELECT
+          d.id                   AS despatch_id,
+          d.voucher_no           AS despatch_no,
+          d.despatch_date,
+          j.voucher_no           AS jw_no,
+          j.work_order_no,
+          COALESCE(c.name, d.party_name_manual, '') AS party_name,
+          di.id                  AS item_id,
+          di.seq_no,
+          di.item_code,
+          di.item_name,
+          di.unit,
+          di.process,
+          di.qty_despatched      AS des_qty,
+          COALESCE(SUM(ii.qty_despatched), 0)                           AS inv_qty,
+          di.qty_despatched - COALESCE(SUM(ii.qty_despatched), 0)       AS pending_qty
+        FROM job_work_despatch d
+        LEFT JOIN job_work_inward        j  ON j.id  = d.inward_id
+        LEFT JOIN customers              c  ON c.id  = d.party_id
+        LEFT JOIN job_work_despatch_items di ON di.despatch_id = d.id
+        LEFT JOIN job_work_invoice_items  ii ON ii.inward_item_id = di.inward_item_id
+                                             AND ii.despatch_id   = d.id
+        WHERE d.despatch_date BETWEEN $1 AND $2
+        GROUP BY d.id, d.voucher_no, d.despatch_date,
+                 j.voucher_no, j.work_order_no,
+                 c.name, d.party_name_manual,
+                 di.id, di.seq_no, di.item_code, di.item_name, di.unit, di.process, di.qty_despatched
+        HAVING di.qty_despatched - COALESCE(SUM(ii.qty_despatched), 0) > 0
+        ORDER BY d.despatch_date DESC, d.created_at DESC, di.seq_no
+      `, [from, to])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ─── Job Work Inward ─────────────────────────────────────────────────────────
   app.get("/api/job-work-inward", requireAuth, async (req, res) => {
     try {

@@ -187,22 +187,25 @@ export function ReportFilterSelect({
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative flex items-center gap-0.5">
       <button type="button" onClick={openMenu}
         className={`flex items-center gap-1.5 h-[30px] px-3 rounded-full text-xs font-semibold border transition-colors ${
           isActive
-            ? "bg-[#027fa5] text-white border-[#027fa5]"
+            ? "bg-[#027fa5] text-white border-[#027fa5] rounded-r-none pr-2"
             : "bg-white text-gray-600 border-gray-200 hover:border-[#027fa5] hover:text-[#027fa5]"
         }`}
         data-testid={`filter-${label.toLowerCase().replace(/\s/g, "-")}`}>
         <span className={isActive ? "text-white/70" : "text-gray-400"}>{label}:</span>
         <span className="max-w-[140px] truncate">{display}</span>
-        {isActive
-          ? <button type="button" onClick={e => { e.stopPropagation(); onChange(""); }}
-              className="ml-0.5 text-white/70 hover:text-white"><X size={11} /></button>
-          : <ChevronDown size={11} />
-        }
+        {!isActive && <ChevronDown size={11} />}
       </button>
+      {isActive && (
+        <button type="button" onClick={() => onChange("")}
+          className="h-[30px] px-1.5 rounded-r-full bg-[#027fa5] border border-[#027fa5] text-white/70 hover:text-white hover:bg-[#026a8a] transition-colors"
+          data-testid={`filter-clear-${label.toLowerCase().replace(/\s/g, "-")}`}>
+          <X size={11} />
+        </button>
+      )}
 
       {open && (
         <div className="absolute left-0 top-full mt-1 z-[100] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden w-64">
