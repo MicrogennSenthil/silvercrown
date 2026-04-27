@@ -86,9 +86,6 @@ const NAV: any[] = [
       { label: "Goods Receipt Return", href: "/inventory/goods-receipt-return" },
       { label: "Issue Indent Return", href: "/inventory/issue-indent-return" },
       { label: "Store Opening", href: "/inventory/store-opening" },
-      { label: "Stock Items", href: "/inventory/items" },
-      { label: "Stock Transfer", href: "/inventory/transfer" },
-      { label: "Stock Adjustment", href: "/inventory/adjustment" },
     ]
   },
   {
