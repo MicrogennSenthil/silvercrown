@@ -1631,6 +1631,35 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/material-register — GRN lines (material inward register)
+  app.get("/api/reports/material-register", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to   = (req.query.to   as string) || "2099-12-31";
+      const rows = (await pool.query(`
+        SELECT
+          grn.voucher_no                                   AS inw_no,
+          grn.grn_date                                     AS inw_date,
+          COALESCE(grn.po_no, '')                          AS po_no,
+          po.po_date                                       AS po_date,
+          COALESCE(grn.bill_no, '-')                       AS bill_no,
+          grn.bill_date                                    AS bill_date,
+          COALESCE(c.name, grn.supplier_name_manual, '')   AS party_name,
+          grni.item_name                                   AS product_name,
+          COALESCE(grni.unit, '')                          AS unit,
+          COALESCE(grni.qty::numeric, 0)                   AS qty
+        FROM goods_receipt_notes grn
+        JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
+        LEFT JOIN customers c ON c.id = grn.supplier_id
+        LEFT JOIN purchase_orders po ON po.id = grn.po_id
+        WHERE grn.grn_date BETWEEN $1 AND $2
+        ORDER BY grn.grn_date DESC, grn.voucher_no, grni.sno
+      `, [from, to])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/po-pending — purchase order lines where pending qty > 0
   app.get("/api/reports/po-pending", requireAuth, async (req, res) => {
     try {
