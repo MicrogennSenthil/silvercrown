@@ -2132,7 +2132,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(poi.qty::numeric, 0)                       AS ord_qty,
           COALESCE(rec.rec_qty, 0)                            AS rec_qty,
           COALESCE(poi.qty::numeric, 0) - COALESCE(rec.rec_qty, 0) AS pend_qty,
-          COALESCE(u.name, po.created_by, '')                 AS user_name
+          ''                                                  AS user_name
         FROM purchase_orders po
         JOIN purchase_order_items poi ON poi.po_id = po.id
         LEFT JOIN customers c ON c.id = po.supplier_id
@@ -2143,7 +2143,6 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
           GROUP BY grn.po_id, grni.item_code
         ) rec ON rec.po_id = po.id AND rec.item_code = poi.item_code
-        LEFT JOIN users u ON u.id::text = po.created_by
         WHERE po.po_date BETWEEN $1 AND $2
           AND COALESCE(po.status,'') <> 'Cancelled'
           AND COALESCE(poi.qty::numeric, 0) - COALESCE(rec.rec_qty, 0) > 0

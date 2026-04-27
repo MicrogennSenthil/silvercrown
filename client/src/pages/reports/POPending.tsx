@@ -33,12 +33,13 @@ export default function POPending() {
   const [search,   setSearch]   = useState("");
 
   const qKey = ["/api/reports/po-pending", fromDate, toDate];
-  const { data: rows = [], isLoading } = useQuery<Row[]>({
+  const { data: rawData, isLoading } = useQuery<Row[]>({
     queryKey: qKey,
     queryFn: () =>
       fetch(`/api/reports/po-pending?from=${fromDate}&to=${toDate}`, { credentials: "include" }).then(r => r.json()),
     enabled: !!fromDate && !!toDate,
   });
+  const rows: Row[] = Array.isArray(rawData) ? rawData : [];
 
   const filtered = useMemo(() => {
     if (!search.trim()) return rows;
