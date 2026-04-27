@@ -1,14 +1,22 @@
 {
-  "name": "Silver Crown Metals - Element",
-  "short_name": "Element",
-  "description": "Silver Crown Metals ERP System",
-  "start_url": "/",
+  "name": "Silver Crown Metals - Element ERP",
+  "short_name": "Element ERP",
+  "description": "Silver Crown Metals ERP System — Inventory, Accounts & Engineering",
+  "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f5f0ed",
   "theme_color": "#027fa5",
   "orientation": "any",
+  "categories": ["business", "productivity"],
   "icons": [
-    { "src": "/figmaAssets/image-1.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/figmaAssets/image-1.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/figmaAssets/image-1.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/figmaAssets/image-1.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Dashboard",        "url": "/dashboard",                        "description": "Main dashboard" },
+    { "name": "Purchase Order",   "url": "/inventory/purchase-order",         "description": "Create purchase order" },
+    { "name": "Job Work Inward",  "url": "/engineering/job-work-inward",      "description": "Job work inward" },
+    { "name": "Voucher",          "url": "/accounts/voucher",                 "description": "Accounts voucher" }
   ]
 }

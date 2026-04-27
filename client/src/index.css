@@ -226,3 +226,48 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* ── PWA / Mobile Native App Styles ───────────────────── */
+
+/* Remove tap highlight on touch devices */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Touch manipulation for interactive elements */
+button,
+a {
+  touch-action: manipulation;
+}
+
+/* Smooth scrollable containers on iOS */
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe area bottom utility */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Native-feel active states on touch devices */
+@media (hover: none) {
+  button:active {
+    opacity: 0.75;
+  }
+}
+
+/* Standalone PWA mode */
+@media (display-mode: standalone) {
+  body {
+    background-color: #f5f0ed;
+  }
+}

@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import {
   LayoutDashboard, ShoppingCart, Package, TrendingUp, BookOpen,
   CheckSquare, RefreshCw, LogOut, Menu, Bell, User, Settings,
   Users, Database, ChevronDown, ChevronRight, Cpu, Printer,
-  BarChart2, Handshake, IndianRupee, Warehouse, Wrench, Shield
+  BarChart2, Handshake, IndianRupee, Warehouse, Wrench, Shield,
+  MoreHorizontal, X, Download
 } from "lucide-react";
 
 // ─── Navigation Structure ─────────────────────────────────────────────────────
@@ -310,6 +311,95 @@ function Sidebar({ collapsed, mobile, onClose }: { collapsed: boolean; mobile?: 
   );
 }
 
+// ─── PWA Install Banner ────────────────────────────────────────────────────────
+function InstallBanner() {
+  const [prompt, setPrompt] = useState<any>(null);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: any) => { e.preventDefault(); setPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  if (!prompt || dismissed) return null;
+
+  async function install() {
+    prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome === "accepted") setPrompt(null);
+    else setDismissed(true);
+  }
+
+  return (
+    <div className="lg:hidden fixed top-0 left-0 right-0 z-[60] flex items-center justify-between gap-3 px-4 py-2.5 text-white text-sm"
+      style={{ background: "#027fa5", paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}>
+      <div className="flex items-center gap-2">
+        <Download size={16} />
+        <span className="font-medium">Install Element ERP on your device</span>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <button onClick={install}
+          className="px-3 py-1 rounded-full text-xs font-semibold bg-white" style={{ color: "#027fa5" }}>
+          Install
+        </button>
+        <button onClick={() => setDismissed(true)} className="p-1 opacity-70 hover:opacity-100">
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Mobile Bottom Tab Bar ─────────────────────────────────────────────────────
+const BOTTOM_TABS = [
+  { label: "Home",        icon: LayoutDashboard, href: "/dashboard" },
+  { label: "Inventory",   icon: Warehouse,        href: "/inventory/purchase-order" },
+  { label: "Engineering", icon: Cpu,              href: "/engineering/job-work-inward" },
+  { label: "Accounts",    icon: BookOpen,         href: "/accounts/voucher" },
+  { label: "Reports",     icon: BarChart2,        href: "/reports/inventory/stock-report" },
+];
+
+function BottomTabBar({ onMorePress }: { onMorePress: () => void }) {
+  const [location] = useLocation();
+  return (
+    <nav
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 flex items-stretch"
+      style={{
+        boxShadow: "0 -2px 12px rgba(0,0,0,0.08)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+    >
+      {BOTTOM_TABS.map(tab => {
+        const active = location.startsWith(tab.href.split("/").slice(0, 2).join("/"));
+        return (
+          <Link key={tab.href} href={tab.href}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] active:bg-gray-50 transition-colors"
+            data-testid={`bottomnav-${tab.label.toLowerCase()}`}
+          >
+            <tab.icon size={22} style={{ color: active ? "#027fa5" : "#9ca3af" }} strokeWidth={active ? 2.2 : 1.8} />
+            <span className="text-[10px] font-medium" style={{ color: active ? "#027fa5" : "#9ca3af" }}>
+              {tab.label}
+            </span>
+            {active && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-b-full" style={{ background: "#027fa5" }} />
+            )}
+          </Link>
+        );
+      })}
+      {/* More */}
+      <button
+        onClick={onMorePress}
+        className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] active:bg-gray-50 transition-colors"
+        data-testid="bottomnav-more"
+      >
+        <MoreHorizontal size={22} className="text-gray-400" strokeWidth={1.8} />
+        <span className="text-[10px] font-medium text-gray-400">More</span>
+      </button>
+    </nav>
+  );
+}
+
 // ─── Layout ───────────────────────────────────────────────────────────────────
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -318,6 +408,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-[#f5f0ed] font-['Source_Sans_Pro',sans-serif] overflow-hidden">
+      {/* PWA Install Banner */}
+      <InstallBanner />
+
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col flex-shrink-0 transition-all duration-300 ${collapsed ? "w-16" : "w-64"}`}>
         <Sidebar collapsed={collapsed} />
@@ -327,7 +420,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col">
+          <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col shadow-2xl">
             <Sidebar collapsed={false} mobile onClose={() => setSidebarOpen(false)} />
           </aside>
         </div>
@@ -335,12 +428,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }}>
+        <header
+          className="flex-shrink-0 bg-white border-b border-gray-200 px-4 flex items-center justify-between"
+          style={{
+            boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+            paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))",
+            paddingBottom: "0.75rem",
+          }}
+        >
           <div className="flex items-center gap-3">
-            <button className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors" onClick={() => setSidebarOpen(true)} data-testid="button-menu">
+            <button
+              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation"
+              onClick={() => setSidebarOpen(true)}
+              data-testid="button-menu"
+            >
               <Menu size={20} className="text-gray-600" />
             </button>
-            <button className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 transition-colors" onClick={() => setCollapsed(c => !c)} data-testid="button-collapse">
+            <button
+              className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              onClick={() => setCollapsed(c => !c)}
+              data-testid="button-collapse"
+            >
               <Menu size={20} className="text-gray-600" />
             </button>
             <div>
@@ -348,26 +456,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div className="text-xs text-gray-500 hidden sm:block">Element ERP System</div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors" data-testid="button-notifications">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button className="p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation" data-testid="button-notifications">
               <Bell size={18} className="text-gray-600" />
             </button>
             <Link href="/setup">
-              <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Software Setup" data-testid="button-setup">
+              <button className="hidden sm:flex p-2 rounded-lg hover:bg-gray-100 transition-colors touch-manipulation" title="Software Setup" data-testid="button-setup">
                 <Settings size={18} className="text-gray-600" />
               </button>
             </Link>
-            <div className="h-8 w-px bg-gray-200" />
-            <div className="flex items-center gap-2 pl-1">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium" style={{ background: "#027fa5" }}>
+            <div className="h-7 w-px bg-gray-200 mx-1" />
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0" style={{ background: "#027fa5" }}>
                 {(user?.name || user?.username || "U")[0].toUpperCase()}
               </div>
               <span className="text-sm font-medium text-gray-700 hidden sm:block">{user?.name || user?.username}</span>
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+
+        {/* Page content — extra bottom padding on mobile for bottom tab bar */}
+        <main
+          className="flex-1 overflow-auto p-3 md:p-6"
+          style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
+        >
+          <div className="pb-16 lg:pb-0">
+            {children}
+          </div>
+        </main>
       </div>
+
+      {/* Mobile bottom tab bar */}
+      <BottomTabBar onMorePress={() => setSidebarOpen(true)} />
     </div>
   );
 }
