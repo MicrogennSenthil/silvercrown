@@ -4519,9 +4519,10 @@ Return ONLY valid JSON (no markdown, no explanation):
             const it = items[i];
             const amount = (+it.opening_qty || 0) * (+it.rate || 0);
             await client.query(
-              `INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,opening_qty,rate,amount,previous_stock)
-               VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,0)`,
-              [hdr.id, i+1, it.item_code||"", it.item_name||"", it.uom||"Nos", +it.opening_qty||0, +it.rate||0, amount]
+              `INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,batch_no,expiry_date,opening_qty,rate,amount,previous_stock)
+               VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0)`,
+              [hdr.id, i+1, it.item_code||"", it.item_name||"", it.uom||"Nos",
+               it.batch_no||"", it.expiry_date||null, +it.opening_qty||0, +it.rate||0, amount]
             );
           }
           created.push({ sopNo: voucherNo, storeName, itemCount: items.length });
@@ -4610,9 +4611,10 @@ Return ONLY valid JSON (no markdown, no explanation):
             if (ps.rows[0]) prevStock = parseFloat(ps.rows[0].cs) || 0;
           }
           await client.query(`
-            INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,opening_qty,rate,amount,previous_stock)
-            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+            INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,batch_no,expiry_date,opening_qty,rate,amount,previous_stock)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
           `, [hdr.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos",
+              it.batch_no||"", it.expiry_date||null,
               +(it.opening_qty||0), +(it.rate||0), +(it.amount||0), prevStock]);
           // Only update stock if Posted
           if (b.status === "Posted" && it.item_code) {
@@ -4671,9 +4673,10 @@ Return ONLY valid JSON (no markdown, no explanation):
             if (ps.rows[0]) prevStock = parseFloat(ps.rows[0].cs) || 0;
           }
           await client.query(`
-            INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,opening_qty,rate,amount,previous_stock)
-            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+            INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,batch_no,expiry_date,opening_qty,rate,amount,previous_stock)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
           `, [req.params.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos",
+              it.batch_no||"", it.expiry_date||null,
               +(it.opening_qty||0), +(it.rate||0), +(it.amount||0), prevStock]);
           if (b.status === "Posted" && it.item_code)
             await client.query(`UPDATE products SET current_stock=$1 WHERE LOWER(code)=LOWER($2)`, [+(it.opening_qty||0), it.item_code]);
