@@ -28,6 +28,8 @@ type ReportRow = {
   issue_val: string;
   issue_return_qty: string;
   issue_return_val: string;
+  adjustment_qty: string;
+  adjustment_val: string;
   closing_qty: string;
   closing_val: string;
 };
@@ -38,8 +40,11 @@ type Totals = {
   grn_return_qty: number; grn_return_val: number;
   issue_qty: number; issue_val: number;
   issue_return_qty: number; issue_return_val: number;
+  adjustment_qty: number; adjustment_val: number;
   closing_qty: number; closing_val: number;
 };
+
+const COLS = 18;
 
 export default function StockReportValue() {
   const [search,     setSearch]     = useState("");
@@ -69,18 +74,20 @@ export default function StockReportValue() {
   [rawRows, search, itemFilter]);
 
   const totals: Totals = useMemo(() => ({
-    opening_qty:     filtered.reduce((s, r) => s + parseFloat(r.opening_qty     || "0"), 0),
-    opening_val:     filtered.reduce((s, r) => s + parseFloat(r.opening_val     || "0"), 0),
-    purchase_qty:    filtered.reduce((s, r) => s + parseFloat(r.purchase_qty    || "0"), 0),
-    purchase_val:    filtered.reduce((s, r) => s + parseFloat(r.purchase_val    || "0"), 0),
-    grn_return_qty:  filtered.reduce((s, r) => s + parseFloat(r.grn_return_qty  || "0"), 0),
-    grn_return_val:  filtered.reduce((s, r) => s + parseFloat(r.grn_return_val  || "0"), 0),
-    issue_qty:       filtered.reduce((s, r) => s + parseFloat(r.issue_qty       || "0"), 0),
-    issue_val:       filtered.reduce((s, r) => s + parseFloat(r.issue_val       || "0"), 0),
-    issue_return_qty:filtered.reduce((s, r) => s + parseFloat(r.issue_return_qty|| "0"), 0),
-    issue_return_val:filtered.reduce((s, r) => s + parseFloat(r.issue_return_val|| "0"), 0),
-    closing_qty:     filtered.reduce((s, r) => s + parseFloat(r.closing_qty     || "0"), 0),
-    closing_val:     filtered.reduce((s, r) => s + parseFloat(r.closing_val     || "0"), 0),
+    opening_qty:      filtered.reduce((s, r) => s + parseFloat(r.opening_qty      || "0"), 0),
+    opening_val:      filtered.reduce((s, r) => s + parseFloat(r.opening_val      || "0"), 0),
+    purchase_qty:     filtered.reduce((s, r) => s + parseFloat(r.purchase_qty     || "0"), 0),
+    purchase_val:     filtered.reduce((s, r) => s + parseFloat(r.purchase_val     || "0"), 0),
+    grn_return_qty:   filtered.reduce((s, r) => s + parseFloat(r.grn_return_qty   || "0"), 0),
+    grn_return_val:   filtered.reduce((s, r) => s + parseFloat(r.grn_return_val   || "0"), 0),
+    issue_qty:        filtered.reduce((s, r) => s + parseFloat(r.issue_qty        || "0"), 0),
+    issue_val:        filtered.reduce((s, r) => s + parseFloat(r.issue_val        || "0"), 0),
+    issue_return_qty: filtered.reduce((s, r) => s + parseFloat(r.issue_return_qty || "0"), 0),
+    issue_return_val: filtered.reduce((s, r) => s + parseFloat(r.issue_return_val || "0"), 0),
+    adjustment_qty:   filtered.reduce((s, r) => s + parseFloat(r.adjustment_qty   || "0"), 0),
+    adjustment_val:   filtered.reduce((s, r) => s + parseFloat(r.adjustment_val   || "0"), 0),
+    closing_qty:      filtered.reduce((s, r) => s + parseFloat(r.closing_qty      || "0"), 0),
+    closing_val:      filtered.reduce((s, r) => s + parseFloat(r.closing_val      || "0"), 0),
   }), [filtered]);
 
   function handleExcel() {
@@ -91,16 +98,18 @@ export default function StockReportValue() {
       "GRN Return Qty","GRN Return Val",
       "Issue Qty","Issue Val",
       "Issue Return Qty","Issue Return Val",
+      "Adjustment Qty","Adjustment Val",
       "Closing Qty","Closing Val",
     ];
     const rows = filtered.map((r, i) => [
       i + 1, r.item_code, r.item_name, r.unit,
-      fmtQty(r.opening_qty), fmtQty(r.opening_val),
-      fmtQty(r.purchase_qty), fmtQty(r.purchase_val),
-      fmtQty(r.grn_return_qty), fmtQty(r.grn_return_val),
-      fmtQty(r.issue_qty), fmtQty(r.issue_val),
+      fmtQty(r.opening_qty),      fmtQty(r.opening_val),
+      fmtQty(r.purchase_qty),     fmtQty(r.purchase_val),
+      fmtQty(r.grn_return_qty),   fmtQty(r.grn_return_val),
+      fmtQty(r.issue_qty),        fmtQty(r.issue_val),
       fmtQty(r.issue_return_qty), fmtQty(r.issue_return_val),
-      fmtQty(r.closing_qty), fmtQty(r.closing_val),
+      fmtQty(r.adjustment_qty),   fmtQty(r.adjustment_val),
+      fmtQty(r.closing_qty),      fmtQty(r.closing_val),
     ]);
     exportToCSV(`StockReportValue_${fromDate}_to_${toDate}.csv`, headers, rows);
   }
@@ -126,12 +135,13 @@ export default function StockReportValue() {
           <span className="text-gray-500">Opening Val: <b className="text-gray-800">₹{fmtVal(totals.opening_val)}</b></span>
           <span className="text-gray-500">Purchase Val: <b style={{ color: SC.primary }}>₹{fmtVal(totals.purchase_val)}</b></span>
           <span className="text-gray-500">Issue Val: <b className="text-orange-600">₹{fmtVal(totals.issue_val)}</b></span>
+          <span className="text-gray-500">Adjustment Val: <b className="text-purple-600">₹{fmtVal(totals.adjustment_val)}</b></span>
           <span className="text-gray-500">Closing Val: <b className={totals.closing_val < 0 ? "text-red-600" : "text-green-700"}>₹{fmtVal(totals.closing_val)}</b></span>
         </div>
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm" style={{ minWidth: 1100 }}>
+        <table className="w-full text-sm" style={{ minWidth: 1300 }}>
           <thead className="sticky top-0">
             <tr>
               <RTh rowSpan={2} className="align-middle">S.no</RTh>
@@ -140,24 +150,26 @@ export default function StockReportValue() {
               <RTh rowSpan={2} className="align-middle">Unit</RTh>
               <RTh colSpan={2} center>Opening</RTh>
               <RTh colSpan={2} center>Purchase</RTh>
-              <RTh colSpan={2} center>GRN Return</RTh>
+              <RTh colSpan={2} center>Receipt Ret</RTh>
               <RTh colSpan={2} center>Issue</RTh>
-              <RTh colSpan={2} center>Issue Return</RTh>
+              <RTh colSpan={2} center>Issue Ret</RTh>
+              <RTh colSpan={2} center>Adjustment</RTh>
               <RTh colSpan={2} center>Closing</RTh>
             </tr>
             <tr>
-              <RTh right sub>Qty</RTh><RTh right sub>Value</RTh>
-              <RTh right sub>Qty</RTh><RTh right sub>Value</RTh>
-              <RTh right sub>Qty</RTh><RTh right sub>Value</RTh>
-              <RTh right sub>Qty</RTh><RTh right sub>Value</RTh>
-              <RTh right sub>Qty</RTh><RTh right sub>Value</RTh>
-              <RTh right sub>Qty</RTh><RTh right sub>Value</RTh>
+              <RTh right sub>Qty</RTh><RTh right sub>Val</RTh>
+              <RTh right sub>Qty</RTh><RTh right sub>Val</RTh>
+              <RTh right sub>Qty</RTh><RTh right sub>Val</RTh>
+              <RTh right sub>Qty</RTh><RTh right sub>Val</RTh>
+              <RTh right sub>Qty</RTh><RTh right sub>Val</RTh>
+              <RTh right sub>Qty</RTh><RTh right sub>Val</RTh>
+              <RTh right sub>Qty</RTh><RTh right sub>Val</RTh>
             </tr>
           </thead>
 
           <tbody>
             {isLoading && (
-              <tr><td colSpan={16} className="px-5 py-14 text-center text-gray-400">
+              <tr><td colSpan={COLS} className="px-5 py-14 text-center text-gray-400">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-7 h-7 rounded-full animate-spin"
                     style={{ border: "3px solid #d2f1fa", borderTopColor: "#027fa5" }} />
@@ -166,7 +178,7 @@ export default function StockReportValue() {
               </td></tr>
             )}
             {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={16} className="px-5 py-14 text-center">
+              <tr><td colSpan={COLS} className="px-5 py-14 text-center">
                 <div className="flex flex-col items-center gap-2 text-gray-400">
                   <AlertCircle size={28} className="text-gray-300" />
                   <span className="text-sm">
@@ -177,6 +189,7 @@ export default function StockReportValue() {
             )}
             {!isLoading && filtered.map((row, idx) => {
               const closingQty = parseFloat(row.closing_qty || "0");
+              const adjQty     = parseFloat(row.adjustment_qty || "0");
               return (
                 <tr key={row.item_code}
                   className={`border-t border-gray-50 hover:bg-[#f0f9ff] transition-colors
@@ -233,6 +246,17 @@ export default function StockReportValue() {
                       {fmtVal(row.issue_return_val)}
                     </span>
                   </RTd>
+                  {/* Adjustment */}
+                  <RTd right>
+                    <span className={adjQty > 0 ? "text-purple-600" : adjQty < 0 ? "text-red-500" : ""}>
+                      {fmtQty(row.adjustment_qty)}
+                    </span>
+                  </RTd>
+                  <RTd right muted>
+                    <span className={parseFloat(row.adjustment_val||"0") > 0 ? "text-purple-600" : parseFloat(row.adjustment_val||"0") < 0 ? "text-red-500" : ""}>
+                      {fmtVal(row.adjustment_val)}
+                    </span>
+                  </RTd>
                   {/* Closing */}
                   <RTd right>
                     <span className={`font-semibold ${closingQty < 0 ? "text-red-600" : closingQty > 0 ? "text-green-700" : "text-gray-500"}`}>
@@ -280,6 +304,16 @@ export default function StockReportValue() {
                 </RTd>
                 <RTd right bold muted>
                   <span className="text-green-600">{fmtVal(totals.issue_return_val)}</span>
+                </RTd>
+                <RTd right bold>
+                  <span className={totals.adjustment_qty > 0 ? "text-purple-600" : totals.adjustment_qty < 0 ? "text-red-500" : ""}>
+                    {fmtQty(totals.adjustment_qty)}
+                  </span>
+                </RTd>
+                <RTd right bold muted>
+                  <span className={totals.adjustment_val > 0 ? "text-purple-600" : totals.adjustment_val < 0 ? "text-red-500" : ""}>
+                    {fmtVal(totals.adjustment_val)}
+                  </span>
                 </RTd>
                 <RTd right bold>
                   <span className={totals.closing_qty < 0 ? "text-red-600" : "text-green-700"}>

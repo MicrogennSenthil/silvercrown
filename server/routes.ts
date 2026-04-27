@@ -1862,13 +1862,33 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           JOIN issue_indent_returns irr ON irr.id = irri.irr_id
           WHERE irr.return_date BETWEEN $1 AND $2
           GROUP BY irri.item_code
+        ),
+        before_adj AS (
+          SELECT pri.item_code,
+                 SUM(pri.difference::numeric) AS qty,
+                 SUM(pri.difference::numeric * COALESCE(ii2.purchase_price::numeric,0)) AS val
+          FROM phy_reconciliation_items pri
+          JOIN phy_reconciliations pr ON pr.id = pri.rec_id
+          LEFT JOIN inventory_items ii2 ON ii2.code = pri.item_code
+          WHERE pr.status = 'Posted' AND pr.rec_date < $1
+          GROUP BY pri.item_code
+        ),
+        period_adj AS (
+          SELECT pri.item_code,
+                 SUM(pri.difference::numeric) AS qty,
+                 SUM(pri.difference::numeric * COALESCE(ii2.purchase_price::numeric,0)) AS val
+          FROM phy_reconciliation_items pri
+          JOIN phy_reconciliations pr ON pr.id = pri.rec_id
+          LEFT JOIN inventory_items ii2 ON ii2.code = pri.item_code
+          WHERE pr.status = 'Posted' AND pr.rec_date BETWEEN $1 AND $2
+          GROUP BY pri.item_code
         )
         SELECT
           ii.code AS item_code,
           ii.name AS item_name,
           ii.unit,
-          COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0) AS opening_qty,
-          COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0) AS opening_val,
+          COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0)+COALESCE(badj.qty,0) AS opening_qty,
+          COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0)+COALESCE(badj.val,0) AS opening_val,
           COALESCE(pgn.qty,0) AS purchase_qty,
           COALESCE(pgn.val,0) AS purchase_val,
           COALESCE(pgr.qty,0) AS grn_return_qty,
@@ -1877,20 +1897,24 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(pi.val,0)  AS issue_val,
           COALESCE(pir.qty,0) AS issue_return_qty,
           COALESCE(pir.val,0) AS issue_return_val,
-          COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0)
-          +COALESCE(pgn.qty,0)-COALESCE(pgr.qty,0)-COALESCE(pi.qty,0)+COALESCE(pir.qty,0) AS closing_qty,
-          COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0)
-          +COALESCE(pgn.val,0)-COALESCE(pgr.val,0)-COALESCE(pi.val,0)+COALESCE(pir.val,0) AS closing_val
+          COALESCE(padj.qty,0) AS adjustment_qty,
+          COALESCE(padj.val,0) AS adjustment_val,
+          COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0)+COALESCE(badj.qty,0)
+          +COALESCE(pgn.qty,0)-COALESCE(pgr.qty,0)-COALESCE(pi.qty,0)+COALESCE(pir.qty,0)+COALESCE(padj.qty,0) AS closing_qty,
+          COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0)+COALESCE(badj.val,0)
+          +COALESCE(pgn.val,0)-COALESCE(pgr.val,0)-COALESCE(pi.val,0)+COALESCE(pir.val,0)+COALESCE(padj.val,0) AS closing_val
         FROM inventory_items ii
-        LEFT JOIN op_stock       ops ON ops.item_code = ii.code
-        LEFT JOIN before_grn     bgn ON bgn.item_code = ii.code
-        LEFT JOIN before_grn_ret bgr ON bgr.item_code = ii.code
-        LEFT JOIN before_issue   bi  ON bi.item_code  = ii.code
+        LEFT JOIN op_stock       ops  ON ops.item_code  = ii.code
+        LEFT JOIN before_grn     bgn  ON bgn.item_code  = ii.code
+        LEFT JOIN before_grn_ret bgr  ON bgr.item_code  = ii.code
+        LEFT JOIN before_issue   bi   ON bi.item_code   = ii.code
         LEFT JOIN before_issue_ret bir ON bir.item_code = ii.code
-        LEFT JOIN period_grn     pgn ON pgn.item_code = ii.code
-        LEFT JOIN period_grn_ret pgr ON pgr.item_code = ii.code
-        LEFT JOIN period_issue   pi  ON pi.item_code  = ii.code
+        LEFT JOIN before_adj     badj ON badj.item_code = ii.code
+        LEFT JOIN period_grn     pgn  ON pgn.item_code  = ii.code
+        LEFT JOIN period_grn_ret pgr  ON pgr.item_code  = ii.code
+        LEFT JOIN period_issue   pi   ON pi.item_code   = ii.code
         LEFT JOIN period_issue_ret pir ON pir.item_code = ii.code
+        LEFT JOIN period_adj     padj ON padj.item_code = ii.code
         ORDER BY ii.name
       `, [from, to])).rows;
       res.json(rows);
