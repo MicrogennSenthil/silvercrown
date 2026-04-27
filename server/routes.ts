@@ -1532,6 +1532,105 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/stock-ledger — item-wise transaction ledger with running balance
+  app.get("/api/reports/stock-ledger", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to   = (req.query.to   as string) || new Date().toISOString().slice(0, 10);
+      const itemCode = (req.query.item_code as string) || null;
+
+      // Opening balance per item (all movement before fromDate)
+      const openingQ = await pool.query(`
+        WITH op AS (
+          SELECT soi.item_code, SUM(soi.opening_qty) AS qty, SUM(soi.amount) AS val
+          FROM store_opening_items soi JOIN store_openings so ON so.id=soi.sop_id
+          WHERE so.opening_date < $1 GROUP BY soi.item_code
+        ),
+        bgn AS (
+          SELECT grni.item_code, SUM(grni.qty) AS qty, SUM(grni.total) AS val
+          FROM goods_receipt_note_items grni JOIN goods_receipt_notes grn ON grn.id=grni.grn_id
+          WHERE grn.grn_date < $1 GROUP BY grni.item_code
+        ),
+        bgr AS (
+          SELECT grri.item_code, SUM(grri.return_qty) AS qty, SUM(grri.total) AS val
+          FROM goods_receipt_return_items grri JOIN goods_receipt_returns grr ON grr.id=grri.grr_id
+          WHERE grr.return_date < $1 GROUP BY grri.item_code
+        ),
+        bi AS (
+          SELECT sii.item_code, SUM(sii.issued_qty) AS qty, SUM(sii.amount) AS val
+          FROM store_issue_indent_items sii JOIN store_issue_indents si ON si.id=sii.sii_id
+          WHERE si.issue_date < $1 GROUP BY sii.item_code
+        ),
+        bir AS (
+          SELECT irri.item_code, SUM(irri.return_qty) AS qty, SUM(irri.amount) AS val
+          FROM issue_indent_return_items irri JOIN issue_indent_returns irr ON irr.id=irri.irr_id
+          WHERE irr.return_date < $1 GROUP BY irri.item_code
+        )
+        SELECT ii.code AS item_code, ii.name AS item_name, ii.unit,
+          COALESCE(op.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0) AS opening_qty,
+          COALESCE(op.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0) AS opening_val
+        FROM inventory_items ii
+        LEFT JOIN op  ON op.item_code =ii.code
+        LEFT JOIN bgn ON bgn.item_code=ii.code
+        LEFT JOIN bgr ON bgr.item_code=ii.code
+        LEFT JOIN bi  ON bi.item_code =ii.code
+        LEFT JOIN bir ON bir.item_code=ii.code
+        ${itemCode ? "WHERE ii.code=$2" : ""}
+        ORDER BY ii.name
+      `, itemCode ? [from, itemCode] : [from]);
+
+      // Period transactions: GRN receipts, GRN returns, store issues, issue returns
+      const txnQ = await pool.query(`
+        SELECT item_code, txn_type, ref_no, ref_date, stock_date, from_to, rate, receipt_qty, issue_qty, amount
+        FROM (
+          SELECT grni.item_code, 'receipt' AS txn_type,
+            grn.voucher_no AS ref_no, grn.bill_date AS ref_date, grn.grn_date AS stock_date,
+            COALESCE(grn.supplier_name_manual,'') AS from_to,
+            grni.rate, grni.qty AS receipt_qty, 0 AS issue_qty, grni.total AS amount
+          FROM goods_receipt_note_items grni JOIN goods_receipt_notes grn ON grn.id=grni.grn_id
+          WHERE grn.grn_date BETWEEN $1 AND $2
+          ${itemCode ? "AND grni.item_code=$3" : ""}
+
+          UNION ALL
+
+          SELECT grri.item_code, 'grn_return' AS txn_type,
+            grr.voucher_no AS ref_no, grr.return_date AS ref_date, grr.return_date AS stock_date,
+            COALESCE(grr.supplier_name,'') AS from_to,
+            grri.rate, 0 AS receipt_qty, grri.return_qty AS issue_qty, grri.total AS amount
+          FROM goods_receipt_return_items grri JOIN goods_receipt_returns grr ON grr.id=grri.grr_id
+          WHERE grr.return_date BETWEEN $1 AND $2
+          ${itemCode ? "AND grri.item_code=$3" : ""}
+
+          UNION ALL
+
+          SELECT sii.item_code, 'issue' AS txn_type,
+            si.voucher_no AS ref_no, si.issue_date AS ref_date, si.issue_date AS stock_date,
+            COALESCE(d.name, si.department_id, 'Internal') AS from_to,
+            sii.rate, 0 AS receipt_qty, sii.issued_qty AS issue_qty, sii.amount
+          FROM store_issue_indent_items sii JOIN store_issue_indents si ON si.id=sii.sii_id
+          LEFT JOIN departments d ON d.id=si.department_id
+          WHERE si.issue_date BETWEEN $1 AND $2
+          ${itemCode ? "AND sii.item_code=$3" : ""}
+
+          UNION ALL
+
+          SELECT irri.item_code, 'issue_return' AS txn_type,
+            irr.voucher_no AS ref_no, irr.return_date AS ref_date, irr.return_date AS stock_date,
+            COALESCE(si.voucher_no, '') AS from_to,
+            irri.rate, irri.return_qty AS receipt_qty, 0 AS issue_qty, irri.amount
+          FROM issue_indent_return_items irri JOIN issue_indent_returns irr ON irr.id=irri.irr_id
+          LEFT JOIN store_issue_indents si ON si.id=irr.sii_id
+          WHERE irr.return_date BETWEEN $1 AND $2
+          ${itemCode ? "AND irri.item_code=$3" : ""}
+        ) t
+        ORDER BY item_code, stock_date, ref_no
+      `, itemCode ? [from, to, itemCode] : [from, to]);
+
+      res.json({ openings: openingQ.rows, transactions: txnQ.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/stock-report-value — stock with monetary values
   app.get("/api/reports/stock-report-value", requireAuth, async (req, res) => {
     try {
