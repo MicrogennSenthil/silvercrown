@@ -98,7 +98,33 @@ const NAV: any[] = [
   },
   { label: "Tasks & Reminders", icon: CheckSquare, href: "/tasks" },
   { label: "Tally Integration", icon: RefreshCw, href: "/tally" },
-  { label: "Report", icon: BarChart2, href: "/reports" },
+  {
+    label: "Reports", icon: BarChart2, children: [
+      {
+        label: "Engineering",
+        subChildren: [
+          { label: "Job Work Pending",  href: "/reports/engineering/job-work-pending" },
+          { label: "Despatch Pending",  href: "/reports/engineering/despatch-pending" },
+          { label: "Invoice Pending",   href: "/reports/engineering/invoice-pending" },
+          { label: "Despatch Register", href: "/reports/engineering/despatch-register" },
+        ],
+      },
+      {
+        label: "Inventory",
+        subChildren: [
+          { label: "Stock Summary",   href: "/reports/inventory/stock-summary" },
+          { label: "Stock Ledger",    href: "/reports/inventory/stock-ledger" },
+        ],
+      },
+      {
+        label: "Accounts",
+        subChildren: [
+          { label: "Ledger Report",   href: "/reports/accounts/ledger" },
+          { label: "Trial Balance",   href: "/reports/accounts/trial-balance" },
+        ],
+      },
+    ],
+  },
   { label: "Reprint", icon: Printer, href: "/reprint" },
   {
     label: "User Management", icon: Users, children: [
