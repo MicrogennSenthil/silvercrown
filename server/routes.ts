@@ -3300,6 +3300,169 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Issue Indent Return ──────────────────────────────────────────────────────
+
+  // Ensure tables + voucher series exist
+  {
+    const { pool } = await import("./db");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS issue_indent_returns (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        voucher_no TEXT NOT NULL,
+        return_date DATE NOT NULL,
+        store_id VARCHAR,
+        department_id VARCHAR,
+        sii_id VARCHAR,
+        sii_no TEXT DEFAULT '',
+        sii_date DATE,
+        status TEXT DEFAULT 'Draft',
+        remark TEXT DEFAULT '',
+        total_qty NUMERIC DEFAULT 0,
+        grand_total NUMERIC DEFAULT 0,
+        created_by VARCHAR,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS issue_indent_return_items (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        irr_id VARCHAR NOT NULL REFERENCES issue_indent_returns(id) ON DELETE CASCADE,
+        sno INTEGER,
+        item_code TEXT,
+        item_name TEXT,
+        stock NUMERIC DEFAULT 0,
+        issued_qty NUMERIC DEFAULT 0,
+        return_qty NUMERIC DEFAULT 0,
+        unit TEXT DEFAULT 'Nos',
+        rate NUMERIC DEFAULT 0,
+        amount NUMERIC DEFAULT 0,
+        reason TEXT DEFAULT ''
+      )
+    `);
+    // Seed voucher series if missing
+    await pool.query(`
+      INSERT INTO voucher_series(id,transaction_label,transaction_type,prefix,starting_number,current_number,digits,is_active)
+      SELECT gen_random_uuid()::text,'Issue Return Note','issue_indent_return','IRN',1,0,6,true
+      WHERE NOT EXISTS(SELECT 1 FROM voucher_series WHERE transaction_type='issue_indent_return')
+    `);
+  }
+
+  app.get("/api/issue-indent-returns", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT r.*, w.name AS store_name_db, d.name AS dept_name_db
+        FROM issue_indent_returns r
+        LEFT JOIN warehouses w ON w.id=r.store_id
+        LEFT JOIN departments d ON d.id=r.department_id
+        ORDER BY r.created_at DESC
+      `);
+      res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db||"", dept_name: row.dept_name_db||"" })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/issue-indent-returns/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [hRes, iRes] = await Promise.all([
+        pool.query(`SELECT r.*, w.name AS store_name_db, d.name AS dept_name_db
+          FROM issue_indent_returns r
+          LEFT JOIN warehouses w ON w.id=r.store_id
+          LEFT JOIN departments d ON d.id=r.department_id
+          WHERE r.id=$1`, [req.params.id]),
+        pool.query(`SELECT * FROM issue_indent_return_items WHERE irr_id=$1 ORDER BY sno`, [req.params.id]),
+      ]);
+      if (!hRes.rows[0]) return res.status(404).json({ message: "IRN not found" });
+      const hdr = hRes.rows[0];
+      res.json({ ...hdr, store_name: hdr.store_name_db||"", dept_name: hdr.dept_name_db||"", items: iRes.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/issue-indent-returns", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const voucherNo = await generateVoucherNo("issue_indent_return", client);
+        const hdr = (await client.query(`
+          INSERT INTO issue_indent_returns(id,voucher_no,return_date,store_id,department_id,sii_id,sii_no,sii_date,status,remark,total_qty,grand_total,created_by)
+          VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *
+        `, [voucherNo, b.return_date||new Date().toISOString().slice(0,10), b.store_id||null, b.department_id||null,
+            b.sii_id||null, b.sii_no||"", b.sii_date||null, b.status||"Draft", b.remark||"",
+            +(b.total_qty||0), +(b.grand_total||0), (req as any).user?.id||null])).rows[0];
+        for (const it of (b.items||[])) {
+          await client.query(`INSERT INTO issue_indent_return_items(id,irr_id,sno,item_code,item_name,stock,issued_qty,return_qty,unit,rate,amount,reason)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            [hdr.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.issued_qty||0),
+             +(it.return_qty||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0), it.reason||""]);
+          // Add returned qty back to stock
+          if (it.item_code && +(it.return_qty||0) > 0) {
+            await client.query(`UPDATE products SET current_stock=COALESCE(current_stock,0)+$1 WHERE code=$2`,
+              [+(it.return_qty||0), it.item_code]);
+          }
+        }
+        await client.query("COMMIT");
+        res.status(201).json({ ...hdr, items: b.items||[] });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.patch("/api/issue-indent-returns/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // Reverse old return stock first
+        const oldItems = await client.query(`SELECT item_code, return_qty FROM issue_indent_return_items WHERE irr_id=$1`, [req.params.id]);
+        for (const oi of oldItems.rows) {
+          if (oi.item_code && +(oi.return_qty||0) > 0)
+            await client.query(`UPDATE products SET current_stock=GREATEST(0,COALESCE(current_stock,0)-$1) WHERE code=$2`, [+(oi.return_qty||0), oi.item_code]);
+        }
+        await client.query(`UPDATE issue_indent_returns SET return_date=$1,store_id=$2,department_id=$3,sii_id=$4,sii_no=$5,sii_date=$6,status=$7,remark=$8,total_qty=$9,grand_total=$10,updated_at=NOW() WHERE id=$11`,
+          [b.return_date, b.store_id||null, b.department_id||null, b.sii_id||null, b.sii_no||"", b.sii_date||null,
+           b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.grand_total||0), req.params.id]);
+        await client.query(`DELETE FROM issue_indent_return_items WHERE irr_id=$1`, [req.params.id]);
+        for (const it of (b.items||[])) {
+          await client.query(`INSERT INTO issue_indent_return_items(id,irr_id,sno,item_code,item_name,stock,issued_qty,return_qty,unit,rate,amount,reason)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            [req.params.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.issued_qty||0),
+             +(it.return_qty||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0), it.reason||""]);
+          if (it.item_code && +(it.return_qty||0) > 0)
+            await client.query(`UPDATE products SET current_stock=COALESCE(current_stock,0)+$1 WHERE code=$2`, [+(it.return_qty||0), it.item_code]);
+        }
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.delete("/api/issue-indent-returns/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const oldItems = await client.query(`SELECT item_code, return_qty FROM issue_indent_return_items WHERE irr_id=$1`, [req.params.id]);
+        for (const oi of oldItems.rows) {
+          if (oi.item_code && +(oi.return_qty||0) > 0)
+            await client.query(`UPDATE products SET current_stock=GREATEST(0,COALESCE(current_stock,0)-$1) WHERE code=$2`, [+(oi.return_qty||0), oi.item_code]);
+        }
+        await client.query(`DELETE FROM issue_indent_returns WHERE id=$1`, [req.params.id]);
+        await client.query("COMMIT");
+        res.json({ ok: true });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // ── Store Opening ─────────────────────────────────────────────────────────────
 
   // Bulk multi-store import — must be before /:id routes

@@ -41,6 +41,7 @@ import StoreRequestNote from "@/pages/inventory/StoreRequestNote";
 import StoreIssueIndent from "@/pages/inventory/StoreIssueIndent";
 import PhyReconciliation from "@/pages/inventory/PhyReconciliation";
 import GoodsReceiptReturn from "@/pages/inventory/GoodsReceiptReturn";
+import IssueIndentReturn from "@/pages/inventory/IssueIndentReturn";
 import StoreOpening from "@/pages/inventory/StoreOpening";
 import FinancialYears from "@/pages/masters/FinancialYears";
 import VoucherSeries from "@/pages/masters/VoucherSeries";
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/inventory/store-issue-indent"><ProtectedRoute component={StoreIssueIndent} /></Route>
       <Route path="/inventory/phy-reconciliation"><ProtectedRoute component={PhyReconciliation} /></Route>
       <Route path="/inventory/goods-receipt-return"><ProtectedRoute component={GoodsReceiptReturn} /></Route>
+      <Route path="/inventory/issue-indent-return"><ProtectedRoute component={IssueIndentReturn} /></Route>
       <Route path="/inventory/store-opening"><ProtectedRoute component={StoreOpening} /></Route>
       <Route path="/inventory/items"><ProtectedRoute component={Inventory} /></Route>
       <Route path="/inventory/categories"><ProtectedRoute component={Inventory} /></Route>
