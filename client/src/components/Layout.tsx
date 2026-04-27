@@ -126,8 +126,11 @@ const NAV: any[] = [
       {
         label: "Accounts",
         subChildren: [
-          { label: "Ledger Report",   href: "/reports/accounts/ledger" },
-          { label: "Trial Balance",   href: "/reports/accounts/trial-balance" },
+          { label: "Customer Receivable", href: "/reports/accounts/customer-receivable" },
+          { label: "Supplier Payables",   href: "/reports/accounts/supplier-payables" },
+          { label: "Ledger Report",       href: "/reports/accounts/ledger" },
+          { label: "Trial Balance",       href: "/reports/accounts/trial-balance" },
+          { label: "Ageing List",         href: "/reports/accounts/ageing-list" },
         ],
       },
     ],
