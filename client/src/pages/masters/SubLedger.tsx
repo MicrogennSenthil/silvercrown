@@ -16,12 +16,12 @@ function CrDrToggle({ value, onChange }: { value: string; onChange: (v: string) 
   return (
     <div className="flex border border-gray-300 rounded overflow-hidden text-xs font-semibold">
       <button type="button" onClick={() => onChange("Credit")}
-        className="px-3 py-1.5 transition-colors"
+        className="px-3 py-1 transition-colors"
         style={value === "Credit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#6b7280" }}>
         Credit
       </button>
       <button type="button" onClick={() => onChange("Debit")}
-        className="px-3 py-1.5 transition-colors"
+        className="px-3 py-1 transition-colors"
         style={value === "Debit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#6b7280" }}>
         Debit
       </button>
@@ -258,7 +258,7 @@ function LedgerForm({
                   type="number" value={obAmount}
                   onChange={e => { if (!obEntry) setObAmount(e.target.value); }}
                   readOnly={obEntry}
-                  className="w-28 border border-gray-300 rounded-l px-2 py-2 text-sm outline-none focus:border-[#027fa5] text-right"
+                  className="w-28 border border-gray-300 rounded-l px-2 py-1 text-sm outline-none focus:border-[#027fa5] text-right"
                   placeholder="0000.00"
                   data-testid="input-opening-balance"
                 />
@@ -274,7 +274,7 @@ function LedgerForm({
                   type="number" value={cbAmount}
                   onChange={e => { if (!obEntry) setCbAmount(e.target.value); }}
                   readOnly={obEntry}
-                  className="w-28 border border-gray-300 rounded-l px-2 py-2 text-sm outline-none focus:border-[#027fa5] text-right"
+                  className="w-28 border border-gray-300 rounded-l px-2 py-1 text-sm outline-none focus:border-[#027fa5] text-right"
                   placeholder="0000.00"
                   data-testid="input-closing-balance"
                 />

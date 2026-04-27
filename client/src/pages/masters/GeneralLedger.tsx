@@ -23,7 +23,7 @@ function CrDrToggle({ value, onChange }: { value: string; onChange: (v: string) 
     <div className="flex border border-gray-300 rounded overflow-hidden text-xs font-semibold">
       {["Credit", "Debit"].map(t => (
         <button key={t} type="button" onClick={() => onChange(t)}
-          className="px-3 py-1.5 transition-colors"
+          className="px-3 py-1 transition-colors"
           style={value === t ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#6b7280" }}>
           {t}
         </button>
@@ -33,7 +33,7 @@ function CrDrToggle({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 function inp(extra = "") {
-  return `w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] ${extra}`;
+  return `w-full border border-gray-300 rounded px-3 py-1.5 text-sm outline-none focus:border-[#027fa5] ${extra}`;
 }
 function label(t: string, req = false) {
   return <label className="block text-xs text-gray-500 font-medium mb-1">{t}{req && <span className="text-red-500 ml-0.5">*</span>}</label>;
