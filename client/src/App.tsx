@@ -124,6 +124,7 @@ function Router() {
       <Route path="/masters/store-item-sub-groups"><ProtectedRoute component={StoreItemSubGroups} /></Route>
       <Route path="/masters/general-ledgers"><ProtectedRoute component={GeneralLedgerTree} /></Route>
       <Route path="/masters/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>
+      <Route path="/accounts/general-ledger"><ProtectedRoute component={GeneralLedgerTree} /></Route>
       <Route path="/accounts/ledger"><ProtectedRoute component={SubLedgerMaster} /></Route>
       <Route path="/setup"><ProtectedRoute component={SoftwareSetup} /></Route>
       <Route path="/engineering/job-work-inward"><ProtectedRoute component={JobWorkInward} /></Route>
