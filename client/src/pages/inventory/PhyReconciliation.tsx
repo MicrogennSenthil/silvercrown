@@ -450,44 +450,44 @@ export default function PhyReconciliation() {
         </div>
       </div>
 
-      {/* Remark */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <label className="text-xs text-gray-500 font-medium block mb-1">Remark</label>
-        <textarea value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
-          rows={2} placeholder="Optional overall remark for this reconciliation…"
-          className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
-          data-testid="textarea-remark"/>
-      </div>
-
-      {/* Save / Cancel */}
-      <div className="flex items-center justify-end gap-2 pb-2">
-        <button onClick={() => setMode("list")}
-          className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
-          data-testid="btn-cancel-rec">
-          Cancel
-        </button>
-        {isDraft ? (
-          <>
-            <button onClick={() => handleSave("Draft")} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-              style={{ background: "#6b7280" }} data-testid="btn-save-draft">
-              {saving ? "Saving…" : editId ? "Update Draft" : "Save as Draft"}
-            </button>
-            <button onClick={() => handleSave("Posted")} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-              style={{ background: SC.orange }} data-testid="btn-post-rec">
-              <CheckCircle size={14}/>
-              {saving ? "Posting…" : "Post & Adjust Stock"}
-            </button>
-          </>
-        ) : (
-          <button onClick={() => handleSave()} disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-            style={{ background: SC.orange }} data-testid="btn-save-rec">
-            <CheckCircle size={14}/>
-            {saving ? "Saving…" : editId ? "Update & Adjust Stock" : "Post & Adjust Stock"}
+      {/* Remark + Save/Cancel (side by side) */}
+      <div className="grid grid-cols-2 gap-4 pb-2">
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <label className="text-xs text-gray-500 font-medium block mb-1">Remark</label>
+          <textarea value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
+            rows={2} placeholder="Optional overall remark for this reconciliation…"
+            className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
+            data-testid="textarea-remark"/>
+        </div>
+        <div className="flex items-end justify-end gap-2">
+          <button onClick={() => setMode("list")}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+            data-testid="btn-cancel-rec">
+            Cancel
           </button>
-        )}
+          {isDraft ? (
+            <>
+              <button onClick={() => handleSave("Draft")} disabled={saving}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: "#6b7280" }} data-testid="btn-save-draft">
+                {saving ? "Saving…" : editId ? "Update Draft" : "Save as Draft"}
+              </button>
+              <button onClick={() => handleSave("Posted")} disabled={saving}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: SC.orange }} data-testid="btn-post-rec">
+                <CheckCircle size={14}/>
+                {saving ? "Posting…" : "Post & Adjust Stock"}
+              </button>
+            </>
+          ) : (
+            <button onClick={() => handleSave()} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+              style={{ background: SC.orange }} data-testid="btn-save-rec">
+              <CheckCircle size={14}/>
+              {saving ? "Saving…" : editId ? "Update & Adjust Stock" : "Post & Adjust Stock"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
