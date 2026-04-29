@@ -471,7 +471,8 @@ export class DatabaseStorage implements IStorage {
   async createState(s: InsertState) {
     const [ex] = await db.select().from(states).where(ilike(states.name, s.name.trim())).limit(1);
     if (ex) throw new Error(`State "${s.name}" already exists`);
-    const [r] = await db.insert(states).values({ ...s, id: randomUUID() }).returning(); return r;
+    const code = (s as any).code?.trim() || s.name.trim().toUpperCase().replace(/\s+/g, "_").slice(0, 10);
+    const [r] = await db.insert(states).values({ ...s, code, id: randomUUID() }).returning(); return r;
   }
   async updateState(id: string, s: Partial<InsertState>) { const [r] = await db.update(states).set(s).where(eq(states.id, id)).returning(); return r; }
   async deleteState(id: string) { await db.delete(states).where(eq(states.id, id)); }
