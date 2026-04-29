@@ -244,8 +244,22 @@ function CustomerForm({ initial, onClose }: any) {
   });
 
   const handleSave = () => {
-    saveMut.mutate({ ...form, createLedger: createLedger && !form.subLedgerId });
+    saveMut.mutate({
+      ...form,
+      creditDays: form.creditDays !== "" ? Number(form.creditDays) : 0,
+      creditLimit: form.creditLimit !== "" ? String(Number(form.creditLimit)) : "0",
+      createLedger: createLedger && !form.subLedgerId,
+    });
   };
+
+  const saveErrorMsg = (() => {
+    if (!saveMut.error) return "";
+    try {
+      const parsed = JSON.parse((saveMut.error as Error).message);
+      if (Array.isArray(parsed) && parsed[0]?.message) return parsed[0].message;
+    } catch {}
+    return (saveMut.error as Error).message;
+  })();
 
   const TABS = [
     { key: "address", label: "Address" },
@@ -432,9 +446,7 @@ function CustomerForm({ initial, onClose }: any) {
             {saveMut.isPending ? "Saving…" : "Save"}
           </button>
         </div>
-        {saveMut.isError && (
-          <p className="text-red-500 text-xs mt-2 text-right">{(saveMut.error as Error).message}</p>
-        )}
+        {saveMut.isError && <p className="text-red-500 text-sm mt-2 text-right font-medium">{saveErrorMsg}</p>}
       </div>
     </div>
     </>
