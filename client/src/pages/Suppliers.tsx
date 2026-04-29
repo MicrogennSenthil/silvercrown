@@ -70,6 +70,64 @@ function DropPlus({ label, value, onChange, options, onPlus, className = "" }: a
   );
 }
 
+function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | "state"; stateList: any[]; onSaved: (name: string) => void; onCancel: () => void }) {
+  const [name, setName] = useState("");
+  const [stateId, setStateId] = useState("");
+  const qc = useQueryClient();
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      const url   = type === "city" ? "/api/cities" : "/api/states";
+      const body  = type === "city" ? { name, stateId: stateId || undefined, isActive: true } : { name, isActive: true };
+      const res   = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "include" });
+      if (!res.ok) throw new Error((await res.json()).message || "Save failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [type === "city" ? "/api/cities" : "/api/states"] });
+      onSaved(name.trim());
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+      <div className="bg-white rounded-xl p-5 w-80" style={{ boxShadow: "2px 2px 10px rgba(0,0,0,0.25)" }}>
+        <div className="font-semibold text-gray-800 mb-4">Add New {type === "city" ? "City" : "State"}</div>
+        <div className="space-y-3">
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{type === "city" ? "City Name" : "State Name"}</label>
+            <input autoFocus value={name} onChange={e => setName(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm focus:outline-none focus:border-blue-400"
+              data-testid="input-quick-add-name" />
+          </div>
+          {type === "city" && (
+            <div className="relative">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">State (optional)</label>
+              <select value={stateId} onChange={e => setStateId(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm focus:outline-none focus:border-blue-400 bg-white appearance-none"
+                data-testid="select-quick-add-state">
+                <option value="">— Select State —</option>
+                {stateList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          )}
+        </div>
+        {mut.isError && <p className="text-red-500 text-xs mt-2">{(mut.error as Error).message}</p>}
+        <div className="flex gap-3 justify-end mt-4">
+          <button onClick={onCancel} className="px-5 py-2 rounded border text-sm font-medium text-gray-600 hover:bg-gray-50"
+            data-testid="button-quick-add-cancel">Cancel</button>
+          <button onClick={() => mut.mutate()} disabled={!name.trim() || mut.isPending}
+            className="px-5 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="button-quick-add-save">
+            {mut.isPending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const GST_TYPES = [
   { value: "registered_regular",      label: "Registered Regular" },
   { value: "registered_composition",  label: "Registered Composition" },
@@ -156,7 +214,7 @@ function LedgerPanel({ isEdit, subLedgerId, subLedgerName, createLedger, onSubLe
 }
 
 // ─── Supplier Form (3 tabs) ───────────────────────────────────────────────────
-function SupplierForm({ initial, cities, states, onClose }: any) {
+function SupplierForm({ initial, onClose }: any) {
   const [form, setForm] = useState<any>({
     ...EMPTY_FORM,
     ...initial,
@@ -164,8 +222,11 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
   });
   const [tab, setTab] = useState<"address" | "account" | "other">("address");
   const [createLedger, setCreateLedger] = useState(!initial?.id);
+  const [quickAdd, setQuickAdd] = useState<"city" | "state" | null>(null);
   const qc = useQueryClient();
 
+  const { data: cities  = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
+  const { data: states  = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
   const { data: creditors = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/creditors"] });
 
   const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
@@ -199,6 +260,18 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
   const stateOptions = (states || []).map((s: any) => ({ value: s.name, label: s.name }));
 
   return (
+    <>
+    {quickAdd && (
+      <QuickAddModal
+        type={quickAdd}
+        stateList={states}
+        onSaved={(name) => {
+          setForm((p: any) => ({ ...p, [quickAdd]: name }));
+          setQuickAdd(null);
+        }}
+        onCancel={() => setQuickAdd(null)}
+      />
+    )}
     <div className="bg-white rounded-xl" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
         <h2 className="text-lg font-bold text-gray-800">Supplier</h2>
@@ -241,8 +314,8 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
                 <Field label="Address 1" value={form.address1} onChange={f("address1")} />
                 <Field label="Address 2" value={form.address2} onChange={f("address2")} />
                 <div className="flex gap-3">
-                  <DropPlus label="City"  value={form.city}  onChange={f("city")}  options={cityOptions}  onPlus={() => {}} className="flex-1" />
-                  <DropPlus label="State" value={form.state} onChange={f("state")} options={stateOptions} onPlus={() => {}} className="flex-1" />
+                  <DropPlus label="City"  value={form.city}  onChange={f("city")}  options={cityOptions}  onPlus={() => setQuickAdd("city")}  className="flex-1" />
+                  <DropPlus label="State" value={form.state} onChange={f("state")} options={stateOptions} onPlus={() => setQuickAdd("state")} className="flex-1" />
                 </div>
                 <Field label="GST State Code" value={form.gstStateCode} onChange={f("gstStateCode")} className="w-40" />
               </div>
@@ -349,6 +422,7 @@ function SupplierForm({ initial, cities, states, onClose }: any) {
         {saveMut.isError && <p className="text-red-500 text-xs mt-2 text-right">{(saveMut.error as Error).message}</p>}
       </div>
     </div>
+    </>
   );
 }
 
@@ -451,8 +525,6 @@ export default function Suppliers() {
   const qc = useQueryClient();
 
   const { data: suppliers = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
-  const { data: cities  = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
-  const { data: states  = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
 
   const deleteMut = useMutation({
     mutationFn: async (id: string) => {
@@ -477,7 +549,7 @@ export default function Suppliers() {
       {deleteId && <DeleteModal onConfirm={() => deleteMut.mutate(deleteId!)} onCancel={() => setDeleteId(null)} />}
       {view === "list"
         ? <SupplierList suppliers={suppliers} onNew={openNew} onEdit={openEdit} onDelete={setDeleteId} />
-        : <SupplierForm initial={editing} cities={cities} states={states} onClose={closeForm} />
+        : <SupplierForm initial={editing} onClose={closeForm} />
       }
     </>
   );
