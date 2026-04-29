@@ -586,6 +586,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { pool } = await import("./db");
       const { code, name, price = 0, is_active = true } = req.body;
       if (!name?.trim()) return res.status(400).json({ message: "Name is required" });
+      const dup = await pool.query(`SELECT id FROM processes WHERE LOWER(name) = LOWER($1) LIMIT 1`, [name.trim()]);
+      if (dup.rows.length > 0) return res.status(400).json({ message: `Process "${name.trim()}" already exists` });
       const r = await pool.query(
         `INSERT INTO processes (id, code, name, price, is_active) VALUES (gen_random_uuid()::text, $1, $2, $3, $4) RETURNING *`,
         [code?.trim().toUpperCase() || name.trim().toUpperCase().replace(/\s+/g, "-"), name.trim(), price, is_active]
@@ -695,6 +697,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool } = await import("./db");
       const b = req.body;
+      if (!b.name?.trim()) return res.status(400).json({ message: "Store name is required" });
+      const dup = await pool.query(`SELECT id FROM stores WHERE LOWER(name) = LOWER($1) LIMIT 1`, [b.name.trim()]);
+      if (dup.rows.length > 0) return res.status(400).json({ message: `Store "${b.name.trim()}" already exists` });
       const r = await pool.query(`
         INSERT INTO stores (code, name, store_type, parent_id, location, description, is_active)
         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *

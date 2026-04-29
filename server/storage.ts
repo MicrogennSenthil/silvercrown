@@ -312,24 +312,40 @@ export class DatabaseStorage implements IStorage {
 
   async listSuppliers() { return db.select().from(suppliers).orderBy(suppliers.name); }
   async getSupplier(id: string) { const [s] = await db.select().from(suppliers).where(eq(suppliers.id, id)); return s; }
-  async createSupplier(s: InsertSupplier) { const [r] = await db.insert(suppliers).values({ ...s, id: randomUUID() }).returning(); return r; }
+  async createSupplier(s: InsertSupplier) {
+    const [ex] = await db.select().from(suppliers).where(ilike(suppliers.name, s.name.trim())).limit(1);
+    if (ex) throw new Error(`Supplier "${s.name}" already exists`);
+    const [r] = await db.insert(suppliers).values({ ...s, id: randomUUID() }).returning(); return r;
+  }
   async updateSupplier(id: string, s: Partial<InsertSupplier>) { const [r] = await db.update(suppliers).set(s).where(eq(suppliers.id, id)).returning(); return r; }
   async deleteSupplier(id: string) { await db.delete(suppliers).where(eq(suppliers.id, id)); }
 
   async listCustomers() { return db.select().from(customers).orderBy(customers.name); }
   async getCustomer(id: string) { const [c] = await db.select().from(customers).where(eq(customers.id, id)); return c; }
-  async createCustomer(c: InsertCustomer) { const [r] = await db.insert(customers).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async createCustomer(c: InsertCustomer) {
+    const [ex] = await db.select().from(customers).where(ilike(customers.name, c.name.trim())).limit(1);
+    if (ex) throw new Error(`Customer "${c.name}" already exists`);
+    const [r] = await db.insert(customers).values({ ...c, id: randomUUID() }).returning(); return r;
+  }
   async updateCustomer(id: string, c: Partial<InsertCustomer>) { const [r] = await db.update(customers).set(c).where(eq(customers.id, id)).returning(); return r; }
   async deleteCustomer(id: string) { await db.delete(customers).where(eq(customers.id, id)); }
 
   async listInventoryCategories() { return db.select().from(inventoryCategories).orderBy(inventoryCategories.name); }
-  async createInventoryCategory(c: InsertInventoryCategory) { const [r] = await db.insert(inventoryCategories).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async createInventoryCategory(c: InsertInventoryCategory) {
+    const [ex] = await db.select().from(inventoryCategories).where(ilike(inventoryCategories.name, c.name.trim())).limit(1);
+    if (ex) throw new Error(`Category "${c.name}" already exists`);
+    const [r] = await db.insert(inventoryCategories).values({ ...c, id: randomUUID() }).returning(); return r;
+  }
   async updateInventoryCategory(id: string, c: Partial<InsertInventoryCategory>) { const [r] = await db.update(inventoryCategories).set(c).where(eq(inventoryCategories.id, id)).returning(); return r; }
   async deleteInventoryCategory(id: string) { await db.delete(inventoryCategories).where(eq(inventoryCategories.id, id)); }
 
   async listInventoryItems() { return db.select().from(inventoryItems).orderBy(inventoryItems.name); }
   async getInventoryItem(id: string) { const [i] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, id)); return i; }
-  async createInventoryItem(i: InsertInventoryItem) { const [r] = await db.insert(inventoryItems).values({ ...i, id: randomUUID() }).returning(); return r; }
+  async createInventoryItem(i: InsertInventoryItem) {
+    const [ex] = await db.select().from(inventoryItems).where(ilike(inventoryItems.name, i.name.trim())).limit(1);
+    if (ex) throw new Error(`Inventory item "${i.name}" already exists`);
+    const [r] = await db.insert(inventoryItems).values({ ...i, id: randomUUID() }).returning(); return r;
+  }
   async updateInventoryItem(id: string, i: Partial<InsertInventoryItem>) { const [r] = await db.update(inventoryItems).set(i).where(eq(inventoryItems.id, id)).returning(); return r; }
   async deleteInventoryItem(id: string) { await db.delete(inventoryItems).where(eq(inventoryItems.id, id)); }
 
@@ -391,7 +407,11 @@ export class DatabaseStorage implements IStorage {
   // User Roles
   async listUserRoles() { return db.select().from(userRoles).orderBy(userRoles.name); }
   async getUserRole(id: string) { const [r] = await db.select().from(userRoles).where(eq(userRoles.id, id)); return r; }
-  async createUserRole(role: InsertUserRole) { const [r] = await db.insert(userRoles).values({ ...role, id: randomUUID() }).returning(); return r; }
+  async createUserRole(role: InsertUserRole) {
+    const [ex] = await db.select().from(userRoles).where(ilike(userRoles.name, role.name.trim())).limit(1);
+    if (ex) throw new Error(`User role "${role.name}" already exists`);
+    const [r] = await db.insert(userRoles).values({ ...role, id: randomUUID() }).returning(); return r;
+  }
   async updateUserRole(id: string, role: Partial<InsertUserRole>) { const [r] = await db.update(userRoles).set(role).where(eq(userRoles.id, id)).returning(); return r; }
   async deleteUserRole(id: string) { await db.delete(roleRights).where(eq(roleRights.roleId, id)); await db.delete(userRoles).where(eq(userRoles.id, id)); }
 
@@ -405,25 +425,41 @@ export class DatabaseStorage implements IStorage {
 
   // Warehouses
   async listWarehouses() { return db.select().from(warehouses).orderBy(warehouses.name); }
-  async createWarehouse(w: InsertWarehouse) { const [r] = await db.insert(warehouses).values({ ...w, id: randomUUID() }).returning(); return r; }
+  async createWarehouse(w: InsertWarehouse) {
+    const [ex] = await db.select().from(warehouses).where(ilike(warehouses.name, w.name.trim())).limit(1);
+    if (ex) throw new Error(`Warehouse "${w.name}" already exists`);
+    const [r] = await db.insert(warehouses).values({ ...w, id: randomUUID() }).returning(); return r;
+  }
   async updateWarehouse(id: string, w: Partial<InsertWarehouse>) { const [r] = await db.update(warehouses).set(w).where(eq(warehouses.id, id)).returning(); return r; }
   async deleteWarehouse(id: string) { await db.delete(warehouses).where(eq(warehouses.id, id)); }
 
   // Units of Measure
   async listUom() { return db.select().from(unitsOfMeasure).orderBy(unitsOfMeasure.name); }
-  async createUom(u: InsertUom) { const [r] = await db.insert(unitsOfMeasure).values({ ...u, id: randomUUID() }).returning(); return r; }
+  async createUom(u: InsertUom) {
+    const [ex] = await db.select().from(unitsOfMeasure).where(ilike(unitsOfMeasure.name, u.name.trim())).limit(1);
+    if (ex) throw new Error(`Unit of Measure "${u.name}" already exists`);
+    const [r] = await db.insert(unitsOfMeasure).values({ ...u, id: randomUUID() }).returning(); return r;
+  }
   async updateUom(id: string, u: Partial<InsertUom>) { const [r] = await db.update(unitsOfMeasure).set(u).where(eq(unitsOfMeasure.id, id)).returning(); return r; }
   async deleteUom(id: string) { await db.delete(unitsOfMeasure).where(eq(unitsOfMeasure.id, id)); }
 
   // Tax Rates
   async listTaxRates() { return db.select().from(taxRates).orderBy(taxRates.name); }
-  async createTaxRate(t: InsertTaxRate) { const [r] = await db.insert(taxRates).values({ ...t, id: randomUUID() }).returning(); return r; }
+  async createTaxRate(t: InsertTaxRate) {
+    const [ex] = await db.select().from(taxRates).where(ilike(taxRates.name, t.name.trim())).limit(1);
+    if (ex) throw new Error(`Tax Rate "${t.name}" already exists`);
+    const [r] = await db.insert(taxRates).values({ ...t, id: randomUUID() }).returning(); return r;
+  }
   async updateTaxRate(id: string, t: Partial<InsertTaxRate>) { const [r] = await db.update(taxRates).set(t).where(eq(taxRates.id, id)).returning(); return r; }
   async deleteTaxRate(id: string) { await db.delete(taxRates).where(eq(taxRates.id, id)); }
 
   // Countries
   async listCountries() { return db.select().from(countries).orderBy(countries.name); }
-  async createCountry(c: InsertCountry) { const [r] = await db.insert(countries).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async createCountry(c: InsertCountry) {
+    const [ex] = await db.select().from(countries).where(ilike(countries.name, c.name.trim())).limit(1);
+    if (ex) throw new Error(`Country "${c.name}" already exists`);
+    const [r] = await db.insert(countries).values({ ...c, id: randomUUID() }).returning(); return r;
+  }
   async updateCountry(id: string, c: Partial<InsertCountry>) { const [r] = await db.update(countries).set(c).where(eq(countries.id, id)).returning(); return r; }
   async deleteCountry(id: string) { await db.delete(countries).where(eq(countries.id, id)); }
 
@@ -432,7 +468,11 @@ export class DatabaseStorage implements IStorage {
     if (countryId) return db.select().from(states).where(eq(states.countryId, countryId)).orderBy(states.name);
     return db.select().from(states).orderBy(states.name);
   }
-  async createState(s: InsertState) { const [r] = await db.insert(states).values({ ...s, id: randomUUID() }).returning(); return r; }
+  async createState(s: InsertState) {
+    const [ex] = await db.select().from(states).where(ilike(states.name, s.name.trim())).limit(1);
+    if (ex) throw new Error(`State "${s.name}" already exists`);
+    const [r] = await db.insert(states).values({ ...s, id: randomUUID() }).returning(); return r;
+  }
   async updateState(id: string, s: Partial<InsertState>) { const [r] = await db.update(states).set(s).where(eq(states.id, id)).returning(); return r; }
   async deleteState(id: string) { await db.delete(states).where(eq(states.id, id)); }
 
@@ -441,13 +481,23 @@ export class DatabaseStorage implements IStorage {
     if (stateId) return db.select().from(cities).where(eq(cities.stateId, stateId)).orderBy(cities.name);
     return db.select().from(cities).orderBy(cities.name);
   }
-  async createCity(c: InsertCity) { const [r] = await db.insert(cities).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async createCity(c: InsertCity) {
+    const conditions: any[] = [ilike(cities.name, c.name.trim())];
+    if (c.stateId) conditions.push(eq(cities.stateId, c.stateId));
+    const [ex] = await db.select().from(cities).where(and(...conditions)).limit(1);
+    if (ex) throw new Error(`City "${c.name}" already exists${c.stateId ? " in this state" : ""}`);
+    const [r] = await db.insert(cities).values({ ...c, id: randomUUID() }).returning(); return r;
+  }
   async updateCity(id: string, c: Partial<InsertCity>) { const [r] = await db.update(cities).set(c).where(eq(cities.id, id)).returning(); return r; }
   async deleteCity(id: string) { await db.delete(cities).where(eq(cities.id, id)); }
 
   // Categories
   async listCategories() { return db.select().from(categories).orderBy(categories.name); }
-  async createCategory(c: InsertCategory) { const [r] = await db.insert(categories).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async createCategory(c: InsertCategory) {
+    const [ex] = await db.select().from(categories).where(ilike(categories.name, c.name.trim())).limit(1);
+    if (ex) throw new Error(`Category "${c.name}" already exists`);
+    const [r] = await db.insert(categories).values({ ...c, id: randomUUID() }).returning(); return r;
+  }
   async updateCategory(id: string, c: Partial<InsertCategory>) { const [r] = await db.update(categories).set(c).where(eq(categories.id, id)).returning(); return r; }
   async deleteCategory(id: string) { await db.delete(categories).where(eq(categories.id, id)); }
 
@@ -456,31 +506,51 @@ export class DatabaseStorage implements IStorage {
     if (categoryId) return db.select().from(subCategories).where(eq(subCategories.categoryId, categoryId)).orderBy(subCategories.name);
     return db.select().from(subCategories).orderBy(subCategories.name);
   }
-  async createSubCategory(c: InsertSubCategory) { const [r] = await db.insert(subCategories).values({ ...c, id: randomUUID() }).returning(); return r; }
+  async createSubCategory(c: InsertSubCategory) {
+    const [ex] = await db.select().from(subCategories).where(ilike(subCategories.name, c.name.trim())).limit(1);
+    if (ex) throw new Error(`Sub-category "${c.name}" already exists`);
+    const [r] = await db.insert(subCategories).values({ ...c, id: randomUUID() }).returning(); return r;
+  }
   async updateSubCategory(id: string, c: Partial<InsertSubCategory>) { const [r] = await db.update(subCategories).set(c).where(eq(subCategories.id, id)).returning(); return r; }
   async deleteSubCategory(id: string) { await db.delete(subCategories).where(eq(subCategories.id, id)); }
 
   // Products
   async listProducts() { return db.select().from(products).orderBy(products.name); }
   async getProduct(id: string) { const [p] = await db.select().from(products).where(eq(products.id, id)); return p; }
-  async createProduct(p: InsertProduct) { const [r] = await db.insert(products).values({ ...p, id: randomUUID() }).returning(); return r; }
+  async createProduct(p: InsertProduct) {
+    const [ex] = await db.select().from(products).where(ilike(products.name, p.name.trim())).limit(1);
+    if (ex) throw new Error(`Product "${p.name}" already exists`);
+    const [r] = await db.insert(products).values({ ...p, id: randomUUID() }).returning(); return r;
+  }
   async updateProduct(id: string, p: Partial<InsertProduct>) { const [r] = await db.update(products).set(p).where(eq(products.id, id)).returning(); return r; }
   async deleteProduct(id: string) { await db.delete(products).where(eq(products.id, id)); }
 
   // Machine Master
   async listMachines() { return db.select().from(machineMaster).orderBy(machineMaster.name); }
-  async createMachine(m: InsertMachine) { const [r] = await db.insert(machineMaster).values({ ...m, id: randomUUID() }).returning(); return r; }
+  async createMachine(m: InsertMachine) {
+    const [ex] = await db.select().from(machineMaster).where(ilike(machineMaster.name, m.name.trim())).limit(1);
+    if (ex) throw new Error(`Machine "${m.name}" already exists`);
+    const [r] = await db.insert(machineMaster).values({ ...m, id: randomUUID() }).returning(); return r;
+  }
   async updateMachine(id: string, m: Partial<InsertMachine>) { const [r] = await db.update(machineMaster).set(m).where(eq(machineMaster.id, id)).returning(); return r; }
   async deleteMachine(id: string) { await db.delete(machineMaster).where(eq(machineMaster.id, id)); }
 
   // Store Item Groups
   async listStoreItemGroups() { return db.select().from(storeItemGroups).orderBy(storeItemGroups.name); }
-  async createStoreItemGroup(g: InsertStoreItemGroup) { const [r] = await db.insert(storeItemGroups).values({ ...g, id: randomUUID() }).returning(); return r; }
+  async createStoreItemGroup(g: InsertStoreItemGroup) {
+    const [ex] = await db.select().from(storeItemGroups).where(ilike(storeItemGroups.name, g.name.trim())).limit(1);
+    if (ex) throw new Error(`Store item group "${g.name}" already exists`);
+    const [r] = await db.insert(storeItemGroups).values({ ...g, id: randomUUID() }).returning(); return r;
+  }
   async updateStoreItemGroup(id: string, g: Partial<InsertStoreItemGroup>) { const [r] = await db.update(storeItemGroups).set(g).where(eq(storeItemGroups.id, id)).returning(); return r; }
   async deleteStoreItemGroup(id: string) { await db.delete(storeItemGroups).where(eq(storeItemGroups.id, id)); }
 
   async listStoreItemSubGroups() { return db.select().from(storeItemSubGroups).orderBy(storeItemSubGroups.name); }
-  async createStoreItemSubGroup(g: InsertStoreItemSubGroup) { const [r] = await db.insert(storeItemSubGroups).values({ ...g, id: randomUUID() }).returning(); return r; }
+  async createStoreItemSubGroup(g: InsertStoreItemSubGroup) {
+    const [ex] = await db.select().from(storeItemSubGroups).where(ilike(storeItemSubGroups.name, g.name.trim())).limit(1);
+    if (ex) throw new Error(`Store item sub-group "${g.name}" already exists`);
+    const [r] = await db.insert(storeItemSubGroups).values({ ...g, id: randomUUID() }).returning(); return r;
+  }
   async updateStoreItemSubGroup(id: string, g: Partial<InsertStoreItemSubGroup>) { const [r] = await db.update(storeItemSubGroups).set(g).where(eq(storeItemSubGroups.id, id)).returning(); return r; }
   async deleteStoreItemSubGroup(id: string) { await db.delete(storeItemSubGroups).where(eq(storeItemSubGroups.id, id)); }
 
@@ -489,7 +559,11 @@ export class DatabaseStorage implements IStorage {
     if (groupId) return db.select().from(purchaseStoreItems).where(eq(purchaseStoreItems.itemGroupId, groupId)).orderBy(purchaseStoreItems.name);
     return db.select().from(purchaseStoreItems).orderBy(purchaseStoreItems.name);
   }
-  async createPurchaseStoreItem(i: InsertPurchaseStoreItem) { const [r] = await db.insert(purchaseStoreItems).values({ ...i, id: randomUUID() }).returning(); return r; }
+  async createPurchaseStoreItem(i: InsertPurchaseStoreItem) {
+    const [ex] = await db.select().from(purchaseStoreItems).where(ilike(purchaseStoreItems.name, i.name.trim())).limit(1);
+    if (ex) throw new Error(`Purchase store item "${i.name}" already exists`);
+    const [r] = await db.insert(purchaseStoreItems).values({ ...i, id: randomUUID() }).returning(); return r;
+  }
   async updatePurchaseStoreItem(id: string, i: Partial<InsertPurchaseStoreItem>) { const [r] = await db.update(purchaseStoreItems).set(i).where(eq(purchaseStoreItems.id, id)).returning(); return r; }
   async deletePurchaseStoreItem(id: string) { await db.delete(purchaseStoreItems).where(eq(purchaseStoreItems.id, id)); }
 
@@ -501,30 +575,50 @@ export class DatabaseStorage implements IStorage {
 
   // Voucher Types
   async listVoucherTypes() { return db.select().from(voucherTypes).orderBy(voucherTypes.name); }
-  async createVoucherType(v: InsertVoucherType) { const [r] = await db.insert(voucherTypes).values({ ...v, id: randomUUID() }).returning(); return r; }
+  async createVoucherType(v: InsertVoucherType) {
+    const [ex] = await db.select().from(voucherTypes).where(ilike(voucherTypes.name, v.name.trim())).limit(1);
+    if (ex) throw new Error(`Voucher type "${v.name}" already exists`);
+    const [r] = await db.insert(voucherTypes).values({ ...v, id: randomUUID() }).returning(); return r;
+  }
   async updateVoucherType(id: string, v: Partial<InsertVoucherType>) { const [r] = await db.update(voucherTypes).set(v).where(eq(voucherTypes.id, id)).returning(); return r; }
   async deleteVoucherType(id: string) { await db.delete(voucherTypes).where(eq(voucherTypes.id, id)); }
 
   // Pay Mode Types
   async listPayModeTypes() { return db.select().from(payModeTypes).orderBy(payModeTypes.name); }
-  async createPayModeType(p: InsertPayModeType) { const [r] = await db.insert(payModeTypes).values({ ...p, id: randomUUID() }).returning(); return r; }
+  async createPayModeType(p: InsertPayModeType) {
+    const [ex] = await db.select().from(payModeTypes).where(ilike(payModeTypes.name, p.name.trim())).limit(1);
+    if (ex) throw new Error(`Pay mode type "${p.name}" already exists`);
+    const [r] = await db.insert(payModeTypes).values({ ...p, id: randomUUID() }).returning(); return r;
+  }
   async updatePayModeType(id: string, p: Partial<InsertPayModeType>) { const [r] = await db.update(payModeTypes).set(p).where(eq(payModeTypes.id, id)).returning(); return r; }
   async deletePayModeType(id: string) { await db.delete(payModeTypes).where(eq(payModeTypes.id, id)); }
 
   // Ledger Categories
   async listLedgerCategories() { return db.select().from(ledgerCategories).orderBy(ledgerCategories.name); }
-  async createLedgerCategory(l: InsertLedgerCategory) { const [r] = await db.insert(ledgerCategories).values({ ...l, id: randomUUID() }).returning(); return r; }
+  async createLedgerCategory(l: InsertLedgerCategory) {
+    const [ex] = await db.select().from(ledgerCategories).where(ilike(ledgerCategories.name, l.name.trim())).limit(1);
+    if (ex) throw new Error(`Ledger category "${l.name}" already exists`);
+    const [r] = await db.insert(ledgerCategories).values({ ...l, id: randomUUID() }).returning(); return r;
+  }
   async updateLedgerCategory(id: string, l: Partial<InsertLedgerCategory>) { const [r] = await db.update(ledgerCategories).set(l).where(eq(ledgerCategories.id, id)).returning(); return r; }
   async deleteLedgerCategory(id: string) { await db.delete(ledgerCategories).where(eq(ledgerCategories.id, id)); }
 
   async listGeneralLedgers() { return db.select().from(generalLedgers).orderBy(generalLedgers.name); }
-  async createGeneralLedger(g: InsertGeneralLedger) { const [r] = await db.insert(generalLedgers).values({ ...g, id: randomUUID() }).returning(); return r; }
+  async createGeneralLedger(g: InsertGeneralLedger) {
+    const [ex] = await db.select().from(generalLedgers).where(ilike(generalLedgers.name, g.name.trim())).limit(1);
+    if (ex) throw new Error(`General ledger "${g.name}" already exists`);
+    const [r] = await db.insert(generalLedgers).values({ ...g, id: randomUUID() }).returning(); return r;
+  }
   async updateGeneralLedger(id: string, g: Partial<InsertGeneralLedger>) { const [r] = await db.update(generalLedgers).set(g).where(eq(generalLedgers.id, id)).returning(); return r; }
   async deleteGeneralLedger(id: string) { await db.delete(generalLedgers).where(eq(generalLedgers.id, id)); }
 
   async listSubLedgers() { return db.select().from(subLedgers).orderBy(subLedgers.name); }
   async getSubLedger(id: string) { const [r] = await db.select().from(subLedgers).where(eq(subLedgers.id, id)); return r; }
-  async createSubLedger(s: InsertSubLedger) { const [r] = await db.insert(subLedgers).values({ ...s, id: randomUUID() }).returning(); return r; }
+  async createSubLedger(s: InsertSubLedger) {
+    const [ex] = await db.select().from(subLedgers).where(ilike(subLedgers.name, s.name.trim())).limit(1);
+    if (ex) throw new Error(`Sub-ledger "${s.name}" already exists`);
+    const [r] = await db.insert(subLedgers).values({ ...s, id: randomUUID() }).returning(); return r;
+  }
   async updateSubLedger(id: string, s: Partial<InsertSubLedger>) { const [r] = await db.update(subLedgers).set(s).where(eq(subLedgers.id, id)).returning(); return r; }
   async deleteSubLedger(id: string) { await db.delete(subLedgers).where(eq(subLedgers.id, id)); }
   async listSubLedgerBills(subLedgerId: string) { return db.select().from(subLedgerBills).where(eq(subLedgerBills.subLedgerId, subLedgerId)).orderBy(subLedgerBills.createdAt); }
@@ -536,7 +630,11 @@ export class DatabaseStorage implements IStorage {
 
   // Term Types
   async listTermTypes() { return db.select().from(termTypes).orderBy(termTypes.name); }
-  async createTermType(t: InsertTermType) { const [r] = await db.insert(termTypes).values({ ...t, id: randomUUID() }).returning(); return r; }
+  async createTermType(t: InsertTermType) {
+    const [ex] = await db.select().from(termTypes).where(ilike(termTypes.name, t.name.trim())).limit(1);
+    if (ex) throw new Error(`Term type "${t.name}" already exists`);
+    const [r] = await db.insert(termTypes).values({ ...t, id: randomUUID() }).returning(); return r;
+  }
   async updateTermType(id: string, t: Partial<InsertTermType>) { const [r] = await db.update(termTypes).set(t).where(eq(termTypes.id, id)).returning(); return r; }
   async deleteTermType(id: string) { await db.delete(termTypes).where(eq(termTypes.id, id)); }
 
@@ -545,13 +643,21 @@ export class DatabaseStorage implements IStorage {
     if (termTypeId) return db.select().from(terms).where(eq(terms.termTypeId, termTypeId)).orderBy(terms.name);
     return db.select().from(terms).orderBy(terms.name);
   }
-  async createTerm(t: InsertTerm) { const [r] = await db.insert(terms).values({ ...t, id: randomUUID() }).returning(); return r; }
+  async createTerm(t: InsertTerm) {
+    const [ex] = await db.select().from(terms).where(ilike(terms.name, t.name.trim())).limit(1);
+    if (ex) throw new Error(`Term "${t.name}" already exists`);
+    const [r] = await db.insert(terms).values({ ...t, id: randomUUID() }).returning(); return r;
+  }
   async updateTerm(id: string, t: Partial<InsertTerm>) { const [r] = await db.update(terms).set(t).where(eq(terms.id, id)).returning(); return r; }
   async deleteTerm(id: string) { await db.delete(terms).where(eq(terms.id, id)); }
 
   // Departments
   async listDepartments() { return db.select().from(departments).orderBy(departments.name); }
-  async createDepartment(d: InsertDepartment) { const [r] = await db.insert(departments).values({ ...d, id: randomUUID() }).returning(); return r; }
+  async createDepartment(d: InsertDepartment) {
+    const [ex] = await db.select().from(departments).where(ilike(departments.name, d.name.trim())).limit(1);
+    if (ex) throw new Error(`Department "${d.name}" already exists`);
+    const [r] = await db.insert(departments).values({ ...d, id: randomUUID() }).returning(); return r;
+  }
   async updateDepartment(id: string, d: Partial<InsertDepartment>) { const [r] = await db.update(departments).set(d).where(eq(departments.id, id)).returning(); return r; }
   async deleteDepartment(id: string) { await db.delete(departments).where(eq(departments.id, id)); }
 
