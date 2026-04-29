@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Edit, Trash2, Search, List, Info, ChevronDown, Link2, CheckCircle2 } from "lucide-react";
 import type { Customer } from "@shared/schema";
@@ -64,7 +65,7 @@ function DropPlus({ label, value, onChange, options, onPlus, className = "" }: a
   return (
     <div className={`flex items-start gap-2 ${className}`}>
       <SelectField label={label} value={value} onChange={onChange} options={options} className="flex-1" />
-      <button onClick={onPlus} className="flex-shrink-0 w-7 h-7 rounded mt-3 flex items-center justify-center text-white font-bold text-base"
+      <button type="button" onClick={onPlus} className="flex-shrink-0 w-7 h-7 rounded mt-3 flex items-center justify-center text-white font-bold text-base"
         style={{ background: SC.primary }} data-testid={`button-add-${label.toLowerCase()}`}>+</button>
     </div>
   );
@@ -89,8 +90,8 @@ function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | 
     },
   });
 
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center" style={{ zIndex: 9999 }}>
       <div className="bg-white rounded-xl p-5 w-80" style={{ boxShadow: "2px 2px 10px rgba(0,0,0,0.25)" }}>
         <div className="font-semibold text-gray-800 mb-4">Add New {type === "city" ? "City" : "State"}</div>
         <div className="space-y-3">
@@ -107,7 +108,7 @@ function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | 
                 className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm focus:outline-none focus:border-blue-400 bg-white appearance-none"
                 data-testid="select-quick-add-state">
                 <option value="">— Select State —</option>
-                {stateList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {(stateList || []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -115,16 +116,17 @@ function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | 
         </div>
         {mut.isError && <p className="text-red-500 text-xs mt-2">{(mut.error as Error).message}</p>}
         <div className="flex gap-3 justify-end mt-4">
-          <button onClick={onCancel} className="px-5 py-2 rounded border text-sm font-medium text-gray-600 hover:bg-gray-50"
+          <button type="button" onClick={onCancel} className="px-5 py-2 rounded border text-sm font-medium text-gray-600 hover:bg-gray-50"
             data-testid="button-quick-add-cancel">Cancel</button>
-          <button onClick={() => mut.mutate()} disabled={!name.trim() || mut.isPending}
+          <button type="button" onClick={() => mut.mutate()} disabled={!name.trim() || mut.isPending}
             className="px-5 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: SC.orange }} data-testid="button-quick-add-save">
             {mut.isPending ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
