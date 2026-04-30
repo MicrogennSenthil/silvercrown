@@ -87,6 +87,9 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const [suppId,       setSuppId]       = useState(editData?.supplier_id || "");
   const [suppSearch,   setSuppSearch]   = useState(editData?.supplier_name_db || editData?.supplier_name_manual || "");
   const [suppOpen,     setSuppOpen]     = useState(false);
+
+  // Validate suppId: clear if not a real supplier UUID (e.g. stale sub-ledger ID)
+  const validSuppId = suppId && (suppliers as any[]).some((s: any) => s.id === suppId) ? suppId : "";
   const [poType,       setPoType]       = useState(editData?.po_type || "Purchase Order");
   const [schedDate,    setSchedDate]    = useState(editData?.schedule_date?.split("T")[0] || "");
   const [priority,     setPriority]     = useState(editData?.priority || "Medium");
@@ -220,7 +223,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
         amendment_date: amendDate,
         original_po_id: sourcePo?.id || editData?.original_po_id || null,
         original_po_no: sourcePo?.voucher_no || editData?.original_po_no || "",
-        supplier_id: suppId||null, supplier_name_manual: suppId ? "" : suppSearch,
+        supplier_id: validSuppId||null, supplier_name_manual: validSuppId ? "" : suppSearch,
         po_type: poType, schedule_date: schedDate||null, priority, payment_mode: payMode,
         purchase_type: purchaseType,
         our_ref_no: ourRef, your_ref_no: yourRef, delivery_location: delivLoc,

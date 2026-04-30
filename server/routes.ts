@@ -3555,6 +3555,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Validate supplier_id against suppliers table; return null if invalid
+  async function resolveSupplierIdOrNull(pool: any, suppId: string | null | undefined): Promise<string | null> {
+    if (!suppId) return null;
+    const r = await pool.query(`SELECT id FROM suppliers WHERE id=$1`, [suppId]);
+    return r.rows.length > 0 ? suppId : null;
+  }
+
   app.post("/api/purchase-orders", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
     const client = await pool.connect();
@@ -3563,6 +3570,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { generateVoucherNo } = await import("./voucher");
       const b = req.body;
       const voucher_no = await generateVoucherNo("purchase_order", client);
+      const validSupplierId = await resolveSupplierIdOrNull(pool, b.supplier_id);
       const hRes = await client.query(`
         INSERT INTO purchase_orders
           (voucher_no, po_date, supplier_id, supplier_name_manual, po_type,
@@ -3570,7 +3578,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
            delivery_location, remark, status)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *
       `, [voucher_no, b.po_date||new Date().toISOString().split("T")[0],
-          b.supplier_id||null, b.supplier_name_manual||"", b.po_type||"Purchase Order",
+          validSupplierId, b.supplier_name_manual||"", b.po_type||"Purchase Order",
           b.schedule_date||null, b.priority||"Medium", b.payment_mode||"Cash",
           b.purchase_type||"within_state",
           b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
@@ -3610,13 +3618,14 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     try {
       await client.query("BEGIN");
       const b = req.body;
+      const validSupplierId = await resolveSupplierIdOrNull(pool, b.supplier_id);
       const hRes = await client.query(`
         UPDATE purchase_orders SET
           po_date=$1, supplier_id=$2, supplier_name_manual=$3, po_type=$4,
           schedule_date=$5, priority=$6, payment_mode=$7, purchase_type=$8,
           our_ref_no=$9, your_ref_no=$10, delivery_location=$11, remark=$12, status=$13
         WHERE id=$14 RETURNING *
-      `, [b.po_date, b.supplier_id||null, b.supplier_name_manual||"", b.po_type||"Purchase Order",
+      `, [b.po_date, validSupplierId, b.supplier_name_manual||"", b.po_type||"Purchase Order",
           b.schedule_date||null, b.priority||"Medium", b.payment_mode||"Cash",
           b.purchase_type||"within_state",
           b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
@@ -4336,6 +4345,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const { generateVoucherNo } = await import("./voucher");
       const b = req.body;
       const voucher_no = await generateVoucherNo("purchase_order_amendment", client);
+      const validSupplierId = await resolveSupplierIdOrNull(pool, b.supplier_id);
       const hRes = await client.query(`
         INSERT INTO purchase_order_amendments
           (voucher_no, amendment_date, original_po_id, original_po_no,
@@ -4345,7 +4355,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       `, [voucher_no,
           b.amendment_date||new Date().toISOString().split("T")[0],
           b.original_po_id||null, b.original_po_no||"",
-          b.supplier_id||null, b.supplier_name_manual||"",
+          validSupplierId, b.supplier_name_manual||"",
           b.po_type||"Purchase Order", b.schedule_date||null,
           b.priority||"Medium", b.payment_mode||"Cash",
           b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
@@ -4389,6 +4399,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       await client.query("BEGIN");
       const b = req.body;
+      const validSupplierId = await resolveSupplierIdOrNull(pool, b.supplier_id);
       const hRes = await client.query(`
         UPDATE purchase_order_amendments SET
           amendment_date=$1, original_po_id=$2, original_po_no=$3,
@@ -4397,7 +4408,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           delivery_location=$12, remark=$13, status=$14
         WHERE id=$15 RETURNING *
       `, [b.amendment_date, b.original_po_id||null, b.original_po_no||"",
-          b.supplier_id||null, b.supplier_name_manual||"",
+          validSupplierId, b.supplier_name_manual||"",
           b.po_type||"Purchase Order", b.schedule_date||null,
           b.priority||"Medium", b.payment_mode||"Cash",
           b.our_ref_no||"", b.your_ref_no||"",

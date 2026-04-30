@@ -75,6 +75,9 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const [poDate,     setPoDate]     = useState(editData?.po_date?.split("T")[0] || today());
   const [suppId,     setSuppId]     = useState(editData?.supplier_id || "");
   const [suppSearch, setSuppSearch] = useState(editData?.supplier_name_db || editData?.supplier_name_manual || "");
+
+  // Validate suppId: clear it if it's not a real supplier UUID (e.g. stale sub-ledger ID)
+  const validSuppId = suppId && (suppliers as any[]).some((s: any) => s.id === suppId) ? suppId : "";
   const [suppOpen,   setSuppOpen]   = useState(false);
   const [poType,     setPoType]     = useState(editData?.po_type || "Purchase Order");
   const [schedDate,  setSchedDate]  = useState(editData?.schedule_date?.split("T")[0] || "");
@@ -207,7 +210,7 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const saveMut = useMutation({
     mutationFn: async () => {
       const payload = {
-        po_date: poDate, supplier_id: suppId||null, supplier_name_manual: suppId ? "" : suppSearch,
+        po_date: poDate, supplier_id: validSuppId||null, supplier_name_manual: validSuppId ? "" : suppSearch,
         po_type: poType, schedule_date: schedDate||null, priority, payment_mode: payMode,
         purchase_type: purchaseType,
         our_ref_no: ourRef, your_ref_no: yourRef, delivery_location: delivLoc,
