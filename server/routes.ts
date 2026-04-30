@@ -57,6 +57,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     return res.rows[0].id;
   }
 
+  // Shared fields from supplier/customer for cross-creation
+  function sharedPartyFields(d: any) {
+    return {
+      name: d.name, shortName: d.shortName || "", email: d.email || "",
+      telephone: d.telephone || "", websiteUrl: d.websiteUrl || "",
+      address1: d.address1 || "", address2: d.address2 || "",
+      city: d.city || "", state: d.state || "", gstStateCode: d.gstStateCode || "",
+      contactName: d.contactName || "", contactRole: d.contactRole || "",
+      creditLimit: d.creditLimit || "0", creditDays: d.creditDays || 0,
+      accountNo: d.accountNo || "", accountHolderName: d.accountHolderName || "",
+      accountType: d.accountType || "", bankName: d.bankName || "",
+      branchName: d.branchName || "", ifscCode: d.ifscCode || "",
+      gstin: d.gstin || "", gstRegisteredType: d.gstRegisteredType || "",
+      gstinDate: d.gstinDate || "", gstState: d.gstState || "",
+      category: d.category || "", deliveryAddress: d.deliveryAddress || "",
+      termOfDelivery: d.termOfDelivery || "", transport: d.transport || "",
+      sameAsCompany: d.sameAsCompany || false, notes: d.notes || "",
+      contactPerson: d.contactPerson || "",
+    };
+  }
+
   // Suppliers
   app.get("/api/suppliers", requireAuth, async (_req, res) => {
     try {
@@ -72,22 +93,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.post("/api/suppliers", requireAuth, async (req, res) => {
     try {
-      const { createLedger: _cl, ...rest } = req.body;
+      const { createLedger: _cl, isAlsoCustomer, ...rest } = req.body;
       const data = insertSupplierSchema.parse(rest);
       const supplier = await storage.createSupplier(data);
       const { pool } = await import("./db");
       const slId = await ensureSubLedger(pool, SC_GL_PARTY, supplier.name, data.subLedgerId || null);
       const updated = await storage.updateSupplier(supplier.id, { subLedgerId: slId } as any);
-      return res.json({ ...updated, subLedgerId: slId });
+      if (isAlsoCustomer) {
+        const existing = await pool.query(`SELECT id, sub_ledger_id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [supplier.name]);
+        if (existing.rows.length === 0) {
+          const cData = insertCustomerSchema.parse({ ...sharedPartyFields(supplier), termOfPayment: "", freight: "to_pay" });
+          const cust = await storage.createCustomer(cData);
+          const cSlId = await ensureSubLedger(pool, SD_GL, cust.name, null);
+          await storage.updateCustomer(cust.id, { subLedgerId: cSlId } as any);
+        } else {
+          const cSlId = await ensureSubLedger(pool, SD_GL, supplier.name, existing.rows[0].sub_ledger_id || null);
+          if (cSlId !== existing.rows[0].sub_ledger_id)
+            await storage.updateCustomer(existing.rows[0].id, { subLedgerId: cSlId } as any);
+        }
+      }
+      return res.json({ ...updated, subLedgerId: slId, isAlsoCustomer: !!isAlsoCustomer });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.patch("/api/suppliers/:id", requireAuth, async (req, res) => {
     try {
-      const { createLedger: _cl, ...rest } = req.body;
+      const { createLedger: _cl, isAlsoCustomer, ...rest } = req.body;
       const current = await storage.listSuppliers().then(l => l.find((s: any) => s.id === req.params.id));
       const { pool } = await import("./db");
       const subLedgerId = await ensureSubLedger(pool, SC_GL_PARTY, rest.name || current?.name || "", rest.subLedgerId || (current as any)?.subLedgerId || null);
-      res.json(await storage.updateSupplier(req.params.id, { ...rest, subLedgerId }));
+      const updated = await storage.updateSupplier(req.params.id, { ...rest, subLedgerId });
+      if (isAlsoCustomer) {
+        const supName = rest.name || current?.name || "";
+        const existing = await pool.query(`SELECT id, sub_ledger_id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [supName]);
+        if (existing.rows.length === 0) {
+          const cData = insertCustomerSchema.parse({ ...sharedPartyFields({ ...current, ...rest }), termOfPayment: "", freight: "to_pay" });
+          const cust = await storage.createCustomer(cData);
+          const cSlId = await ensureSubLedger(pool, SD_GL, cust.name, null);
+          await storage.updateCustomer(cust.id, { subLedgerId: cSlId } as any);
+        } else {
+          const cSlId = await ensureSubLedger(pool, SD_GL, supName, existing.rows[0].sub_ledger_id || null);
+          if (cSlId !== existing.rows[0].sub_ledger_id)
+            await storage.updateCustomer(existing.rows[0].id, { subLedgerId: cSlId } as any);
+        }
+      }
+      res.json(updated);
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.delete("/api/suppliers/:id", requireAuth, async (req, res) => {
@@ -110,22 +159,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.post("/api/customers", requireAuth, async (req, res) => {
     try {
-      const { createLedger: _cl, ...rest } = req.body;
+      const { createLedger: _cl, isAlsoSupplier, ...rest } = req.body;
       const data = insertCustomerSchema.parse(rest);
       const customer = await storage.createCustomer(data);
       const { pool } = await import("./db");
       const slId = await ensureSubLedger(pool, SD_GL, customer.name, data.subLedgerId || null);
       const updated = await storage.updateCustomer(customer.id, { subLedgerId: slId } as any);
-      return res.json({ ...updated, subLedgerId: slId });
+      if (isAlsoSupplier) {
+        const existing = await pool.query(`SELECT id, sub_ledger_id FROM suppliers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [customer.name]);
+        if (existing.rows.length === 0) {
+          const sData = insertSupplierSchema.parse(sharedPartyFields(customer));
+          const sup = await storage.createSupplier(sData);
+          const sSlId = await ensureSubLedger(pool, SC_GL_PARTY, sup.name, null);
+          await storage.updateSupplier(sup.id, { subLedgerId: sSlId } as any);
+        } else {
+          const sSlId = await ensureSubLedger(pool, SC_GL_PARTY, customer.name, existing.rows[0].sub_ledger_id || null);
+          if (sSlId !== existing.rows[0].sub_ledger_id)
+            await storage.updateSupplier(existing.rows[0].id, { subLedgerId: sSlId } as any);
+        }
+      }
+      return res.json({ ...updated, subLedgerId: slId, isAlsoSupplier: !!isAlsoSupplier });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.patch("/api/customers/:id", requireAuth, async (req, res) => {
     try {
-      const { createLedger: _cl, ...rest } = req.body;
+      const { createLedger: _cl, isAlsoSupplier, ...rest } = req.body;
       const current = await storage.listCustomers().then(l => l.find((c: any) => c.id === req.params.id));
       const { pool } = await import("./db");
       const subLedgerId = await ensureSubLedger(pool, SD_GL, rest.name || current?.name || "", rest.subLedgerId || (current as any)?.subLedgerId || null);
-      res.json(await storage.updateCustomer(req.params.id, { ...rest, subLedgerId }));
+      const updated = await storage.updateCustomer(req.params.id, { ...rest, subLedgerId });
+      if (isAlsoSupplier) {
+        const custName = rest.name || current?.name || "";
+        const existing = await pool.query(`SELECT id, sub_ledger_id FROM suppliers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [custName]);
+        if (existing.rows.length === 0) {
+          const sData = insertSupplierSchema.parse(sharedPartyFields({ ...current, ...rest }));
+          const sup = await storage.createSupplier(sData);
+          const sSlId = await ensureSubLedger(pool, SC_GL_PARTY, sup.name, null);
+          await storage.updateSupplier(sup.id, { subLedgerId: sSlId } as any);
+        } else {
+          const sSlId = await ensureSubLedger(pool, SC_GL_PARTY, custName, existing.rows[0].sub_ledger_id || null);
+          if (sSlId !== existing.rows[0].sub_ledger_id)
+            await storage.updateSupplier(existing.rows[0].id, { subLedgerId: sSlId } as any);
+        }
+      }
+      res.json(updated);
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.delete("/api/customers/:id", requireAuth, async (req, res) => {

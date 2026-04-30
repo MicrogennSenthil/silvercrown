@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DatePicker from "@/components/DatePicker";
-import { Plus, Edit, Trash2, Search, List, Info, ChevronDown, Link2, CheckCircle2 } from "lucide-react";
+import { Plus, Edit, Trash2, Search, List, Info, ChevronDown, Link2, CheckCircle2, Users } from "lucide-react";
 import type { Supplier } from "@shared/schema";
 import { useFormValidation } from "@/hooks/useFormValidation";
 
@@ -169,12 +169,18 @@ function SupplierForm({ initial, onClose }: any) {
     subLedgerId: initial?.sub_ledger_id || initial?.subLedgerId || "",
   });
   const [tab, setTab] = useState<"address" | "account" | "other">("address");
+  const [isAlsoCustomer, setIsAlsoCustomer] = useState(false);
   const [quickAdd, setQuickAdd] = useState<"city" | "state" | null>(null);
   const qc = useQueryClient();
   const { validate, hasError, clearError, showApiError } = useFormValidation();
 
-  const { data: cities  = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
-  const { data: states  = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
+  const { data: cities     = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
+  const { data: states     = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
+  const { data: customers  = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+
+  const counterpartExists = (customers as any[]).some(
+    (c: any) => c.name?.toLowerCase() === form.name?.toLowerCase()
+  );
 
   const f = (key: string) => (e: any) => { clearError(key); setForm((p: any) => ({ ...p, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value })); };
 
@@ -217,6 +223,7 @@ function SupplierForm({ initial, onClose }: any) {
       ...form,
       creditDays: form.creditDays !== "" ? Number(form.creditDays) : 0,
       creditLimit: form.creditLimit !== "" ? String(Number(form.creditLimit)) : "0",
+      isAlsoCustomer: isAlsoCustomer && !counterpartExists,
     });
   };
 
@@ -334,6 +341,26 @@ function SupplierForm({ initial, onClose }: any) {
               subLedgerName={initial?.sub_ledger_name || ""}
               ledgerType="Sundry Creditors"
             />
+            <div className="mt-3 rounded-lg p-3 border border-dashed border-[#d74700]/40 bg-orange-50/50">
+              <div className="flex items-center gap-2">
+                <Users size={14} className="text-[#d74700] flex-shrink-0" />
+                <span className="text-sm font-semibold text-gray-700">Party Type</span>
+              </div>
+              <div className="mt-2">
+                {counterpartExists ? (
+                  <div className="flex items-center gap-2 text-sm text-green-700">
+                    <CheckCircle2 size={14} className="text-green-600" />
+                    <span>This party is <strong>also a Customer</strong> — already linked in Customers master</span>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                    <input type="checkbox" checked={isAlsoCustomer} onChange={e => setIsAlsoCustomer(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#d74700]" data-testid="checkbox-also-customer" />
+                    This party is <strong>also a Customer</strong> — create matching Customer record on save
+                  </label>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
