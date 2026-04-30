@@ -207,11 +207,25 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
       const auto = data.code || data.sapNo || data.drgNo || `PRD-${Date.now()}`;
+      const toDecimal = (v: any) => (v === "" || v === null || v === undefined) ? "0" : String(Number(v) || 0);
       const payload = {
         ...data,
-        code: auto,
+        code:          auto,
         categoryId:    data.categoryId    || null,
         subCategoryId: data.subCategoryId || null,
+        // coerce all decimal/numeric fields — empty string → "0"
+        rate:          toDecimal(data.rate),
+        costPrice:     toDecimal(data.costPrice),
+        purchasePrice: toDecimal(data.purchasePrice),
+        taxRate:       toDecimal(data.taxRate),
+        cgstRate:      toDecimal(data.cgstRate),
+        sgstRate:      toDecimal(data.sgstRate),
+        igstRate:      toDecimal(data.igstRate),
+        minStockLevel: toDecimal(data.minStockLevel),
+        maxStockLevel: toDecimal(data.maxStockLevel),
+        // ensure alphanumeric text fields stay as strings
+        drgNo: data.drgNo || "",
+        sapNo: data.sapNo || "",
       };
       const url = initial?.id ? `/api/products/${initial.id}` : "/api/products";
       const method = initial?.id ? "PATCH" : "POST";
@@ -273,8 +287,8 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
 
           {/* Row 3: DRG No, SAP No, HSN Code, Location */}
           <div className="grid grid-cols-4 gap-3">
-            <FField label="DRG No"   value={form.drgNo}    onChange={f("drgNo")}    placeholder="0000000" />
-            <FField label="SAP No"   value={form.sapNo}    onChange={f("sapNo")}    placeholder="00000000" />
+            <FField label="DRG No"   value={form.drgNo}    onChange={f("drgNo")}    placeholder="e.g. A1B2-XZ75" />
+            <FField label="SAP No"   value={form.sapNo}    onChange={f("sapNo")}    placeholder="e.g. Z5SAEXTZ4B" />
             <FField label="HSN Code" value={form.hsnCode}  onChange={f("hsnCode")}  placeholder="HSN0000" />
             <FField label="Location" value={form.location} onChange={f("location")} placeholder="x-00-00" />
           </div>
