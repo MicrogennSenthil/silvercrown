@@ -3612,6 +3612,28 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   app.get("/api/purchase-order-approval/levels", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
+      // Primary: read from approval_authority for Purchase Order transaction type
+      const authRes = await pool.query(`
+        SELECT id, transaction_type, type_code, approval_level, approvers
+        FROM approval_authority
+        WHERE LOWER(transaction_type) LIKE '%purchase%' OR LOWER(type_code) LIKE '%p.o%' OR LOWER(type_code) LIKE '%po%'
+        ORDER BY id
+      `);
+      if (authRes.rows.length > 0) {
+        // Map approval_authority records to level format, extracting integer from text like "Level - 1"
+        const levels = authRes.rows.map((row: any, idx: number) => {
+          const levelNum = parseInt((row.approval_level || "").replace(/[^0-9]/g, "")) || (idx + 1);
+          return {
+            id: row.id,
+            name: `${row.transaction_type} - ${row.approval_level}`,
+            approval_level: levelNum,
+            approvers: row.approvers || [],
+            is_active: true,
+          };
+        }).sort((a: any, b: any) => a.approval_level - b.approval_level);
+        return res.json(levels);
+      }
+      // Fallback: use purchase_approval_levels table if no authority records exist
       const r = await pool.query(`SELECT * FROM purchase_approval_levels WHERE is_active=true ORDER BY approval_level`);
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -3684,6 +3706,30 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // Helper: load approval levels from authority master (or fallback)
+  async function loadPoApprovalLevels(client: any) {
+    const authRes = await client.query(`
+      SELECT id, transaction_type, type_code, approval_level, approvers
+      FROM approval_authority
+      WHERE LOWER(transaction_type) LIKE '%purchase%' OR LOWER(type_code) LIKE '%p.o%' OR LOWER(type_code) LIKE '%po%'
+      ORDER BY id
+    `);
+    if (authRes.rows.length > 0) {
+      return authRes.rows.map((row: any, idx: number) => {
+        const levelNum = parseInt((row.approval_level || "").replace(/[^0-9]/g, "")) || (idx + 1);
+        return {
+          id: row.id,
+          name: `${row.transaction_type} - ${row.approval_level}`,
+          approval_level: levelNum,
+          approvers: row.approvers || [],
+          is_active: true,
+        };
+      }).sort((a: any, b: any) => a.approval_level - b.approval_level);
+    }
+    const fallback = await client.query(`SELECT * FROM purchase_approval_levels WHERE is_active=true ORDER BY approval_level`);
+    return fallback.rows.map((r: any) => ({ ...r, approvers: [] }));
+  }
+
   // Approve one or multiple POs at current level
   app.post("/api/purchase-order-approval/approve", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
@@ -3693,9 +3739,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { po_ids, comments = "" } = req.body as { po_ids: string[]; comments?: string };
       const user = (req as any).user;
 
-      // Get all active approval levels
-      const levelsRes = await client.query(`SELECT * FROM purchase_approval_levels WHERE is_active=true ORDER BY approval_level`);
-      const levels = levelsRes.rows;
+      // Get all active approval levels from authority master
+      const levels = await loadPoApprovalLevels(client);
       const totalLevels = levels.length || 1;
 
       const results: any[] = [];
@@ -3715,6 +3760,21 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           if (!approvedLevels.includes(i)) { nextLevel = i; break; }
         }
         const levelConfig = levels.find((l: any) => l.approval_level === nextLevel) || levels[0];
+
+        // Check if current user is authorized to approve at this level
+        const authorizedApprovers: any[] = levelConfig?.approvers || [];
+        if (authorizedApprovers.length > 0) {
+          const currentUsername = (user?.username || user?.name || "").toLowerCase();
+          const isAuthorized = authorizedApprovers.some(
+            (a: any) => (a.username || "").toLowerCase() === currentUsername
+          );
+          if (!isAuthorized) {
+            throw new Error(
+              `You (${user?.username || user?.name}) are not authorized to approve at ${levelConfig?.name || `Level ${nextLevel}`}. ` +
+              `Authorized approvers: ${authorizedApprovers.map((a: any) => a.username).join(", ")}`
+            );
+          }
+        }
 
         // Upsert the decision for this level
         const existingDec = decisions.find((d: any) => d.approval_level === nextLevel);
@@ -3765,8 +3825,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { po_ids, comments = "" } = req.body as { po_ids: string[]; comments?: string };
       const user = (req as any).user;
 
-      const levelsRes = await client.query(`SELECT * FROM purchase_approval_levels WHERE is_active=true ORDER BY approval_level LIMIT 1`);
-      const level = levelsRes.rows[0] || { approval_level: 1, name: "Level 1" };
+      const levels = await loadPoApprovalLevels(client);
+      const level = levels[0] || { approval_level: 1, name: "Level 1" };
 
       for (const po_id of po_ids) {
         await client.query(`

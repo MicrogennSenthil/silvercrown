@@ -257,16 +257,26 @@ export default function PurchaseOrderApproval() {
             <h2 className="font-semibold text-gray-800">Purchase Order Approval</h2>
 
             {/* Approval levels display */}
-            <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
               <span>Approval Levels:</span>
               {(levels as any[]).map((lvl: any, i: number) => (
                 <div key={lvl.id} className="flex items-center gap-1">
                   {i > 0 && <ChevronRight size={10} className="text-gray-400"/>}
-                  <span className="px-2 py-0.5 rounded font-semibold" style={{ background: SC.tonal, color: SC.primary }}>
-                    L{lvl.approval_level}: {lvl.name.replace(/Level \d+ - /,"").substring(0,20)}
-                  </span>
+                  <div className="flex flex-col items-start">
+                    <span className="px-2 py-0.5 rounded font-semibold" style={{ background: SC.tonal, color: SC.primary }}>
+                      L{lvl.approval_level}: {lvl.name.replace(/Level \d+ - /i,"").substring(0,25)}
+                    </span>
+                    {lvl.approvers && lvl.approvers.length > 0 && (
+                      <span className="text-gray-400 px-2" style={{ fontSize: 10 }}>
+                        Approvers: {lvl.approvers.map((a: any) => a.username).join(", ")}
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
+              {(levels as any[]).length === 0 && (
+                <span className="text-orange-500 font-medium">No approval levels configured — set up Approval Authority first</span>
+              )}
             </div>
           </div>
 
