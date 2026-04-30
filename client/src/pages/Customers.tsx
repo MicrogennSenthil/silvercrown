@@ -139,78 +139,24 @@ const GST_TYPES = [
   { value: "overseas",                label: "Overseas" },
 ];
 
-// ─── Ledger Mapping Panel ─────────────────────────────────────────────────────
-function LedgerPanel({ isEdit, subLedgerId, subLedgerName, createLedger, onSubLedgerChange, onCreateLedgerChange, subledgers }: any) {
-  const [showDrop, setShowDrop] = useState(false);
-  const linked = subLedgerId ? subledgers.find((s: any) => s.id === subLedgerId) : null;
-  const linkedName = linked?.name || subLedgerName || "";
-
+// ─── Ledger Status Panel ──────────────────────────────────────────────────────
+function LedgerStatusPanel({ subLedgerName, ledgerType }: { subLedgerName: string; ledgerType: string }) {
   return (
     <div className="mt-4 rounded-lg p-4 border border-dashed border-[#027fa5]/40 bg-[#eaf7fb]">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-2">
         <Link2 size={15} className="text-[#027fa5]" />
-        <span className="text-sm font-semibold text-gray-700">Ledger Account — Sundry Debtors</span>
+        <span className="text-sm font-semibold text-gray-700">Ledger Account — {ledgerType}</span>
       </div>
-
-      {linkedName ? (
-        <div className="flex items-center gap-3 mb-3">
+      {subLedgerName ? (
+        <div className="flex items-center gap-2">
           <CheckCircle2 size={16} className="text-green-600 flex-shrink-0" />
-          <span className="text-sm text-gray-800 font-medium">{linkedName}</span>
+          <span className="text-sm text-gray-800 font-medium">{subLedgerName}</span>
           <span className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Linked</span>
-          <button onClick={() => { onSubLedgerChange(""); setShowDrop(true); }}
-            className="ml-auto text-xs text-[#027fa5] underline" data-testid="btn-change-ledger">
-            Change
-          </button>
         </div>
       ) : (
-        <p className="text-xs text-gray-500 mb-3">No ledger account linked.</p>
-      )}
-
-      {!linkedName && (
-        <>
-          <div className="flex items-center gap-3 mb-2">
-            {!isEdit && (
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={createLedger} onChange={e => onCreateLedgerChange(e.target.checked)}
-                  className="w-4 h-4 rounded accent-[#027fa5]" data-testid="checkbox-create-ledger" />
-                Auto-create ledger account on save
-              </label>
-            )}
-            {isEdit && (
-              <button onClick={() => onCreateLedgerChange(true)}
-                className="px-3 py-1.5 rounded text-sm font-medium text-white"
-                style={{ background: SC.primary }} data-testid="btn-create-ledger">
-                Create Ledger Account
-              </button>
-            )}
-            <button onClick={() => setShowDrop(v => !v)}
-              className="text-xs text-[#027fa5] underline ml-auto" data-testid="btn-select-existing-ledger">
-              {showDrop ? "Hide" : "Select existing"}
-            </button>
-          </div>
-
-          {showDrop && (
-            <div className="mt-2">
-              <select value={subLedgerId} onChange={e => { onSubLedgerChange(e.target.value); setShowDrop(false); }}
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#027fa5]"
-                data-testid="select-sub-ledger">
-                <option value="">— select sub-ledger —</option>
-                {subledgers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-          )}
-        </>
-      )}
-
-      {linkedName && showDrop && (
-        <div className="mt-2">
-          <select value={subLedgerId} onChange={e => { onSubLedgerChange(e.target.value); setShowDrop(false); }}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#027fa5]"
-            data-testid="select-sub-ledger-change">
-            <option value="">— select sub-ledger —</option>
-            {subledgers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
+        <p className="text-xs text-gray-500">
+          A ledger account will be automatically created and linked under <strong>{ledgerType}</strong> when you save.
+        </p>
       )}
     </div>
   );
@@ -224,14 +170,12 @@ function CustomerForm({ initial, onClose }: any) {
     subLedgerId: initial?.sub_ledger_id || initial?.subLedgerId || "",
   });
   const [tab, setTab] = useState<"address" | "account" | "other">("address");
-  const [createLedger, setCreateLedger] = useState(!initial?.id);
   const [quickAdd, setQuickAdd] = useState<"city" | "state" | null>(null);
   const qc = useQueryClient();
   const { validate, hasError, clearError, showApiError } = useFormValidation();
 
   const { data: cities  = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
   const { data: states  = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
-  const { data: debtors = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/debtors"] });
 
   const f = (key: string) => (e: any) => { clearError(key); setForm((p: any) => ({ ...p, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value })); };
 
@@ -270,7 +214,6 @@ function CustomerForm({ initial, onClose }: any) {
       ...form,
       creditDays: form.creditDays !== "" ? Number(form.creditDays) : 0,
       creditLimit: form.creditLimit !== "" ? String(Number(form.creditLimit)) : "0",
-      createLedger: createLedger && !form.subLedgerId,
     });
   };
 
@@ -387,14 +330,9 @@ function CustomerForm({ initial, onClose }: any) {
                 </div>
               </div>
             </div>
-            <LedgerPanel
-              isEdit={!!initial?.id}
-              subLedgerId={form.subLedgerId}
+            <LedgerStatusPanel
               subLedgerName={initial?.sub_ledger_name || ""}
-              createLedger={createLedger}
-              onSubLedgerChange={(id: string) => setForm((p: any) => ({ ...p, subLedgerId: id }))}
-              onCreateLedgerChange={setCreateLedger}
-              subledgers={debtors}
+              ledgerType="Sundry Debtors"
             />
           </div>
         )}

@@ -72,27 +72,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.post("/api/suppliers", requireAuth, async (req, res) => {
     try {
-      const { createLedger, ...rest } = req.body;
+      const { createLedger: _cl, ...rest } = req.body;
       const data = insertSupplierSchema.parse(rest);
       const supplier = await storage.createSupplier(data);
-      if (createLedger || data.subLedgerId === "__create__") {
-        const { pool } = await import("./db");
-        const slId = await ensureSubLedger(pool, SC_GL_PARTY, supplier.name, null);
-        const updated = await storage.updateSupplier(supplier.id, { subLedgerId: slId } as any);
-        return res.json({ ...updated, subLedgerId: slId });
-      }
-      res.json(supplier);
+      const { pool } = await import("./db");
+      const slId = await ensureSubLedger(pool, SC_GL_PARTY, supplier.name, data.subLedgerId || null);
+      const updated = await storage.updateSupplier(supplier.id, { subLedgerId: slId } as any);
+      return res.json({ ...updated, subLedgerId: slId });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.patch("/api/suppliers/:id", requireAuth, async (req, res) => {
     try {
-      const { createLedger, ...rest } = req.body;
-      let subLedgerId = rest.subLedgerId;
-      if (createLedger && !subLedgerId) {
-        const current = await storage.listSuppliers().then(l => l.find((s: any) => s.id === req.params.id));
-        const { pool } = await import("./db");
-        subLedgerId = await ensureSubLedger(pool, SC_GL_PARTY, current?.name || rest.name || "", null);
-      }
+      const { createLedger: _cl, ...rest } = req.body;
+      const current = await storage.listSuppliers().then(l => l.find((s: any) => s.id === req.params.id));
+      const { pool } = await import("./db");
+      const subLedgerId = await ensureSubLedger(pool, SC_GL_PARTY, rest.name || current?.name || "", rest.subLedgerId || (current as any)?.subLedgerId || null);
       res.json(await storage.updateSupplier(req.params.id, { ...rest, subLedgerId }));
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
@@ -116,27 +110,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.post("/api/customers", requireAuth, async (req, res) => {
     try {
-      const { createLedger, ...rest } = req.body;
+      const { createLedger: _cl, ...rest } = req.body;
       const data = insertCustomerSchema.parse(rest);
       const customer = await storage.createCustomer(data);
-      if (createLedger || data.subLedgerId === "__create__") {
-        const { pool } = await import("./db");
-        const slId = await ensureSubLedger(pool, SD_GL, customer.name, null);
-        const updated = await storage.updateCustomer(customer.id, { subLedgerId: slId } as any);
-        return res.json({ ...updated, subLedgerId: slId });
-      }
-      res.json(customer);
+      const { pool } = await import("./db");
+      const slId = await ensureSubLedger(pool, SD_GL, customer.name, data.subLedgerId || null);
+      const updated = await storage.updateCustomer(customer.id, { subLedgerId: slId } as any);
+      return res.json({ ...updated, subLedgerId: slId });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.patch("/api/customers/:id", requireAuth, async (req, res) => {
     try {
-      const { createLedger, ...rest } = req.body;
-      let subLedgerId = rest.subLedgerId;
-      if (createLedger && !subLedgerId) {
-        const current = await storage.listCustomers().then(l => l.find((c: any) => c.id === req.params.id));
-        const { pool } = await import("./db");
-        subLedgerId = await ensureSubLedger(pool, SD_GL, current?.name || rest.name || "", null);
-      }
+      const { createLedger: _cl, ...rest } = req.body;
+      const current = await storage.listCustomers().then(l => l.find((c: any) => c.id === req.params.id));
+      const { pool } = await import("./db");
+      const subLedgerId = await ensureSubLedger(pool, SD_GL, rest.name || current?.name || "", rest.subLedgerId || (current as any)?.subLedgerId || null);
       res.json(await storage.updateCustomer(req.params.id, { ...rest, subLedgerId }));
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
