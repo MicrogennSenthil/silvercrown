@@ -735,16 +735,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Products
   app.get("/api/products", requireAuth, async (req, res) => {
-    try {
-      const { pool } = await import("./db");
-      const r = await pool.query(`
-        SELECT p.*, c.name AS category_name
-        FROM products p
-        LEFT JOIN categories c ON c.id = p.category_id
-        ORDER BY p.name
-      `);
-      res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    try { res.json(await storage.listProducts()); } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   app.post("/api/products", requireAuth, async (req, res) => {
     try { res.json(await storage.createProduct(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
