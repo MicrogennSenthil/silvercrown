@@ -312,7 +312,7 @@ export async function printReport(title: string, fromDate?: string, toDate?: str
     }
   } catch { /* silently ignore */ }
 
-  const companyName    = settingsMap["company_name"]    || "Silver Crown Group of Companies";
+  const companyName    = settingsMap["company_name"]    || "Pioneer Prism";
   const companyAddr    = settingsMap["company_address"] || "";
   const companyCity    = settingsMap["company_city"]    || "";
   const companyState   = settingsMap["company_state"]   || "";

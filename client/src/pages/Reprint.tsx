@@ -263,7 +263,7 @@ function EmailModal({ type, row, onClose }: { type: DocType; row: ListRow; onClo
   const [to,      setTo]      = useState(row.party_email || "");
   const [subject, setSubject] = useState(`${typeLabel} — ${row.txn_no}`);
   const [body,    setBody]    = useState(
-    `Dear Sir/Madam,\n\nPlease find attached the ${typeLabel} ${row.txn_no} dated ${fmtDate(row.txn_date)} for ₹ ${fmtAmt(row.amount)}.\n\nKindly acknowledge receipt.\n\nRegards,\nSilver Crown Group of Companies`
+    `Dear Sir/Madam,\n\nPlease find attached the ${typeLabel} ${row.txn_no} dated ${fmtDate(row.txn_date)} for ₹ ${fmtAmt(row.amount)}.\n\nKindly acknowledge receipt.\n\nRegards,\nPioneer Prism`
   );
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
@@ -395,7 +395,7 @@ export default function Reprint() {
         {/* Top bar */}
         <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-100 shadow-sm">
           <h1 className="text-lg font-bold text-gray-800 tracking-tight">Reprint</h1>
-          <img src="/logo.png" alt="Silver Crown" className="h-9 object-contain opacity-90"
+          <img src="/logo.png" alt="Pioneer Prism" className="h-9 object-contain opacity-90"
             onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}/>
         </div>
 

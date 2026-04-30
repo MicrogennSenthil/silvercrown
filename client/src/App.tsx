@@ -79,7 +79,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "#f5f0ed" }}>
       <div className="flex flex-col items-center gap-4">
-        <img src="/figmaAssets/image-1.png" alt="Silver Crown Metals" className="h-16 object-contain" />
+        <img src="/figmaAssets/image-1.png" alt="Pioneer Prism" className="h-16 object-contain" />
         <div className="w-8 h-8 border-4 rounded-full animate-spin" style={{ borderColor: "#027fa5", borderTopColor: "transparent" }} />
       </div>
     </div>

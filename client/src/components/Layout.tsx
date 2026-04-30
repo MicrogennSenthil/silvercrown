@@ -264,11 +264,11 @@ function Sidebar({ collapsed, mobile, onClose }: { collapsed: boolean; mobile?: 
     <div className="flex flex-col h-full" style={{ background: "linear-gradient(180deg, #027fa5 0%, #015f7a 100%)" }}>
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-white/20 flex-shrink-0">
-        <img src="/figmaAssets/image-1.png" alt="Silver Crown Metals" className="h-9 w-auto object-contain flex-shrink-0 filter brightness-0 invert" />
+        <img src="/figmaAssets/image-1.png" alt="Pioneer Prism" className="h-9 w-auto object-contain flex-shrink-0 filter brightness-0 invert" />
         {(!collapsed || mobile) && (
           <div>
-            <div className="text-white font-bold text-sm leading-tight">Silver Crown</div>
-            <div className="text-white/70 text-xs">Metals · Element ERP</div>
+            <div className="text-white font-bold text-sm leading-tight">Pioneer Prism</div>
+            <div className="text-white/70 text-xs">Element ERP</div>
           </div>
         )}
       </div>
@@ -449,7 +449,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Menu size={20} className="text-gray-600" />
             </button>
             <div>
-              <div className="text-sm font-semibold text-gray-800">Silver Crown Metals</div>
+              <div className="text-sm font-semibold text-gray-800">Pioneer Prism</div>
               <div className="text-xs text-gray-500 hidden sm:block">Element ERP System</div>
             </div>
           </div>

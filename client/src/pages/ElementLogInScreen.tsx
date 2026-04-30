@@ -143,7 +143,7 @@ export const ElementLogInScreen = (): JSX.Element => {
           <div className="flex justify-center mb-10">
             <img
               src="/figmaAssets/image-1.png"
-              alt="Silver Crown Metals"
+              alt="Pioneer Prism"
               className="object-contain"
               style={{ height: 80, maxWidth: 260 }}
             />

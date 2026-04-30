@@ -14,7 +14,7 @@ const SYNC_TYPES = [
 
 export default function TallyIntegration() {
   const [syncing, setSyncing] = useState<string | null>(null);
-  const [tallyConfig, setTallyConfig] = useState({ host: "localhost", port: "9000", company: "Silver Crown Metals" });
+  const [tallyConfig, setTallyConfig] = useState({ host: "localhost", port: "9000", company: "Pioneer Prism" });
   const qc = useQueryClient();
 
   const { data: logs = [] } = useQuery<any[]>({ queryKey: ["/api/tally/logs"] });
