@@ -71,7 +71,7 @@ function DropPlus({ label, value, onChange, options, onPlus, className = "" }: a
   );
 }
 
-function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | "state"; stateList: any[]; onSaved: (name: string) => void; onCancel: () => void }) {
+function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | "state"; stateList: any[]; onSaved: (name: string, stateId?: string) => void; onCancel: () => void }) {
   const [name, setName] = useState("");
   const [stateId, setStateId] = useState("");
   const qc = useQueryClient();
@@ -86,7 +86,7 @@ function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | 
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [type === "city" ? "/api/cities" : "/api/states"] });
-      onSaved(name.trim());
+      onSaved(name.trim(), type === "city" ? stateId : undefined);
     },
   });
 
@@ -233,6 +233,15 @@ function SupplierForm({ initial, onClose }: any) {
 
   const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
 
+  const handleCityChange = (e: any) => {
+    const cityName = e.target.value;
+    const cityObj = (cities || []).find((c: any) => c.name === cityName);
+    const stateName = cityObj
+      ? ((states || []).find((s: any) => s.id === cityObj.stateId)?.name || "")
+      : "";
+    setForm((p: any) => ({ ...p, city: cityName, ...(stateName ? { state: stateName } : {}) }));
+  };
+
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
       const url = initial?.id ? `/api/suppliers/${initial.id}` : "/api/suppliers";
@@ -281,8 +290,13 @@ function SupplierForm({ initial, onClose }: any) {
       <QuickAddModal
         type={quickAdd}
         stateList={states}
-        onSaved={(name) => {
-          setForm((p: any) => ({ ...p, [quickAdd]: name }));
+        onSaved={(name, savedStateId) => {
+          if (quickAdd === "city" && savedStateId) {
+            const stateName = (states || []).find((s: any) => s.id === savedStateId)?.name || "";
+            setForm((p: any) => ({ ...p, city: name, ...(stateName ? { state: stateName } : {}) }));
+          } else {
+            setForm((p: any) => ({ ...p, [quickAdd!]: name }));
+          }
           setQuickAdd(null);
         }}
         onCancel={() => setQuickAdd(null)}
@@ -330,8 +344,8 @@ function SupplierForm({ initial, onClose }: any) {
                 <Field label="Address 1" value={form.address1} onChange={f("address1")} />
                 <Field label="Address 2" value={form.address2} onChange={f("address2")} />
                 <div className="flex gap-3">
-                  <DropPlus label="City"  value={form.city}  onChange={f("city")}  options={cityOptions}  onPlus={() => setQuickAdd("city")}  className="flex-1" />
-                  <DropPlus label="State" value={form.state} onChange={f("state")} options={stateOptions} onPlus={() => setQuickAdd("state")} className="flex-1" />
+                  <DropPlus label="City"  value={form.city}  onChange={handleCityChange}  options={cityOptions}  onPlus={() => setQuickAdd("city")}  className="flex-1" />
+                  <DropPlus label="State" value={form.state} onChange={f("state")}       options={stateOptions} onPlus={() => setQuickAdd("state")} className="flex-1" />
                 </div>
                 <Field label="GST State Code" value={form.gstStateCode} onChange={f("gstStateCode")} className="w-40" />
               </div>
