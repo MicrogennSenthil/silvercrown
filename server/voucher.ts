@@ -1,47 +1,60 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 
+// Maps transaction_type → actual DB table name holding voucher_no
+const TYPE_TABLE: Record<string, string> = {
+  job_work_despatch:        "job_work_despatch",
+  job_work_inward:          "job_work_inward",
+  job_work_invoice:         "job_work_invoices",
+  returnable_inward:        "returnable_inward",
+  returnable_outward:       "returnable_outward",
+  purchase_order:           "purchase_orders",
+  purchase_order_amendment: "purchase_order_amendments",
+  gate_pass:                "gate_pass",
+  store_opening:            "store_openings",
+  store_issue:              "store_issues",
+  store_request:            "store_requests",
+  purchase_receipt:         "purchase_receipts",
+  issue_indent_return:      "issue_indent_returns",
+  goods_receipt_return:     "goods_receipt_returns",
+  phy_reconciliation:       "phy_reconciliations",
+  manual_voucher:           "manual_vouchers",
+};
+
 export async function generateVoucherNo(
   transactionType: string,
   client?: any
 ): Promise<string> {
-  const query = client
-    ? (q: string, params?: any[]) => client.query(q, params)
-    : (q: string) => db.execute(sql.raw(q));
-
   const exec = async (rawSql: string, params?: any[]) => {
-    if (client) {
-      return client.query(rawSql, params);
-    } else {
-      return db.execute(sql.raw(rawSql));
-    }
+    if (client) return client.query(rawSql, params);
+    return db.execute(sql.raw(rawSql));
   };
 
   // Find active financial year
   let fyId: string | null = null;
   if (client) {
-    const fyRes = await client.query(
-      `SELECT id FROM financial_years WHERE is_current = true LIMIT 1`
-    );
+    const fyRes = await client.query(`SELECT id FROM financial_years WHERE is_current = true LIMIT 1`);
     fyId = fyRes.rows[0]?.id || null;
   } else {
     const fyRows = await db.execute(sql`SELECT id FROM financial_years WHERE is_current = true LIMIT 1`);
     fyId = (fyRows.rows[0] as any)?.id || null;
   }
 
-  // Find matching voucher series
+  // Find matching voucher series — lock the row when inside a transaction (prevents race conditions)
   let seriesRow: any = null;
+  const lockSuffix = client ? " FOR UPDATE" : "";
+
   if (client) {
     if (fyId) {
       const r = await client.query(
-        `SELECT * FROM voucher_series WHERE transaction_type=$1 AND financial_year_id=$2 AND is_active=true LIMIT 1`,
+        `SELECT * FROM voucher_series WHERE transaction_type=$1 AND financial_year_id=$2 AND is_active=true LIMIT 1${lockSuffix}`,
         [transactionType, fyId]
       );
       seriesRow = r.rows[0] || null;
     }
     if (!seriesRow) {
       const r = await client.query(
-        `SELECT * FROM voucher_series WHERE transaction_type=$1 AND is_active=true LIMIT 1`,
+        `SELECT * FROM voucher_series WHERE transaction_type=$1 AND is_active=true LIMIT 1${lockSuffix}`,
         [transactionType]
       );
       seriesRow = r.rows[0] || null;
@@ -63,18 +76,41 @@ export async function generateVoucherNo(
 
   const prefix = seriesRow.prefix || "";
   const digits = seriesRow.digits || 5;
-  const num = seriesRow.current_number || seriesRow.starting_number || 1;
+  const startingNum = seriesRow.starting_number || 1;
+  let counterNum = seriesRow.current_number || startingNum;
 
-  // Atomically increment current_number — use GREATEST so that when current_number starts at 0
-  // the counter jumps to starting_number+1 (not back to 1 which would repeat the same number)
-  if (client) {
-    await client.query(
-      `UPDATE voucher_series SET current_number = GREATEST(current_number, starting_number) + 1 WHERE id = $1`,
-      [seriesRow.id]
-    );
-  } else {
-    await db.execute(sql`UPDATE voucher_series SET current_number = GREATEST(current_number, starting_number) + 1 WHERE id = ${seriesRow.id}`);
+  // Sync counter with actual max in the target table to recover from counter drift
+  const tableName = TYPE_TABLE[transactionType];
+  if (tableName) {
+    try {
+      const maxRes = await exec(
+        `SELECT MAX(
+           CASE WHEN voucher_no ~ '[0-9]+$'
+                THEN CAST(SUBSTRING(voucher_no FROM '[0-9]+$') AS INTEGER)
+                ELSE 0
+           END
+         ) AS max_num FROM "${tableName}"`
+      );
+      const maxInTable: number = parseInt((maxRes as any).rows?.[0]?.max_num ?? "0", 10) || 0;
+      if (maxInTable >= counterNum) {
+        counterNum = maxInTable + 1;
+      }
+    } catch (_) {
+      // table may not exist yet — proceed with counter value
+    }
   }
 
-  return `${prefix}${String(num).padStart(digits, "0")}`;
+  // Persist the incremented counter (GREATEST ensures we never go backwards)
+  if (client) {
+    await client.query(
+      `UPDATE voucher_series SET current_number = GREATEST(current_number, $2) + 1 WHERE id = $1`,
+      [seriesRow.id, counterNum]
+    );
+  } else {
+    await db.execute(
+      sql`UPDATE voucher_series SET current_number = GREATEST(current_number, ${counterNum}) + 1 WHERE id = ${seriesRow.id}`
+    );
+  }
+
+  return `${prefix}${String(counterNum).padStart(digits, "0")}`;
 }
