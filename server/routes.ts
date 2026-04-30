@@ -2517,10 +2517,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { items = [], ...data } = req.body;
 
       // Auto-generate voucher number
-      if (!data.voucher_no) {
-        const { generateVoucherNo } = await import("./voucher");
-        data.voucher_no = await generateVoucherNo("job_work_inward", client);
-      }
+      const { generateVoucherNo: genJWI } = await import("./voucher");
+      data.voucher_no = await genJWI("job_work_inward", client);
 
       // Resolve or auto-create customer in masters
       const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
@@ -2768,7 +2766,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { items = [], ...data } = req.body;
 
       const { generateVoucherNo } = await import("./voucher");
-      const voucherNo = data.voucher_no || await generateVoucherNo("job_work_despatch", client);
+      const voucherNo = await generateVoucherNo("job_work_despatch", client);
 
       // Resolve or auto-create customer in masters
       const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
@@ -3030,7 +3028,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query("BEGIN");
       const { items = [], charges = [], ...data } = req.body;
       const { generateVoucherNo } = await import("./voucher");
-      const voucherNo = data.voucher_no || await generateVoucherNo("job_work_invoice", client);
+      const voucherNo = await generateVoucherNo("job_work_invoice", client);
       const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
       const hRes = await client.query(`
         INSERT INTO job_work_invoices

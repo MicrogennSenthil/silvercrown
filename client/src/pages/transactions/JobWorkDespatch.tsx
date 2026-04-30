@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, ChevronDown, Loader2, AlertCircle, CheckCircle2, Trash2, PencilLine } from "lucide-react";
+import { Search, ChevronDown, Loader2, Trash2, PencilLine } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
@@ -53,9 +54,7 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
   const [items, setItems] = useState<any[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
-  // Save state
-  const [saveError, setSaveError] = useState("");
-  const [saveOk,    setSaveOk]    = useState(false);
+  const { toast } = useToast();
 
   // Close party dropdown on outside click
   useEffect(() => {
@@ -247,16 +246,15 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/job-work-despatch"] });
       qc.invalidateQueries({ queryKey: ["/api/job-work-inward"] });
-      setSaveOk(true);
-      setTimeout(() => setSaveOk(false), 2000);
+      toast({ title: "Despatch saved", description: "Job work despatch saved successfully.", variant: "default" });
+      if (!editingId) onBackToList();
     },
-    onError: (e: any) => setSaveError(e.message),
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   function handleSave() {
-    setSaveError("");
     const activeItems = items.filter(it => parseFloat(it.qty || 0) > 0);
-    if (!activeItems.length) { setSaveError("No items to despatch."); return; }
+    if (!activeItems.length) { toast({ title: "No items", description: "Add at least one item to despatch.", variant: "destructive" }); return; }
 
     const isNew = !editingId;          // capture NOW — no closure issues
     const [primaryInward] = [...checkedInwardIds];
@@ -350,16 +348,6 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
         </div>
 
         <div className="p-5">
-          {saveError && (
-            <div className="flex items-center gap-2 mb-3 px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
-              <AlertCircle size={14} /> {saveError}
-            </div>
-          )}
-          {saveOk && (
-            <div className="flex items-center gap-2 mb-3 px-4 py-2 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs">
-              <CheckCircle2 size={14} /> Despatch saved successfully!
-            </div>
-          )}
 
           {/* ── Row 1: Party + Inward table ─────────────────────────────────── */}
           <div className="flex gap-4 mb-4">
