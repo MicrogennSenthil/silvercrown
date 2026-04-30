@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PencilLine, Plus, Trash2, Info, ChevronDown, ArrowLeft, TrendingUp, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import DatePicker from "@/components/DatePicker";
@@ -85,7 +86,7 @@ function LedgerForm({
         }))
       : []
   );
-  const [error, setError] = useState("");
+  const { toast } = useToast();
 
   // When GL changes, auto-populate categoryId from GL's category
   useEffect(() => {
@@ -140,7 +141,7 @@ function LedgerForm({
       qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
       onBack();
     },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const parentGL = generalLedgersList.find((g: any) => g.id === glId);
@@ -394,7 +395,6 @@ function LedgerForm({
             />
           </div>
 
-          {error && <p className="text-red-500 text-xs">{error}</p>}
 
           {/* ── Live Account Statement (edit only) ── */}
           {isEdit && (

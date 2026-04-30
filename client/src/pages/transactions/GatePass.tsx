@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Info, PencilLine, ChevronDown, Search } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
@@ -143,7 +144,7 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
       : (entryType === "non_returnable_outward" ? [newGpRow()] : [])
   );
 
-  const [error, setError] = useState("");
+  const { toast } = useToast();
 
   // Auto-generate voucher number
   useEffect(() => {
@@ -310,7 +311,7 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
       qc.invalidateQueries({ queryKey: ["/api/gate-pass/linked-source-ids"] });
       onBack();
     },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const entryLabel = ENTRY_TYPES.find(t => t.value === entryType)?.label || "";
@@ -716,8 +717,6 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
               className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
               data-testid="input-remark" />
           </div>
-
-          {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
 
         {/* Actions */}

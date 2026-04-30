@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Info, PencilLine, Search } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
@@ -120,7 +121,7 @@ function ROutwardForm({ editData, onBack }: { editData?: any; onBack: () => void
       : []
   );
 
-  const [error, setError] = useState("");
+  const { toast } = useToast();
 
   // Auto-generate voucher number
   useEffect(() => {
@@ -243,7 +244,7 @@ function ROutwardForm({ editData, onBack }: { editData?: any; onBack: () => void
       qc.invalidateQueries({ queryKey: ["/api/returnable-inward"] });
       onBack();
     },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const tabBtn = (id: "item" | "delivery", label: string) => (
@@ -542,7 +543,6 @@ function ROutwardForm({ editData, onBack }: { editData?: any; onBack: () => void
               data-testid="input-remark" />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
 
         {/* Actions */}

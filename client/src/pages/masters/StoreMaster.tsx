@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFormValidation } from "@/hooks/useFormValidation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Search, Loader2, Store, ChevronRight } from "lucide-react";
 
@@ -6,29 +7,29 @@ const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0
 
 const STORE_TYPES = ["Main Store", "Sub Store", "Warehouse", "Transit Store"];
 
-function FField({ label, value, onChange, type = "text", placeholder = "", required = false }: any) {
+function FField({ label, value, onChange, type = "text", placeholder = "", required = false, error = false }: any) {
   return (
     <div className="relative">
-      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+      <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>
+        {label}{(required || error) && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <input
         type={type} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] bg-white"
+        className={`w-full rounded px-3 py-2.5 text-sm outline-none bg-white border ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-[#027fa5]"}`}
       />
     </div>
   );
 }
 
-function FSelect({ label, value, onChange, options, required = false }: any) {
+function FSelect({ label, value, onChange, options, required = false, error = false }: any) {
   return (
     <div className="relative">
-      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+      <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>
+        {label}{(required || error) && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <select value={value} onChange={e => onChange(e.target.value)}
-        className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] bg-white appearance-none">
+        className={`w-full rounded px-3 py-2.5 text-sm outline-none bg-white appearance-none border ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-[#027fa5]"}`}>
         {options.map((o: any) =>
           <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>
         )}
@@ -51,9 +52,9 @@ function StoreModal({ initial, stores, onClose }: { initial?: any; stores: any[]
     description: initial?.description || "",
     is_active:   initial?.is_active   ?? true,
   });
-  const [error, setError] = useState("");
+  const { validate, hasError, clearError, showApiError } = useFormValidation();
 
-  function f(field: string) { return (val: any) => setForm(p => ({ ...p, [field]: val })); }
+  function f(field: string) { return (val: any) => { clearError(field); setForm(p => ({ ...p, [field]: val })); }; }
 
   // Available parents: all Main Stores (excluding self)
   const parentOptions = [
@@ -65,7 +66,6 @@ function StoreModal({ initial, stores, onClose }: { initial?: any; stores: any[]
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      if (!form.code.trim() || !form.name.trim()) throw new Error("Code and Name are required.");
       const url  = isEdit ? `/api/stores/${initial.id}` : "/api/stores";
       const meth = isEdit ? "PATCH" : "POST";
       const res  = await fetch(url, {
@@ -77,8 +77,17 @@ function StoreModal({ initial, stores, onClose }: { initial?: any; stores: any[]
       return res.json();
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/stores"] }); onClose(); },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => showApiError(e.message),
   });
+
+  function handleSave() {
+    const ok = validate([
+      { key: "code", value: form.code, label: "Store Code" },
+      { key: "name", value: form.name, label: "Store Name" },
+    ]);
+    if (!ok) return;
+    saveMut.mutate();
+  }
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -93,13 +102,9 @@ function StoreModal({ initial, stores, onClose }: { initial?: any; stores: any[]
         </div>
 
         <div className="p-6 space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-2 text-sm">{error}</div>
-          )}
-
           <div className="grid grid-cols-2 gap-4">
-            <FField label="Store Code" value={form.code} onChange={f("code")} required placeholder="e.g. MS01" />
-            <FField label="Store Name" value={form.name} onChange={f("name")} required placeholder="e.g. Main Store A" />
+            <FField label="Store Code" value={form.code} onChange={f("code")} required placeholder="e.g. MS01" error={hasError("code")} />
+            <FField label="Store Name" value={form.name} onChange={f("name")} required placeholder="e.g. Main Store A" error={hasError("name")} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -130,7 +135,7 @@ function StoreModal({ initial, stores, onClose }: { initial?: any; stores: any[]
             className="px-5 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">
             Cancel
           </button>
-          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
+          <button onClick={handleSave} disabled={saveMut.isPending}
             className="px-6 py-2 rounded-lg text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
             style={{ background: SC.orange }}>
             {saveMut.isPending && <Loader2 size={14} className="animate-spin" />}

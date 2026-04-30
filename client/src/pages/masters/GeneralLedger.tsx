@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import DatePicker from "@/components/DatePicker";
+import { useFormValidation } from "@/hooks/useFormValidation";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 const p2 = (v: any) => parseFloat(String(v || 0)).toFixed(2);
@@ -47,15 +48,16 @@ function GLPanel({ gl, categories, onClose, onSaved }: { gl: any; categories: an
   const [bt, setBt]       = useState(gl.balanceType || "Dr");
   const [desc, setDesc]   = useState(gl.description || "");
   const [saving, setSaving] = useState(false);
-  const [err, setErr]     = useState("");
+  const { validate, hasError, clearError, showApiError } = useFormValidation();
 
   async function save() {
-    setErr(""); setSaving(true);
+    if (!validate([{ key: "name", value: name, label: "Name" }])) return;
+    setSaving(true);
     try {
       await apiRequest("PATCH", `/api/general-ledgers/${gl.id}`, { name, openingBalance: ob, balanceType: bt, description: desc });
       qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
       onSaved();
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { showApiError(e.message); }
     finally { setSaving(false); }
   }
 
@@ -71,7 +73,7 @@ function GLPanel({ gl, categories, onClose, onSaved }: { gl: any; categories: an
       </div>
       <div className="space-y-0.5">
         {label("Name", true)}
-        <input value={name} onChange={e => setName(e.target.value)} className={inp()} data-testid="input-gl-name"/>
+        <input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30 focus:border-red-500" : "")} data-testid="input-gl-name"/>
       </div>
       <div className="space-y-0.5">
         {label("Category")}
@@ -95,7 +97,6 @@ function GLPanel({ gl, categories, onClose, onSaved }: { gl: any; categories: an
         {label("Description")}
         <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} className={inp()}/>
       </div>
-      {err && <div className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={12}/>{err}</div>}
       <div className="grid grid-cols-2 gap-2 pt-1">
         <button onClick={onClose} className="border border-gray-300 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">Cancel</button>
         <button onClick={save} disabled={saving}
@@ -131,11 +132,11 @@ function SLPanel({ sl, generalLedgers, categories, onClose, onSaved }: { sl: any
     sl.bills?.length ? sl.bills.map((b: any) => ({ _key: crypto.randomUUID(), refNo: b.refNo||"", refDate: b.refDate||"", voucherNo: b.voucherNo||"", voucherDate: b.voucherDate||"", amount: b.amount||"", crDr: b.crDr||"Cr" })) : []
   );
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
+  const { validate, hasError, clearError, showApiError } = useFormValidation();
 
   async function save() {
-    if (!name.trim()) { setErr("Name is required"); return; }
-    setErr(""); setSaving(true);
+    if (!validate([{ key: "name", value: name, label: "Name" }])) return;
+    setSaving(true);
     try {
       await apiRequest("PATCH", `/api/sub-ledgers/${sl.id}`, {
         name, generalLedgerId: glId, levelType, paymentType: payType,
@@ -145,7 +146,7 @@ function SLPanel({ sl, generalLedgers, categories, onClose, onSaved }: { sl: any
       });
       qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
       onSaved();
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { showApiError(e.message); }
     finally { setSaving(false); }
   }
 
@@ -168,7 +169,7 @@ function SLPanel({ sl, generalLedgers, categories, onClose, onSaved }: { sl: any
         </div>
         <div>
           {label("Name", true)}
-          <input value={name} onChange={e => setName(e.target.value)} className={inp()} data-testid="input-sl-name"/>
+          <input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30 focus:border-red-500" : "")} data-testid="input-sl-name"/>
         </div>
       </div>
       <div>
@@ -267,7 +268,6 @@ function SLPanel({ sl, generalLedgers, categories, onClose, onSaved }: { sl: any
         {label("Notes")}
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={inp()}/>
       </div>
-      {err && <div className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={12}/>{err}</div>}
       <div className="grid grid-cols-2 gap-2 pt-1">
         <button onClick={onClose} className="border border-gray-300 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">Cancel</button>
         <button onClick={save} disabled={saving}
@@ -288,16 +288,16 @@ function AddGLPanel({ categoryId, onClose, onSaved }: { categoryId: string; onCl
   const [ob, setOb]     = useState("0");
   const [bt, setBt]     = useState("Dr");
   const [saving, setSaving] = useState(false);
-  const [err, setErr]   = useState("");
+  const { validate, hasError, clearError, showApiError } = useFormValidation();
 
   async function save() {
-    if (!code.trim() || !name.trim()) { setErr("Code and Name are required"); return; }
-    setErr(""); setSaving(true);
+    if (!validate([{ key: "code", value: code, label: "Code" }, { key: "name", value: name, label: "Name" }])) return;
+    setSaving(true);
     try {
       await apiRequest("POST", "/api/general-ledgers", { code, name, categoryId, openingBalance: ob, balanceType: bt, description: "" });
       qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
       onSaved();
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { showApiError(e.message); }
     finally { setSaving(false); }
   }
 
@@ -308,14 +308,13 @@ function AddGLPanel({ categoryId, onClose, onSaved }: { categoryId: string; onCl
         <button onClick={onClose}><X size={16} className="text-gray-400 hover:text-gray-700"/></button>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div>{label("Code",true)}<input value={code} onChange={e => setCode(e.target.value)} className={inp()} data-testid="input-new-gl-code"/></div>
-        <div>{label("Name",true)}<input value={name} onChange={e => setName(e.target.value)} className={inp()} data-testid="input-new-gl-name"/></div>
+        <div>{label("Code",true)}<input value={code} onChange={e => { clearError("code"); setCode(e.target.value); }} className={inp(hasError("code") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-gl-code"/></div>
+        <div>{label("Name",true)}<input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-gl-name"/></div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>{label("Opening Balance")}<input type="number" step="0.01" value={ob} onChange={e => setOb(e.target.value)} className={inp()}/></div>
         <div>{label("Balance Type")}<select value={bt} onChange={e => setBt(e.target.value)} className={inp()}><option value="Dr">Dr (Debit)</option><option value="Cr">Cr (Credit)</option></select></div>
       </div>
-      {err && <div className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={12}/>{err}</div>}
       <div className="grid grid-cols-2 gap-2 pt-1">
         <button onClick={onClose} className="border border-gray-300 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">Cancel</button>
         <button onClick={save} disabled={saving} className="text-sm py-2 rounded-lg font-semibold text-white disabled:opacity-50" style={{ background: SC.primary }} data-testid="btn-add-gl">
@@ -334,11 +333,11 @@ function AddSLPanel({ glId, categoryId, generalLedgers, onClose, onSaved }: { gl
   const [ob, setOb]     = useState("0");
   const [obType, setObType] = useState("Credit");
   const [saving, setSaving] = useState(false);
-  const [err, setErr]   = useState("");
+  const { validate, hasError, clearError, showApiError } = useFormValidation();
 
   async function save() {
-    if (!code.trim() || !name.trim()) { setErr("Code and Name are required"); return; }
-    setErr(""); setSaving(true);
+    if (!validate([{ key: "code", value: code, label: "Code" }, { key: "name", value: name, label: "Name" }])) return;
+    setSaving(true);
     try {
       await apiRequest("POST", "/api/sub-ledgers", {
         code, name, generalLedgerId: glId, categoryId,
@@ -348,7 +347,7 @@ function AddSLPanel({ glId, categoryId, generalLedgers, onClose, onSaved }: { gl
       });
       qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
       onSaved();
-    } catch (e: any) { setErr(e.message); }
+    } catch (e: any) { showApiError(e.message); }
     finally { setSaving(false); }
   }
 
@@ -359,8 +358,8 @@ function AddSLPanel({ glId, categoryId, generalLedgers, onClose, onSaved }: { gl
         <button onClick={onClose}><X size={16} className="text-gray-400 hover:text-gray-700"/></button>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div>{label("Code",true)}<input value={code} onChange={e => setCode(e.target.value)} className={inp()} data-testid="input-new-sl-code"/></div>
-        <div>{label("Name",true)}<input value={name} onChange={e => setName(e.target.value)} className={inp()} data-testid="input-new-sl-name"/></div>
+        <div>{label("Code",true)}<input value={code} onChange={e => { clearError("code"); setCode(e.target.value); }} className={inp(hasError("code") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-sl-code"/></div>
+        <div>{label("Name",true)}<input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-sl-name"/></div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>{label("Opening Balance")}<input type="number" step="0.01" value={ob} onChange={e => setOb(e.target.value)} className={inp()}/></div>
@@ -368,7 +367,6 @@ function AddSLPanel({ glId, categoryId, generalLedgers, onClose, onSaved }: { gl
           <div className="mt-1"><CrDrToggle value={obType} onChange={setObType}/></div>
         </div>
       </div>
-      {err && <div className="text-xs text-red-600 flex items-center gap-1"><AlertTriangle size={12}/>{err}</div>}
       <div className="grid grid-cols-2 gap-2 pt-1">
         <button onClick={onClose} className="border border-gray-300 text-gray-600 text-sm py-2 rounded-lg hover:bg-gray-50">Cancel</button>
         <button onClick={save} disabled={saving} className="text-sm py-2 rounded-lg font-semibold text-white disabled:opacity-50" style={{ background: SC.primary }} data-testid="btn-add-sl">

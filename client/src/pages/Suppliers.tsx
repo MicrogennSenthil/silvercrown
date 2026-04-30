@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DatePicker from "@/components/DatePicker";
 import { Plus, Edit, Trash2, Search, List, Info, ChevronDown, Link2, CheckCircle2 } from "lucide-react";
 import type { Supplier } from "@shared/schema";
+import { useFormValidation } from "@/hooks/useFormValidation";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -19,17 +20,16 @@ const EMPTY_FORM = {
   subLedgerId: "",
 };
 
-function Field({ label, value, onChange, type = "text", className = "", readOnly = false }: any) {
+function Field({ label, value, onChange, type = "text", className = "", readOnly = false, error = false }: any) {
   if (type === "date") {
     return <DatePicker label={label} value={value} onChange={onChange} className={className}
       data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />;
   }
   return (
     <div className={`relative ${className}`}>
-      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
+      <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>{label}{error && " *"}</label>
       <input type={type} value={value} onChange={onChange} readOnly={readOnly}
-        className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white"
-        style={{ borderColor: "#d1d5db" }}
+        className={`w-full rounded px-3 pt-4 pb-2 text-sm text-gray-800 focus:outline-none bg-white border ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-blue-400"}`}
         data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />
     </div>
   );
@@ -226,12 +226,13 @@ function SupplierForm({ initial, onClose }: any) {
   const [createLedger, setCreateLedger] = useState(!initial?.id);
   const [quickAdd, setQuickAdd] = useState<"city" | "state" | null>(null);
   const qc = useQueryClient();
+  const { validate, hasError, clearError, showApiError } = useFormValidation();
 
   const { data: cities  = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
   const { data: states  = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
   const { data: creditors = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/creditors"] });
 
-  const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
+  const f = (key: string) => (e: any) => { clearError(key); setForm((p: any) => ({ ...p, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value })); };
 
   const handleCityChange = (e: any) => {
     const cityName = e.target.value;
@@ -255,9 +256,19 @@ function SupplierForm({ initial, onClose }: any) {
       qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/creditors"] });
       onClose();
     },
+    onError: (e: any) => {
+      try {
+        const parsed = JSON.parse(e.message);
+        showApiError(Array.isArray(parsed) && parsed[0]?.message ? parsed[0].message : e.message);
+      } catch { showApiError(e.message); }
+    },
   });
 
   const handleSave = () => {
+    const ok = validate([
+      { key: "name", value: form.name, label: "Company Name" },
+    ]);
+    if (!ok) return;
     saveMut.mutate({
       ...form,
       creditDays: form.creditDays !== "" ? Number(form.creditDays) : 0,
@@ -265,15 +276,6 @@ function SupplierForm({ initial, onClose }: any) {
       createLedger: createLedger && !form.subLedgerId,
     });
   };
-
-  const saveErrorMsg = (() => {
-    if (!saveMut.error) return "";
-    try {
-      const parsed = JSON.parse((saveMut.error as Error).message);
-      if (Array.isArray(parsed) && parsed[0]?.message) return parsed[0].message;
-    } catch {}
-    return (saveMut.error as Error).message;
-  })();
 
   const TABS = [
     { key: "address", label: "Address" },
@@ -319,7 +321,7 @@ function SupplierForm({ initial, onClose }: any) {
 
       <div className="px-5 py-4">
         <div className="flex gap-4 mb-5">
-          <Field label="Company Name" value={form.name}      onChange={f("name")}      className="flex-1" />
+          <Field label="Company Name" value={form.name}      onChange={f("name")}      className="flex-1" error={hasError("name")} />
           <Field label="Short Name"   value={form.shortName} onChange={f("shortName")} className="w-56" />
         </div>
 
@@ -443,13 +445,12 @@ function SupplierForm({ initial, onClose }: any) {
             Cancel
           </button>
           <button onClick={handleSave}
-            disabled={saveMut.isPending || !form.name.trim()}
+            disabled={saveMut.isPending}
             className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: SC.orange }} data-testid="button-save">
             {saveMut.isPending ? "Saving…" : "Save"}
           </button>
         </div>
-        {saveMut.isError && <p className="text-red-500 text-sm mt-2 text-right font-medium">{saveErrorMsg}</p>}
       </div>
     </div>
     </>

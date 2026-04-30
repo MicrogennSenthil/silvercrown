@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFormValidation } from "@/hooks/useFormValidation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, CheckCircle, Calendar } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
@@ -13,18 +14,17 @@ export default function FinancialYears() {
   const [modal, setModal] = useState<null | "add" | "edit">(null);
   const [form, setForm] = useState({ ...EMPTY });
   const [editId, setEditId] = useState<string | null>(null);
-  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const { validate, hasError, clearError, showApiError, clearAll } = useFormValidation();
 
-  function openAdd() { setForm({ ...EMPTY }); setEditId(null); setError(""); setModal("add"); }
+  function openAdd() { setForm({ ...EMPTY }); setEditId(null); clearAll(); setModal("add"); }
   function openEdit(r: any) {
     setForm({ label: r.label, start_date: r.start_date?.split("T")[0] || r.start_date, end_date: r.end_date?.split("T")[0] || r.end_date, is_current: r.is_current });
-    setEditId(r.id); setError(""); setModal("edit");
+    setEditId(r.id); clearAll(); setModal("edit");
   }
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      if (!form.label || !form.start_date || !form.end_date) throw new Error("Label, Start Date and End Date are required.");
       const url = editId ? `/api/financial-years/${editId}` : "/api/financial-years";
       const method = editId ? "PATCH" : "POST";
       const res = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
@@ -32,8 +32,18 @@ export default function FinancialYears() {
       return res.json();
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/financial-years"] }); setModal(null); },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => showApiError(e.message),
   });
+
+  function handleSave() {
+    const ok = validate([
+      { key: "label",      value: form.label,      label: "Label" },
+      { key: "start_date", value: form.start_date, label: "Start Date" },
+      { key: "end_date",   value: form.end_date,   label: "End Date" },
+    ]);
+    if (!ok) return;
+    saveMut.mutate();
+  }
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => fetch(`/api/financial-years/${id}`, { method: "DELETE", credentials: "include" }).then(r => r.json()),
@@ -103,36 +113,39 @@ export default function FinancialYears() {
             </div>
             <div className="px-5 py-5 space-y-4">
               <div className="relative">
-                <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Label <span className="text-red-400">*</span></label>
-                <input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))}
+                <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${hasError("label") ? "text-red-500 font-semibold" : "text-gray-500"}`}>Label <span className="text-red-400">*</span></label>
+                <input value={form.label} onChange={e => { clearError("label"); setForm(p => ({ ...p, label: e.target.value })); }}
                   placeholder="e.g. 2025-26"
-                  className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+                  className={`w-full rounded px-3 py-2.5 text-sm outline-none border ${hasError("label") ? "border-red-400 bg-red-50/30 focus:border-red-500" : "border-gray-300 focus:border-[#027fa5]"}`}
                   autoFocus data-testid="input-fy-label" />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <DatePicker
-                  label="Start Date *"
-                  value={form.start_date}
-                  onChange={v => setForm(p => ({ ...p, start_date: v }))}
-                  data-testid="input-fy-start"
-                />
-                <DatePicker
-                  label="End Date *"
-                  value={form.end_date}
-                  onChange={v => setForm(p => ({ ...p, end_date: v }))}
-                  data-testid="input-fy-end"
-                />
+                <div className={hasError("start_date") ? "ring-1 ring-red-400 rounded" : ""}>
+                  <DatePicker
+                    label={hasError("start_date") ? "Start Date * !" : "Start Date *"}
+                    value={form.start_date}
+                    onChange={v => { clearError("start_date"); setForm(p => ({ ...p, start_date: v })); }}
+                    data-testid="input-fy-start"
+                  />
+                </div>
+                <div className={hasError("end_date") ? "ring-1 ring-red-400 rounded" : ""}>
+                  <DatePicker
+                    label={hasError("end_date") ? "End Date * !" : "End Date *"}
+                    value={form.end_date}
+                    onChange={v => { clearError("end_date"); setForm(p => ({ ...p, end_date: v })); }}
+                    data-testid="input-fy-end"
+                  />
+                </div>
               </div>
               <label className="flex items-center gap-2 cursor-pointer" data-testid="toggle-is-current">
                 <input type="checkbox" checked={form.is_current} onChange={e => setForm(p => ({ ...p, is_current: e.target.checked }))}
                   className="w-4 h-4 rounded accent-[#027fa5]" />
                 <span className="text-sm text-gray-700">Set as Current Financial Year</span>
               </label>
-              {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
             <div className="flex justify-end gap-3 px-5 py-3.5 border-t border-gray-100">
               <button onClick={() => setModal(null)} className="px-6 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700">Cancel</button>
-              <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
+              <button onClick={handleSave} disabled={saveMut.isPending}
                 className="px-6 py-2 rounded text-sm font-semibold text-white disabled:opacity-50" style={{ background: SC.orange }}
                 data-testid="btn-save">{saveMut.isPending ? "Saving..." : "Save"}</button>
             </div>

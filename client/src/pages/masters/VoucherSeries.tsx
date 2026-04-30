@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFormValidation } from "@/hooks/useFormValidation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Hash, RefreshCw } from "lucide-react";
 
@@ -46,14 +47,14 @@ export default function VoucherSeries() {
   const [modal, setModal] = useState<null | "add" | "edit">(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editId, setEditId] = useState<string | null>(null);
-  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [filterFy, setFilterFy] = useState("");
+  const { validate, hasError, clearError, showApiError, clearAll } = useFormValidation();
 
   function openAdd() {
     const currentFy = (fys as any[]).find(f => f.is_current);
     setForm({ ...EMPTY_FORM, financial_year_id: currentFy?.id || "" });
-    setEditId(null); setError(""); setModal("add");
+    setEditId(null); clearAll(); setModal("add");
   }
   function openEdit(r: any) {
     setForm({
@@ -62,12 +63,11 @@ export default function VoucherSeries() {
       current_number: r.current_number, financial_year_id: r.financial_year_id || "",
       is_active: r.is_active,
     });
-    setEditId(r.id); setError(""); setModal("edit");
+    setEditId(r.id); clearAll(); setModal("edit");
   }
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      if (!form.transaction_type || !form.prefix) throw new Error("Transaction type and Prefix are required.");
       const url = editId ? `/api/voucher-series/${editId}` : "/api/voucher-series";
       const method = editId ? "PATCH" : "POST";
       const payload = { ...form, digits: Number(form.digits), starting_number: Number(form.starting_number), current_number: Number(form.current_number), financial_year_id: form.financial_year_id || null };
@@ -76,8 +76,17 @@ export default function VoucherSeries() {
       return res.json();
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/voucher-series"] }); setModal(null); },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => showApiError(e.message),
   });
+
+  function handleSave() {
+    const ok = validate([
+      { key: "transaction_type", value: form.transaction_type, label: "Transaction Type" },
+      { key: "prefix",           value: form.prefix,           label: "Prefix" },
+    ]);
+    if (!ok) return;
+    saveMut.mutate();
+  }
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => fetch(`/api/voucher-series/${id}`, { method: "DELETE", credentials: "include" }).then(r => r.json()),
@@ -191,14 +200,15 @@ export default function VoucherSeries() {
             <div className="px-5 py-5 space-y-3">
               {/* Transaction Type */}
               <div className="relative">
-                <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Transaction Type <span className="text-red-400">*</span></label>
+                <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${hasError("transaction_type") ? "text-red-500 font-semibold" : "text-gray-500"}`}>Transaction Type <span className="text-red-400">*</span></label>
                 {modal === "add" ? (
                   <select value={form.transaction_type}
                     onChange={e => {
+                      clearError("transaction_type");
                       const dt = DEFAULT_TYPES.find(d => d.type === e.target.value);
                       setForm(p => ({ ...p, transaction_type: e.target.value, transaction_label: dt?.label || p.transaction_label, prefix: p.prefix || dt?.prefix || "" }));
                     }}
-                    className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+                    className={`w-full rounded px-3 py-2.5 text-sm outline-none border ${hasError("transaction_type") ? "border-red-400 bg-red-50/30 focus:border-red-500" : "border-gray-300 focus:border-[#027fa5]"}`}
                     data-testid="select-txn-type">
                     <option value="">Select type...</option>
                     {DEFAULT_TYPES.map(d => <option key={d.type} value={d.type}>{d.label}</option>)}
@@ -244,10 +254,10 @@ export default function VoucherSeries() {
               {/* Prefix + Digits */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="relative">
-                  <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Prefix <span className="text-red-400">*</span></label>
-                  <input value={form.prefix} onChange={e => setForm(p => ({ ...p, prefix: e.target.value.toUpperCase() }))}
+                  <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${hasError("prefix") ? "text-red-500 font-semibold" : "text-gray-500"}`}>Prefix <span className="text-red-400">*</span></label>
+                  <input value={form.prefix} onChange={e => { clearError("prefix"); setForm(p => ({ ...p, prefix: e.target.value.toUpperCase() })); }}
                     placeholder="e.g. JWI"
-                    className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm font-mono outline-none focus:border-[#027fa5]"
+                    className={`w-full rounded px-3 py-2.5 text-sm font-mono outline-none border ${hasError("prefix") ? "border-red-400 bg-red-50/30 focus:border-red-500" : "border-gray-300 focus:border-[#027fa5]"}`}
                     data-testid="input-prefix" />
                 </div>
                 <div className="relative">
@@ -294,11 +304,10 @@ export default function VoucherSeries() {
                 </div>
               )}
 
-              {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
             <div className="flex justify-end gap-3 px-5 py-3.5 border-t border-gray-100">
               <button onClick={() => setModal(null)} className="px-6 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700">Cancel</button>
-              <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
+              <button onClick={handleSave} disabled={saveMut.isPending}
                 className="px-6 py-2 rounded text-sm font-semibold text-white disabled:opacity-50" style={{ background: SC.orange }}
                 data-testid="btn-save">{saveMut.isPending ? "Saving..." : "Save"}</button>
             </div>

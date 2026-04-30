@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, PencilLine, Printer, Info, ChevronDown, Search, FileEdit } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
@@ -96,7 +97,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const [delivLoc,     setDelivLoc]     = useState(editData?.delivery_location || "");
   const [remark,       setRemark]       = useState(editData?.remark || "");
   const [tab,          setTab]          = useState<"items"|"terms">("items");
-  const [error,        setError]        = useState("");
+  const { toast } = useToast();
   const [loading,      setLoading]      = useState(false);
 
   const [items,   setItems]   = useState<PoaItem[]>(editData?.items?.length ? mapPoItems(editData.items) : [newItem()]);
@@ -247,7 +248,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
       qc.invalidateQueries({ queryKey: ["/api/purchase-order-amendments"] });
       onBack();
     },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const filteredPOs = (purchaseOrders as any[]).filter((po: any) =>
@@ -627,8 +628,6 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
               ))}
             </div>
           )}
-
-          {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
 
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">

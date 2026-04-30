@@ -4,6 +4,7 @@ import {
   Plus, Trash2, Info, Upload, Camera, FolderOpen, X,
   Search, PencilLine, Loader2, AlertCircle, CheckCircle2
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
@@ -320,7 +321,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
   const [showScan, setShowScan] = useState(false);
   const [quickItem, setQuickItem] = useState<{ idx: number; name: string } | null>(null);
-  const [error, setError] = useState("");
+  const { toast } = useToast();
   const [aiSuccess, setAiSuccess] = useState(false);
 
   // Item search state per row
@@ -409,7 +410,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
       qc.invalidateQueries({ queryKey: ["/api/job-work-inward"] });
       onBack();
     },
-    onError: (e: any) => setError(e.message),
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const filteredCustomers = customers.filter((s: any) =>
@@ -688,11 +689,6 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
               data-testid="input-notes" />
           </div>
 
-          {error && (
-            <div className="flex items-center gap-2 text-red-600 text-xs px-1">
-              <AlertCircle size={14} /> {error}
-            </div>
-          )}
         </div>
 
         {/* Footer */}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Edit, X, Loader2, Search, Info, ChevronDown, PencilLine } from "lucide-react";
+import { useFormValidation } from "@/hooks/useFormValidation";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -9,23 +10,23 @@ function apiReq(url: string, method: string, body?: any) {
 }
 
 // ─── Floating label field ─────────────────────────────────────────────────────
-function FField({ label, value, onChange, type = "text", placeholder = "", className = "" }: any) {
+function FField({ label, value, onChange, type = "text", placeholder = "", className = "", error = false }: any) {
   return (
     <div className={`relative ${className}`}>
-      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
+      <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>{label}{error && " *"}</label>
       <input type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder}
-        className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white"
+        className={`w-full rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none bg-white border ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-blue-400"}`}
         data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />
     </div>
   );
 }
 
-function FSelect({ label, value, onChange, options, className = "" }: any) {
+function FSelect({ label, value, onChange, options, className = "", error = false }: any) {
   return (
     <div className={`relative ${className}`}>
-      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
+      <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>{label}{error && " *"}</label>
       <select value={value ?? ""} onChange={onChange}
-        className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400 bg-white appearance-none"
+        className={`w-full rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none bg-white appearance-none border ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-blue-400"}`}
         data-testid={`select-${label.toLowerCase().replace(/\s+/g, "-")}`}>
         <option value="">Select</option>
         {options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -35,10 +36,10 @@ function FSelect({ label, value, onChange, options, className = "" }: any) {
   );
 }
 
-function DropPlus({ label, value, onChange, options, onPlus, className = "" }: any) {
+function DropPlus({ label, value, onChange, options, onPlus, className = "", error = false }: any) {
   return (
     <div className={`flex items-center gap-1.5 ${className}`}>
-      <FSelect label={label} value={value} onChange={onChange} options={options} className="flex-1" />
+      <FSelect label={label} value={value} onChange={onChange} options={options} className="flex-1" error={error} />
       <button onClick={onPlus} className="flex-shrink-0 w-7 h-7 rounded flex items-center justify-center text-white font-bold text-base mt-0.5"
         style={{ background: SC.primary }} data-testid={`button-add-${label.toLowerCase()}`}>+</button>
     </div>
@@ -196,11 +197,10 @@ const EMPTY_PRODUCT = {
 function ProductModal({ initial, categories, subCategories, uomList, onClose }: any) {
   const [form, setForm] = useState<any>({ ...EMPTY_PRODUCT, ...initial });
   const qc = useQueryClient();
-
-  const [formError, setFormError] = useState("");
+  const { validate, hasError, clearError, showApiError } = useFormValidation();
 
   const f = (key: string) => (e: any) => {
-    setFormError("");
+    clearError(key);
     setForm((p: any) => ({ ...p, [key]: e.target.value }));
   };
 
@@ -234,15 +234,17 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
       return res.json();
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/products"] }); onClose(); },
-    onError: (e: any) => setFormError(e.message || "Save failed. Please try again."),
+    onError: (e: any) => showApiError(e.message || "Save failed. Please try again."),
   });
 
   function handleSave() {
-    if (!form.name?.trim())    { setFormError("Item Name is required."); return; }
-    if (!form.unit)            { setFormError("Unit is required. Please select a unit."); return; }
-    if (!form.categoryId)      { setFormError("Category is required. Please select a category."); return; }
-    if (!form.subCategoryId)   { setFormError("Sub Category is required. Please select a sub category."); return; }
-    setFormError("");
+    const ok = validate([
+      { key: "name",          value: form.name,          label: "Item Name" },
+      { key: "unit",          value: form.unit,          label: "Unit" },
+      { key: "categoryId",    value: form.categoryId,    label: "Category" },
+      { key: "subCategoryId", value: form.subCategoryId, label: "Sub Category" },
+    ]);
+    if (!ok) return;
     saveMut.mutate(form);
   }
 
@@ -272,17 +274,17 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
         <div className="px-6 py-5 space-y-4">
           {/* Row 1: Item Name + Unit */}
           <div className="flex gap-3">
-            <FField label="Item Name" value={form.name} onChange={f("name")} placeholder="Enter Item name Here..." className="flex-1" />
-            <FSelect label="Unit" value={form.unit} onChange={f("unit")} options={unitOptions} className="w-36" />
+            <FField label="Item Name" value={form.name} onChange={f("name")} placeholder="Enter Item name Here..." className="flex-1" error={hasError("name")} />
+            <FSelect label="Unit" value={form.unit} onChange={f("unit")} options={unitOptions} className="w-36" error={hasError("unit")} />
           </div>
 
           {/* Row 2: Category + Sub Category */}
           <div className="flex gap-3">
             <DropPlus label="Category" value={form.categoryId}
-              onChange={(e: any) => { setFormError(""); setForm((p: any) => ({ ...p, categoryId: e.target.value, subCategoryId: "" })); }}
-              options={catOptions} onPlus={() => {}} className="flex-1" />
+              onChange={(e: any) => { clearError("categoryId"); clearError("subCategoryId"); setForm((p: any) => ({ ...p, categoryId: e.target.value, subCategoryId: "" })); }}
+              options={catOptions} onPlus={() => {}} className="flex-1" error={hasError("categoryId")} />
             <DropPlus label="Sub Category" value={form.subCategoryId} onChange={f("subCategoryId")}
-              options={subOptions} onPlus={() => {}} className="flex-1" />
+              options={subOptions} onPlus={() => {}} className="flex-1" error={hasError("subCategoryId")} />
           </div>
 
           {/* Row 3: DRG No, SAP No, HSN Code, Location */}
@@ -308,16 +310,6 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
             <FField label="IGST %"  value={form.igstRate} onChange={f("igstRate")} placeholder="0.00" type="number" />
           </div>
         </div>
-
-        {/* Alert */}
-        {formError && (
-          <div className="mx-6 mb-3 flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-            <svg className="shrink-0 mt-0.5 text-red-500" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-            <p className="text-sm text-red-700 font-medium">{formError}</p>
-          </div>
-        )}
 
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
