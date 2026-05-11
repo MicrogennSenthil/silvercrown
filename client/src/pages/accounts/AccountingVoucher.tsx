@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Trash2, Info, ChevronDown, ArrowLeft, Send, Search,
-  CheckCircle2, Plus, AlertCircle, X,
+  CheckCircle2, Plus, AlertCircle, X, FileText,
 } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
 
@@ -28,8 +28,186 @@ type VLine = {
   subLedgerName: string;
   amount: string;
   narration: string;
-  _err?: string;  // inline validation error
+  _err?: string;
 };
+
+type BillAdjRow = {
+  id: string;
+  source: "purchase_invoice" | "opening_bill";
+  sourceId: string;
+  billDate: string;
+  billNo: string;
+  billAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  crDr: string;
+  adjustAmount: string;
+};
+
+function fmtDate(d: string) {
+  if (!d) return "—";
+  const dt = new Date(d);
+  return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// ── Bill to Bill Adjustment Dialog ────────────────────────────────────────────
+function BillAdjustmentDialog({
+  open, subLedgerId, paymentAmount, onConfirm, onClose,
+}: {
+  open: boolean;
+  subLedgerId: string;
+  paymentAmount: number;
+  onConfirm: (rows: BillAdjRow[]) => void;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<BillAdjRow[]>([]);
+
+  const { data: bills = [], isLoading } = useQuery<BillAdjRow[]>({
+    queryKey: ["/api/bill-adjustments/outstanding", subLedgerId],
+    queryFn: () =>
+      fetch(`/api/bill-adjustments/outstanding?subLedgerId=${subLedgerId}`, { credentials: "include" })
+        .then(r => r.json()),
+    enabled: open && !!subLedgerId,
+  });
+
+  useEffect(() => {
+    if (bills.length > 0) {
+      setRows(bills.map(b => ({ ...b, adjustAmount: "" })));
+    } else if (!isLoading) {
+      setRows([]);
+    }
+  }, [bills, isLoading]);
+
+  const totalAdj = rows.reduce((s, r) => s + parseAmt(r.adjustAmount || "0"), 0);
+  const remaining = parseFloat((paymentAmount - totalAdj).toFixed(2));
+  const isOver = totalAdj > paymentAmount + 0.005;
+
+  function setAmt(id: string, val: string) {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, adjustAmount: val } : r));
+  }
+
+  function fillBalance(row: BillAdjRow) {
+    const canFill = Math.min(row.balanceAmount, remaining + parseAmt(row.adjustAmount || "0"));
+    setRows(prev => prev.map(r => r.id === row.id ? { ...r, adjustAmount: canFill.toFixed(2) } : r));
+  }
+
+  function handleConfirm() {
+    if (isOver) return;
+    onConfirm(rows.filter(r => parseAmt(r.adjustAmount || "0") > 0));
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden flex flex-col" style={{ maxHeight: "80vh" }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100" style={{ background: SC.tonal }}>
+          <div className="flex items-center gap-2">
+            <FileText size={18} style={{ color: SC.primary }} />
+            <h2 className="font-bold text-gray-800 text-base">Bill to Bill Adjustment</h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-600">
+              Payment: <span className="font-bold" style={{ color: SC.primary }}>₹{fmtAmt(paymentAmount)}</span>
+            </span>
+            <button onClick={onClose} className="p-1 rounded hover:bg-white/60 text-gray-500">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-auto flex-1">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 text-gray-400 text-sm">Loading outstanding bills…</div>
+          ) : rows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
+              <FileText size={32} className="opacity-30" />
+              <span className="text-sm">No outstanding bills found for this party</span>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: SC.primary }}>
+                  {["Bill Date", "Bill No", "Bill Amt ₹", "Paid Amt ₹", "Balance Amt ₹", "Cr/Dr", "Amount ₹"].map(h => (
+                    <th key={h} className="px-4 py-3 text-left font-semibold text-white text-xs">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={row.id}
+                    className={`border-b border-gray-100 hover:bg-[#d2f1fa]/30 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}
+                    onDoubleClick={() => fillBalance(row)}
+                    title="Double-click to fill balance amount"
+                    data-testid={`row-bill-adj-${i}`}>
+                    <td className="px-4 py-3 text-gray-700">{fmtDate(row.billDate)}</td>
+                    <td className="px-4 py-3 font-mono text-gray-800 font-semibold">{row.billNo || "—"}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-800">{fmtAmt(row.billAmount)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-500">{fmtAmt(row.paidAmount)}</td>
+                    <td className="px-4 py-3 text-right font-mono font-semibold" style={{ color: SC.primary }}>
+                      {fmtAmt(row.balanceAmount)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">{row.crDr}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        min={0}
+                        max={row.balanceAmount}
+                        value={row.adjustAmount}
+                        onChange={e => setAmt(row.id, e.target.value)}
+                        onFocus={e => e.target.select()}
+                        placeholder="0.00"
+                        className="w-28 border rounded px-2 py-1 text-right text-sm font-mono outline-none focus:border-[#027fa5] focus:ring-1 focus:ring-[#027fa5]/20"
+                        style={{ borderColor: parseAmt(row.adjustAmount || "0") > row.balanceAmount ? "#ef4444" : "#d1d5db" }}
+                        data-testid={`input-adj-amount-${i}`}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/60">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6 text-sm">
+              <span className="text-gray-600">
+                Total Adjusted: <span className={`font-bold font-mono ${isOver ? "text-red-600" : "text-gray-800"}`}>₹{fmtAmt(totalAdj)}</span>
+              </span>
+              <span className="text-gray-600">
+                Remaining: <span className={`font-bold font-mono ${remaining < -0.005 ? "text-red-600" : "text-green-700"}`}>₹{fmtAmt(Math.abs(remaining))}</span>
+              </span>
+              {isOver && (
+                <span className="flex items-center gap-1 text-xs text-red-600 font-semibold">
+                  <AlertCircle size={13} /> Total exceeds payment amount
+                </span>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose}
+                className="px-5 py-2 rounded border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button type="button" onClick={handleConfirm} disabled={isOver || rows.length === 0}
+                className="px-7 py-2 rounded text-sm font-bold text-white disabled:opacity-50"
+                style={{ background: isOver ? "#9ca3af" : SC.orange }}
+                data-testid="btn-bill-adj-save">
+                Save Adjustment
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Voucher nature helpers ────────────────────────────────────────────────────
 function getNature(name: string): Nature {
@@ -249,6 +427,11 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     return [mkLine(true, "DR"), mkLine(false, "CR")];
   });
 
+  // Bill Adjustment state
+  const [showBillAdj,   setShowBillAdj]   = useState(false);
+  const [billAdjRows,   setBillAdjRows]   = useState<BillAdjRow[]>([]);
+  const [billAdjSlId,   setBillAdjSlId]   = useState("");
+
   // Amount input refs for keyboard jump
   const amtRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -292,15 +475,32 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     setLines(prev => prev.map(l => l._key === key ? { ...l, amount: val, _err: undefined } : l));
   }
 
-  // On Tab from last detail row's amount → add new row
+  // On Tab/Enter from amount field — also trigger bill adjustment for payment Row 0
   function handleAmountTab(key: string, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Tab" && e.key !== "Enter") return;
     const idx = lines.findIndex(l => l._key === key);
+
+    // Bill adjustment trigger: Row 0 of payment voucher with a party (non-bank/cash) ledger
+    if (idx === 0 && nature === "payment" && e.key === "Enter") {
+      const line = lines[0];
+      if (line.subLedgerId && parseAmt(line.amount) > 0) {
+        const sl = (allSubs as any[]).find((s: any) => s.id === line.subLedgerId);
+        const glName = (sl?.gl_name || "").toLowerCase();
+        const isBank = glName.includes("bank");
+        const isCash = glName.includes("cash");
+        if (!isBank && !isCash) {
+          e.preventDefault();
+          setBillAdjSlId(line.subLedgerId);
+          setShowBillAdj(true);
+          return;
+        }
+      }
+    }
+
     if (idx === lines.length - 1 && lines[idx].subLedgerId) {
       e.preventDefault();
       const newLine = mkLine(false, nature === "journal" ? "CR" : detDrCr);
       setLines(prev => [...prev, newLine]);
-      // Focus will be picked up by the new row's auto-open
     }
   }
 
@@ -370,7 +570,24 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
         throw new Error(errs.filter(e => e.field === "general").map(e => e.msg).join(" "));
       }
       const nonEmpty = lines.filter(l => l.subLedgerId && parseAmt(l.amount) > 0);
-      const payload  = {
+
+      // Identify party and bank/cash sub-ledgers for balance updates
+      const partyLine = nature === "payment"
+        ? nonEmpty.find(l => {
+            const sl = (allSubs as any[]).find((s: any) => s.id === l.subLedgerId);
+            const g = (sl?.gl_name || "").toLowerCase();
+            return !g.includes("bank") && !g.includes("cash");
+          })
+        : undefined;
+      const bankLine = nature === "payment"
+        ? nonEmpty.find(l => {
+            const sl = (allSubs as any[]).find((s: any) => s.id === l.subLedgerId);
+            const g = (sl?.gl_name || "").toLowerCase();
+            return g.includes("bank") || g.includes("cash");
+          })
+        : undefined;
+
+      const payload = {
         voucherTypeCode: vtCode, voucherTypeName: vtName,
         referenceNo: refNo, referenceDate: refDate,
         voucherDate: vDate, narration,
@@ -378,6 +595,14 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
           drCr: l.drCr, subLedgerId: l.subLedgerId,
           amount: String(parseAmt(l.amount)), narration: l.narration || narration,
         })),
+        // Bill adjustment data
+        billAdjustments: billAdjRows.map(b => ({
+          source: b.source, sourceId: b.sourceId,
+          billNo: b.billNo, billDate: b.billDate,
+          billAmount: b.billAmount, adjustedAmount: parseAmt(b.adjustAmount || "0"),
+        })),
+        partySubLedgerId: partyLine?.subLedgerId || "",
+        bankSubLedgerId: bankLine?.subLedgerId || "",
       };
       const res = await fetch("/api/accounting-vouchers", {
         method: "POST", credentials: "include",
@@ -389,8 +614,10 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["/api/accounting-vouchers"] });
+      qc.invalidateQueries({ queryKey: ["/api/bill-adjustments/outstanding"] });
       setVoucherNo(data.voucherNo || voucherNo);
       setSaved(true); setSubmitErr(""); setTouched(false);
+      setBillAdjRows([]); setBillAdjSlId("");
       setTimeout(() => setSaved(false), 3500);
       setRefNo(""); setNarration("");
       setLines(vtName ? buildDefaultLines(vtName) : [mkLine(true, "DR"), mkLine(false, "CR")]);
@@ -687,6 +914,52 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
             </div>
           </div>
 
+          {/* Bill Adjustment Summary — shown after dialog confirms */}
+          {billAdjRows.length > 0 && nature === "payment" && (
+            <div className="mt-3 rounded-lg border overflow-hidden" style={{ borderColor: SC.primary + "55" }}>
+              <div className="flex items-center justify-between px-4 py-2" style={{ background: SC.tonal }}>
+                <span className="text-xs font-bold" style={{ color: SC.primary }}>
+                  Bill to Bill Adjustment — {billAdjRows.length} bill{billAdjRows.length > 1 ? "s" : ""} selected
+                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-gray-700">
+                    Total: ₹{fmtAmt(billAdjRows.reduce((s, r) => s + parseAmt(r.adjustAmount || "0"), 0))}
+                  </span>
+                  <button type="button" onClick={() => { setBillAdjSlId(lines[0]?.subLedgerId || ""); setShowBillAdj(true); }}
+                    className="text-xs px-2 py-0.5 rounded border font-semibold"
+                    style={{ color: SC.primary, borderColor: SC.primary + "66" }}>
+                    Edit
+                  </button>
+                  <button type="button" onClick={() => setBillAdjRows([])}
+                    className="text-gray-400 hover:text-red-500 p-0.5 rounded">
+                    <X size={13} />
+                  </button>
+                </div>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {["Bill Date", "Bill No", "Bill Amt ₹", "Adjusted ₹"].map(h => (
+                      <th key={h} className="px-3 py-1.5 text-left text-gray-500 font-semibold">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {billAdjRows.map((r, i) => (
+                    <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                      <td className="px-3 py-1.5 text-gray-600">{fmtDate(r.billDate)}</td>
+                      <td className="px-3 py-1.5 font-mono text-gray-800 font-semibold">{r.billNo || "—"}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-gray-600">{fmtAmt(r.billAmount)}</td>
+                      <td className="px-3 py-1.5 text-right font-mono font-bold" style={{ color: SC.orange }}>
+                        {fmtAmt(parseAmt(r.adjustAmount || "0"))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Narration */}
           <div className="mt-4 relative">
             <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Narration</label>
@@ -716,8 +989,32 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
         {/* ── Footer ─────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
-          <div className="text-xs text-gray-400">
-            Press <kbd className="border border-gray-200 rounded px-1 py-0.5 bg-white font-mono">Tab</kbd> or <kbd className="border border-gray-200 rounded px-1 py-0.5 bg-white font-mono">Enter</kbd> to move between fields
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-gray-400">
+              Press <kbd className="border border-gray-200 rounded px-1 py-0.5 bg-white font-mono">Tab</kbd> or <kbd className="border border-gray-200 rounded px-1 py-0.5 bg-white font-mono">Enter</kbd> on party row to adjust bills
+            </div>
+            {/* Manual bill adjustment trigger for payment vouchers */}
+            {nature === "payment" && lines[0]?.subLedgerId && parseAmt(lines[0]?.amount || "0") > 0 && (() => {
+              const sl = (allSubs as any[]).find((s: any) => s.id === lines[0].subLedgerId);
+              const g = (sl?.gl_name || "").toLowerCase();
+              const isParty = !g.includes("bank") && !g.includes("cash");
+              if (!isParty) return null;
+              return (
+                <button type="button"
+                  onClick={() => { setBillAdjSlId(lines[0].subLedgerId); setShowBillAdj(true); }}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border font-semibold"
+                  style={{ color: SC.primary, borderColor: SC.primary + "55", background: SC.tonal }}
+                  data-testid="btn-bill-adjustment">
+                  <FileText size={12} /> Bill Adjustment
+                  {billAdjRows.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full text-white text-[10px] font-bold"
+                      style={{ background: SC.orange }}>
+                      {billAdjRows.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
           </div>
           <div className="flex gap-3">
             <button type="button" onClick={onBack}
@@ -734,6 +1031,15 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
           </div>
         </div>
       </div>
+
+      {/* Bill to Bill Adjustment Dialog */}
+      <BillAdjustmentDialog
+        open={showBillAdj}
+        subLedgerId={billAdjSlId}
+        paymentAmount={parseAmt(lines[0]?.amount || "0")}
+        onConfirm={(rows) => { setBillAdjRows(rows); setShowBillAdj(false); }}
+        onClose={() => setShowBillAdj(false)}
+      />
     </div>
   );
 }

@@ -751,3 +751,20 @@ export const tallySyncLogs = pgTable("tally_sync_logs", {
 export const insertTallySyncLogSchema = createInsertSchema(tallySyncLogs).omit({ id: true, syncedAt: true });
 export type InsertTallySyncLog = z.infer<typeof insertTallySyncLogSchema>;
 export type TallySyncLog = typeof tallySyncLogs.$inferSelect;
+
+// Bill Adjustments — tracks how a payment voucher is allocated against outstanding bills
+export const billAdjustments = pgTable("bill_adjustments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  voucherMasId: varchar("voucher_mas_id"),
+  subLedgerId: varchar("sub_ledger_id"),
+  billSource: text("bill_source").notNull().default("purchase_invoice"),
+  billSourceId: varchar("bill_source_id"),
+  billRefNo: text("bill_ref_no").default(""),
+  billDate: date("bill_date"),
+  billAmount: decimal("bill_amount", { precision: 15, scale: 2 }).default("0"),
+  adjustedAmount: decimal("adjusted_amount", { precision: 15, scale: 2 }).default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertBillAdjustmentSchema = createInsertSchema(billAdjustments).omit({ id: true, createdAt: true });
+export type InsertBillAdjustment = z.infer<typeof insertBillAdjustmentSchema>;
+export type BillAdjustment = typeof billAdjustments.$inferSelect;

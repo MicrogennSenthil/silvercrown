@@ -1238,16 +1238,155 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─── Bill Adjustments — Outstanding Bills ────────────────────────────────────
+  app.get("/api/bill-adjustments/outstanding", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const subLedgerId = req.query.subLedgerId as string;
+      if (!subLedgerId) return res.json([]);
+
+      // Ensure bill_adjustments table exists
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bill_adjustments (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          voucher_mas_id varchar,
+          sub_ledger_id varchar,
+          bill_source text NOT NULL DEFAULT 'purchase_invoice',
+          bill_source_id varchar,
+          bill_ref_no text DEFAULT '',
+          bill_date date,
+          bill_amount decimal(15,2) DEFAULT 0,
+          adjusted_amount decimal(15,2) DEFAULT 0,
+          created_at timestamp DEFAULT now()
+        )
+      `).catch(() => {});
+
+      const bills: any[] = [];
+
+      // 1. Opening balance bills from sub_ledger_bills (Cr = supplier owes creditor balance)
+      const slBills = await pool.query(`
+        SELECT
+          slb.id,
+          slb.ref_no AS bill_no,
+          slb.ref_date AS bill_date,
+          slb.amount::numeric AS bill_amount,
+          slb.cr_dr,
+          COALESCE((
+            SELECT SUM(ba.adjusted_amount::numeric)
+            FROM bill_adjustments ba
+            WHERE ba.bill_source = 'opening_bill' AND ba.bill_source_id = slb.id
+          ), 0) AS paid_amount
+        FROM sub_ledger_bills slb
+        WHERE slb.sub_ledger_id = $1
+          AND slb.cr_dr = 'Cr'
+          AND slb.amount::numeric > 0
+        ORDER BY slb.ref_date NULLS LAST, slb.id
+      `, [subLedgerId]);
+
+      for (const r of slBills.rows) {
+        const billAmt = parseFloat(r.bill_amount || "0");
+        const paidAmt = parseFloat(r.paid_amount || "0");
+        const balance = parseFloat((billAmt - paidAmt).toFixed(2));
+        if (balance > 0.005) {
+          bills.push({
+            id: r.id, source: "opening_bill", sourceId: r.id,
+            billDate: r.bill_date ? String(r.bill_date).slice(0, 10) : "",
+            billNo: r.bill_no || "", billAmount: billAmt,
+            paidAmount: paidAmt, balanceAmount: balance, crDr: r.cr_dr || "Cr",
+          });
+        }
+      }
+
+      // 2. Purchase invoices for the supplier linked to this sub-ledger
+      const supplierRes = await pool.query(
+        `SELECT id FROM suppliers WHERE sub_ledger_id = $1 LIMIT 1`, [subLedgerId]
+      );
+      if (supplierRes.rows.length > 0) {
+        const supplierId = supplierRes.rows[0].id;
+        const invoices = await pool.query(`
+          SELECT
+            pi.id,
+            pi.invoice_number AS bill_no,
+            pi.invoice_date  AS bill_date,
+            pi.total_amount::numeric  AS bill_amount,
+            pi.paid_amount::numeric   AS paid_amount
+          FROM purchase_invoices pi
+          WHERE pi.supplier_id = $1
+            AND pi.total_amount::numeric > pi.paid_amount::numeric
+            AND pi.status != 'cancelled'
+          ORDER BY pi.invoice_date
+        `, [supplierId]);
+
+        for (const r of invoices.rows) {
+          const billAmt = parseFloat(r.bill_amount || "0");
+          const paidAmt = parseFloat(r.paid_amount || "0");
+          const balance = parseFloat((billAmt - paidAmt).toFixed(2));
+          if (balance > 0.005) {
+            bills.push({
+              id: r.id, source: "purchase_invoice", sourceId: r.id,
+              billDate: r.bill_date ? String(r.bill_date).slice(0, 10) : "",
+              billNo: r.bill_no || "", billAmount: billAmt,
+              paidAmount: paidAmt, balanceAmount: balance, crDr: "Cr",
+            });
+          }
+        }
+      }
+
+      // Sort by bill date ascending
+      bills.sort((a, b) =>
+        new Date(a.billDate || "1900-01-01").getTime() - new Date(b.billDate || "1900-01-01").getTime()
+      );
+      res.json(bills);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Helper: reduce a sub-ledger's closing balance (payment reduces both party + bank)
+  async function reduceSlClosingBalance(client: any, slId: string, amount: number) {
+    if (!slId || amount <= 0) return;
+    const r = await client.query(
+      `SELECT closing_balance, closing_balance_type FROM sub_ledgers WHERE id=$1`, [slId]
+    );
+    if (!r.rows[0]) return;
+    const cb = parseFloat(r.rows[0].closing_balance || "0");
+    const cbType = r.rows[0].closing_balance_type || "Credit";
+    const newBalance = cb - amount;
+    if (newBalance >= 0) {
+      await client.query(
+        `UPDATE sub_ledgers SET closing_balance=$1 WHERE id=$2`,
+        [newBalance.toFixed(2), slId]
+      );
+    } else {
+      const flippedType = cbType === "Credit" ? "Debit" : "Credit";
+      await client.query(
+        `UPDATE sub_ledgers SET closing_balance=$1, closing_balance_type=$2 WHERE id=$3`,
+        [Math.abs(newBalance).toFixed(2), flippedType, slId]
+      );
+    }
+  }
+
   app.post("/api/accounting-vouchers", requireAuth, async (req, res) => {
     const client = await (await import("./db")).pool.connect();
     try {
       await client.query("BEGIN");
       const { pool } = await import("./db");
-      // Ensure payment_mode column exists
+      // Ensure extra columns exist (idempotent)
       await pool.query(`ALTER TABLE voucher_mas ADD COLUMN IF NOT EXISTS payment_mode text DEFAULT ''`).catch(()=>{});
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS bill_adjustments (
+          id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          voucher_mas_id varchar, sub_ledger_id varchar,
+          bill_source text NOT NULL DEFAULT 'purchase_invoice',
+          bill_source_id varchar, bill_ref_no text DEFAULT '',
+          bill_date date, bill_amount decimal(15,2) DEFAULT 0,
+          adjusted_amount decimal(15,2) DEFAULT 0,
+          created_at timestamp DEFAULT now()
+        )
+      `).catch(()=>{});
+
       const { generateVoucherNo } = await import("./voucher");
       const { voucherTypeCode, voucherTypeName, referenceNo, referenceDate,
-              voucherDate, narration, lines = [] } = req.body;
+              voucherDate, narration, lines = [],
+              billAdjustments = [], partySubLedgerId = "", bankSubLedgerId = "" } = req.body;
 
       // Validate Dr/Cr balance
       const totalDr = lines.filter((l: any) => l.drCr === "DR").reduce((s: number, l: any) => s + parseFloat(l.amount || 0), 0);
@@ -1280,7 +1419,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (let i = 0; i < lines.length; i++) {
         const l = lines[i];
         if (!l.subLedgerId && !l.generalLedgerId) continue;
-        // Get GL id from sub-ledger if not provided
         let glId = l.generalLedgerId || null;
         if (!glId && l.subLedgerId) {
           const slR = await client.query(`SELECT general_ledger_id FROM sub_ledgers WHERE id=$1`, [l.subLedgerId]);
@@ -1290,6 +1428,54 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           INSERT INTO voucher_det (voucher_mas_id, seq_no, general_ledger_id, sub_ledger_id, dr_cr, amount, narration)
           VALUES ($1,$2,$3,$4,$5,$6,$7)
         `, [vmId, i + 1, glId, l.subLedgerId || null, l.drCr, parseFloat(l.amount || 0), l.narration || narration || ""]);
+      }
+
+      // ── Bill Adjustments ────────────────────────────────────────────────────
+      const isPayment = (voucherTypeName || voucherTypeCode || "").toLowerCase().includes("payment");
+      if (billAdjustments.length > 0 && isPayment) {
+        const totalAdjusted = billAdjustments.reduce((s: number, b: any) => s + parseFloat(b.adjustedAmount || 0), 0);
+
+        for (const b of billAdjustments) {
+          const adjAmt = parseFloat(b.adjustedAmount || "0");
+          if (adjAmt <= 0) continue;
+
+          // Save bill adjustment record
+          await client.query(`
+            INSERT INTO bill_adjustments
+              (voucher_mas_id, sub_ledger_id, bill_source, bill_source_id,
+               bill_ref_no, bill_date, bill_amount, adjusted_amount)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+          `, [vmId, partySubLedgerId, b.source, b.sourceId,
+              b.billNo || "", b.billDate || null, parseFloat(b.billAmount || 0), adjAmt]);
+
+          // For purchase invoices: update paid_amount and status
+          if (b.source === "purchase_invoice" && b.sourceId) {
+            await client.query(`
+              UPDATE purchase_invoices
+              SET paid_amount = LEAST(total_amount::numeric, paid_amount::numeric + $1),
+                  status = CASE
+                    WHEN paid_amount::numeric + $1 >= total_amount::numeric THEN 'paid'
+                    ELSE 'partial'
+                  END
+              WHERE id = $2
+            `, [adjAmt, b.sourceId]);
+          }
+        }
+
+        // Reduce party sub-ledger closing balance by total adjusted amount
+        if (partySubLedgerId) {
+          await reduceSlClosingBalance(client, partySubLedgerId, totalAdjusted);
+        }
+
+        // Reduce bank/cash sub-ledger closing balance by total payment amount
+        if (bankSubLedgerId) {
+          await reduceSlClosingBalance(client, bankSubLedgerId, totalAdjusted);
+        }
+      } else if (isPayment && partySubLedgerId && bankSubLedgerId) {
+        // Payment without bill adjustment: still reduce both balances
+        const paymentAmt = totalDr > 0 ? totalDr : totalCr;
+        await reduceSlClosingBalance(client, partySubLedgerId, paymentAmt);
+        await reduceSlClosingBalance(client, bankSubLedgerId, paymentAmt);
       }
 
       await client.query("COMMIT");
