@@ -590,6 +590,7 @@ export const generalLedgers = pgTable("general_ledgers", {
   balanceType: text("balance_type").notNull().default("Dr"),
   description: text("description").default(""),
   isActive: boolean("is_active").default(true),
+  glType: text("gl_type").default("other"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertGeneralLedgerSchema = createInsertSchema(generalLedgers).omit({ id: true, createdAt: true });

@@ -268,16 +268,13 @@ function getLineFilter(vtName: string, idx: number): FilterType {
 function applyFilter(sls: any[], f: FilterType) {
   if (f === "all") return sls;
   return sls.filter(s => {
-    const g = (s.gl_name || "").toLowerCase();
-    const n = (s.name   || "").toLowerCase();
-    const matchBank = g.includes("bank") || n.includes("bank");
-    const matchCash = g.includes("cash") || n.includes("cash");
-    if (f === "bank")             return matchBank;
-    if (f === "cash")             return matchCash;
-    if (f === "bank_cash")        return matchBank || matchCash;
+    const t = s.gl_type || "";
+    if (f === "bank")             return t === "bank";
+    if (f === "cash")             return t === "cash";
+    if (f === "bank_cash")        return t === "bank" || t === "cash";
     // party filters: only sub-ledgers (not direct GL entries)
-    if (f === "sundry_creditors") return !s.is_gl && g.includes("sundry creditor");
-    if (f === "sundry_debtors")   return !s.is_gl && g.includes("sundry debtor");
+    if (f === "sundry_creditors") return !s.is_gl && t === "sundry_creditor";
+    if (f === "sundry_debtors")   return !s.is_gl && t === "sundry_debtor";
     return true;
   });
 }
@@ -610,17 +607,15 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       const partyLine = (nature === "payment" || nature === "receipt")
         ? nonEmpty.find(l => {
             const sl = (allSubs as any[]).find((s: any) => s.id === (l.subLedgerId || l.generalLedgerId));
-            const g = (sl?.gl_name || "").toLowerCase();
-            const n = (sl?.name   || "").toLowerCase();
-            return g.includes("sundry creditor") || g.includes("sundry debtor") || n.includes("sundry creditor") || n.includes("sundry debtor");
+            const t = sl?.gl_type || "";
+            return t === "sundry_creditor" || t === "sundry_debtor";
           })
         : undefined;
       const bankLine = (nature === "payment" || nature === "receipt")
         ? nonEmpty.find(l => {
             const sl = (allSubs as any[]).find((s: any) => s.id === (l.subLedgerId || l.generalLedgerId));
-            const g = (sl?.gl_name || "").toLowerCase();
-            const n = (sl?.name   || "").toLowerCase();
-            return g.includes("bank") || g.includes("cash") || n.includes("bank") || n.includes("cash");
+            const t = sl?.gl_type || "";
+            return t === "bank" || t === "cash";
           })
         : undefined;
 

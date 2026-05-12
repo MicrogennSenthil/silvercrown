@@ -889,14 +889,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT sl.id, sl.code, sl.name, sl.general_ledger_id,
-               gl.name AS gl_name, gl.code AS gl_code,
+               gl.name AS gl_name, gl.code AS gl_code, gl.gl_type,
                false AS is_gl, sl.payment_type
         FROM sub_ledgers sl
         LEFT JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
         WHERE sl.is_active = true
         UNION ALL
         SELECT gl.id, gl.code, gl.name, gl.id AS general_ledger_id,
-               gl.name AS gl_name, gl.code AS gl_code,
+               gl.name AS gl_name, gl.code AS gl_code, gl.gl_type,
                true AS is_gl, 'Direct' AS payment_type
         FROM general_ledgers gl
         WHERE gl.is_active = true
@@ -915,10 +915,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name
+        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name, gl.gl_type
         FROM sub_ledgers sl
         JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
-        WHERE gl.name ILIKE '%debtor%' AND sl.is_active = true
+        WHERE gl.gl_type = 'sundry_debtor' AND sl.is_active = true
         ORDER BY sl.name
       `);
       res.json(r.rows);
@@ -928,10 +928,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name
+        SELECT sl.id, sl.name, sl.code, sl.payment_type, gl.name AS gl_name, gl.gl_type
         FROM sub_ledgers sl
         JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
-        WHERE gl.name ILIKE '%creditor%' AND sl.is_active = true
+        WHERE gl.gl_type = 'sundry_creditor' AND sl.is_active = true
         ORDER BY sl.name
       `);
       res.json(r.rows);
@@ -941,11 +941,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT sl.id, sl.name, gl.name AS gl_name
+        SELECT sl.id, sl.name, gl.name AS gl_name, gl.gl_type
         FROM sub_ledgers sl
         JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
-        JOIN ledger_categories lc ON lc.id = gl.category_id
-        WHERE lc.name = 'Expense' AND sl.is_active = true
+        WHERE gl.gl_type = 'expense' AND sl.is_active = true
         ORDER BY sl.name
       `);
       res.json(r.rows);

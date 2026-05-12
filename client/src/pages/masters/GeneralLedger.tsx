@@ -47,6 +47,7 @@ function GLPanel({ gl, categories, onClose, onSaved }: { gl: any; categories: an
   const [ob, setOb]       = useState(gl.openingBalance || "0");
   const [bt, setBt]       = useState(gl.balanceType || "Dr");
   const [desc, setDesc]   = useState(gl.description || "");
+  const [glType, setGlType] = useState(gl.gl_type || gl.glType || "other");
   const [saving, setSaving] = useState(false);
   const { validate, hasError, clearError, showApiError } = useFormValidation();
 
@@ -54,7 +55,7 @@ function GLPanel({ gl, categories, onClose, onSaved }: { gl: any; categories: an
     if (!validate([{ key: "name", value: name, label: "Name" }])) return;
     setSaving(true);
     try {
-      await apiRequest("PATCH", `/api/general-ledgers/${gl.id}`, { name, openingBalance: ob, balanceType: bt, description: desc });
+      await apiRequest("PATCH", `/api/general-ledgers/${gl.id}`, { name, openingBalance: ob, balanceType: bt, description: desc, glType });
       qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
       onSaved();
     } catch (e: any) { showApiError(e.message); }
@@ -78,6 +79,12 @@ function GLPanel({ gl, categories, onClose, onSaved }: { gl: any; categories: an
       <div className="space-y-0.5">
         {label("Category")}
         <input value={categories.find(c => c.id === gl.categoryId)?.name || "—"} readOnly className={inp("bg-gray-50 text-gray-500 cursor-not-allowed")}/>
+      </div>
+      <div className="space-y-0.5">
+        {label("GL Type")}
+        <select value={glType} onChange={e => setGlType(e.target.value)} className={inp()} data-testid="select-gl-type">
+          {GL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-0.5">
@@ -281,12 +288,26 @@ function SLPanel({ sl, generalLedgers, categories, onClose, onSaved }: { sl: any
 }
 
 // ─── Add GL Form ──────────────────────────────────────────────────────────────
+const GL_TYPES = [
+  { value: "other",           label: "Other" },
+  { value: "bank",            label: "Bank" },
+  { value: "cash",            label: "Cash" },
+  { value: "sundry_debtor",   label: "Sundry Debtor" },
+  { value: "sundry_creditor", label: "Sundry Creditor" },
+  { value: "purchase",        label: "Purchase" },
+  { value: "expense",         label: "Expense" },
+  { value: "tax",             label: "Tax" },
+  { value: "roundoff",        label: "Round Off" },
+  { value: "liability",       label: "Liability" },
+];
+
 function AddGLPanel({ categoryId, onClose, onSaved }: { categoryId: string; onClose: () => void; onSaved: () => void }) {
   const qc = useQueryClient();
-  const [code, setCode] = useState("");
-  const [name, setName] = useState("");
-  const [ob, setOb]     = useState("0");
-  const [bt, setBt]     = useState("Dr");
+  const [code, setCode]   = useState("");
+  const [name, setName]   = useState("");
+  const [ob, setOb]       = useState("0");
+  const [bt, setBt]       = useState("Dr");
+  const [glType, setGlType] = useState("other");
   const [saving, setSaving] = useState(false);
   const { validate, hasError, clearError, showApiError } = useFormValidation();
 
@@ -294,7 +315,7 @@ function AddGLPanel({ categoryId, onClose, onSaved }: { categoryId: string; onCl
     if (!validate([{ key: "code", value: code, label: "Code" }, { key: "name", value: name, label: "Name" }])) return;
     setSaving(true);
     try {
-      await apiRequest("POST", "/api/general-ledgers", { code, name, categoryId, openingBalance: ob, balanceType: bt, description: "" });
+      await apiRequest("POST", "/api/general-ledgers", { code, name, categoryId, openingBalance: ob, balanceType: bt, description: "", glType });
       qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
       onSaved();
     } catch (e: any) { showApiError(e.message); }
@@ -310,6 +331,12 @@ function AddGLPanel({ categoryId, onClose, onSaved }: { categoryId: string; onCl
       <div className="grid grid-cols-2 gap-3">
         <div>{label("Code",true)}<input value={code} onChange={e => { clearError("code"); setCode(e.target.value); }} className={inp(hasError("code") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-gl-code"/></div>
         <div>{label("Name",true)}<input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-gl-name"/></div>
+      </div>
+      <div className="space-y-0.5">
+        {label("GL Type")}
+        <select value={glType} onChange={e => setGlType(e.target.value)} className={inp()} data-testid="select-new-gl-type">
+          {GL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>{label("Opening Balance")}<input type="number" step="0.01" value={ob} onChange={e => setOb(e.target.value)} className={inp()}/></div>
