@@ -488,6 +488,9 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       .then(r => r.json()).then(d => { if (d.voucher_no) setVoucherNo(d.voucher_no); }).catch(() => {});
   }, [vtCode, isEdit]);
 
+  // ── Clear balance alert when user edits lines ───────────────────────────────
+  useEffect(() => { setSubmitErr(""); }, [lines]);
+
   // ── Line operations ────────────────────────────────────────────────────────
   function selectAccount(key: string, id: string, name: string, isGl: boolean) {
     setLines(prev => {
@@ -520,7 +523,24 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   }
 
   function setAmount(key: string, val: string) {
-    setLines(prev => prev.map(l => l._key === key ? { ...l, amount: val, _err: undefined } : l));
+    setLines(prev => {
+      const line = prev.find(l => l._key === key);
+      // For non-journal detail ("By") rows: cap at remaining balance from main ("To") row
+      if (line && !line.isMain && nature !== "journal") {
+        const mainAmtVal = parseAmt(prev[0]?.amount || "0");
+        if (mainAmtVal > 0) {
+          const otherDetailTotal = prev
+            .filter(l => !l.isMain && l._key !== key)
+            .reduce((s, l) => s + parseAmt(l.amount), 0);
+          const maxAllowed = Math.max(0, mainAmtVal - otherDetailTotal);
+          const entered = parseFloat(val) || 0;
+          if (entered > maxAllowed + 0.001) {
+            val = fmt2(maxAllowed);
+          }
+        }
+      }
+      return prev.map(l => l._key === key ? { ...l, amount: val, _err: undefined } : l);
+    });
   }
 
   // Tab/Enter on amount → just advance to next row
@@ -802,6 +822,11 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                   const isLast     = i === lines.length - 1;
                   const canToggle  = nature === "journal";
                   const lineErr    = touched ? validationErrors.find(e => e.key === l._key) : null;
+                  // Per-row cap: detail (By) rows in non-journal vouchers
+                  const rowMaxAllowed = (!l.isMain && nature !== "journal" && mainAmt > 0)
+                    ? Math.max(0, mainAmt - lines.filter(x => !x.isMain && x._key !== l._key).reduce((s, x) => s + parseAmt(x.amount), 0))
+                    : undefined;
+                  const isFullyAllocated = rowMaxAllowed !== undefined && rowMaxAllowed < 0.005 && !l.amount;
 
                   return (
                     <tr key={l._key}
@@ -858,23 +883,34 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                         <div className="relative">
                           <input
                             ref={el => { amtRefs.current[l._key] = el; }}
-                            type="number" min={0} value={l.amount}
+                            type="number" min={0}
+                            max={rowMaxAllowed !== undefined ? rowMaxAllowed : undefined}
+                            value={l.amount}
                             onChange={e => setAmount(l._key, e.target.value)}
                             onKeyDown={e => handleAmountTab(l._key, e)}
-                            placeholder={suggested || "0.00"}
+                            placeholder={isFullyAllocated ? "Fully allocated" : (suggested || "0.00")}
+                            disabled={isFullyAllocated}
                             className={`w-full border rounded px-2 h-[32px] text-sm text-right outline-none transition-colors font-mono ${
-                              lineErr?.field === "amount"
-                                ? "border-red-400 bg-red-50 focus:border-red-500"
-                                : "border-gray-200 focus:border-[#027fa5] bg-white"
+                              isFullyAllocated
+                                ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed"
+                                : lineErr?.field === "amount"
+                                  ? "border-red-400 bg-red-50 focus:border-red-500"
+                                  : "border-gray-200 focus:border-[#027fa5] bg-white"
                             }`}
                             data-testid={`input-amount-${i}`}
                           />
-                          {suggested && !l.amount && (
+                          {suggested && !l.amount && !isFullyAllocated && (
                             <span className="absolute right-7 top-1/2 -translate-y-1/2 text-[10px] text-amber-500 pointer-events-none">↑ suggested</span>
+                          )}
+                          {isFullyAllocated && (
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">✓ full</span>
                           )}
                         </div>
                         {lineErr?.field === "amount" && (
                           <div className="text-[11px] text-red-500 mt-0.5 text-right">{lineErr.msg}</div>
+                        )}
+                        {rowMaxAllowed !== undefined && rowMaxAllowed > 0.005 && !l.amount && hasAccount && (
+                          <div className="text-[10px] text-gray-400 mt-0.5 text-right">max ₹{fmtAmt(rowMaxAllowed)}</div>
                         )}
                       </td>
 
@@ -1015,9 +1051,14 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               ))}
             </div>
           )}
-          {submitErr && !generalErrors.length && (
-            <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-xs text-red-700 flex items-center gap-2">
-              <AlertCircle size={13} /> {submitErr}
+          {submitErr && (
+            <div className="mt-3 bg-red-100 border-2 border-red-400 rounded-lg px-4 py-3 flex items-start gap-2.5">
+              <AlertCircle size={16} className="text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-sm font-bold text-red-700">Cannot Save — Not Balanced</div>
+                <div className="text-xs text-red-600 mt-0.5">{submitErr}</div>
+              </div>
+              <button type="button" onClick={() => setSubmitErr("")} className="ml-auto text-red-400 hover:text-red-700"><X size={14}/></button>
             </div>
           )}
         </div>
@@ -1050,7 +1091,18 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               className="px-7 py-2 rounded border text-sm font-semibold text-gray-700 hover:bg-gray-50 border-gray-300"
               data-testid="btn-back">Back</button>
             <button type="button"
-              onClick={() => { setTouched(true); saveMut.mutate(); }}
+              onClick={() => {
+                setTouched(true);
+                if (!balanced && totalDr + totalCr > 0) {
+                  setSubmitErr(
+                    `Cannot save — voucher is not balanced. ` +
+                    `Debit: ₹${fmtAmt(totalDr)} | Credit: ₹${fmtAmt(totalCr)} | ` +
+                    `Difference: ₹${fmtAmt(Math.abs(diff))} (${diff > 0 ? "Debit excess" : "Credit excess"}).`
+                  );
+                  return;
+                }
+                saveMut.mutate();
+              }}
               disabled={saveMut.isPending}
               className="px-8 py-2 rounded text-sm font-bold text-white shadow-sm disabled:opacity-50 transition-opacity"
               style={{ background: balanced ? SC.orange : "#9ca3af" }}
