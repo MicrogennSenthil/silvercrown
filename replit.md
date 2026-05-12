@@ -106,3 +106,6 @@ client/public/
 - Login screen scales to viewport using CSS transform from 1920×1080 base — do NOT change this approach
 - Figma assets served from `/figmaAssets/`
 - `uploads/` directory is auto-created on startup for Gemini invoice processing
+
+## User Preferences
+- **ID/type-based filtering always**: Never use name-based string matching (ILIKE, `.includes()`, `.toLowerCase()`) to identify GL accounts or sub-ledger categories. Always use the `gl_type` column on `general_ledgers` (values: `bank`, `cash`, `sundry_debtor`, `sundry_creditor`, `purchase`, `expense`, `tax`, `roundoff`, `liability`, `other`). Apply this to all SQL WHERE clauses, frontend filter functions, and any logic that distinguishes account types. When creating new GLs or features that need account-type awareness, wire through `gl_type` from day one.
