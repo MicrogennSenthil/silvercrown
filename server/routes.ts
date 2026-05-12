@@ -889,11 +889,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT sl.id, sl.code, sl.name, sl.general_ledger_id,
-               gl.name AS gl_name, gl.code AS gl_code
+               gl.name AS gl_name, gl.code AS gl_code,
+               false AS is_gl, sl.payment_type
         FROM sub_ledgers sl
         LEFT JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
         WHERE sl.is_active = true
-        ORDER BY sl.name
+        UNION ALL
+        SELECT gl.id, gl.code, gl.name, gl.id AS general_ledger_id,
+               gl.name AS gl_name, gl.code AS gl_code,
+               true AS is_gl, 'Direct' AS payment_type
+        FROM general_ledgers gl
+        WHERE gl.is_active = true
+          AND NOT EXISTS (
+            SELECT 1 FROM sub_ledgers sl2
+            WHERE sl2.general_ledger_id = gl.id AND sl2.is_active = true
+          )
+        ORDER BY name
       `);
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }

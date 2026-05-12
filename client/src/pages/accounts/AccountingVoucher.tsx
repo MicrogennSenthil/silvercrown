@@ -26,6 +26,8 @@ type VLine = {
   drCr: "DR" | "CR";
   subLedgerId: string;
   subLedgerName: string;
+  generalLedgerId?: string;
+  isGl?: boolean;
   amount: string;
   narration: string;
   _err?: string;
@@ -267,11 +269,15 @@ function applyFilter(sls: any[], f: FilterType) {
   if (f === "all") return sls;
   return sls.filter(s => {
     const g = (s.gl_name || "").toLowerCase();
-    if (f === "bank")             return g.includes("bank");
-    if (f === "cash")             return g.includes("cash");
-    if (f === "bank_cash")        return g.includes("bank") || g.includes("cash");
-    if (f === "sundry_creditors") return g.includes("sundry creditor");
-    if (f === "sundry_debtors")   return g.includes("sundry debtor");
+    const n = (s.name   || "").toLowerCase();
+    const matchBank = g.includes("bank") || n.includes("bank");
+    const matchCash = g.includes("cash") || n.includes("cash");
+    if (f === "bank")             return matchBank;
+    if (f === "cash")             return matchCash;
+    if (f === "bank_cash")        return matchBank || matchCash;
+    // party filters: only sub-ledgers (not direct GL entries)
+    if (f === "sundry_creditors") return !s.is_gl && g.includes("sundry creditor");
+    if (f === "sundry_debtors")   return !s.is_gl && g.includes("sundry debtor");
     return true;
   });
 }
@@ -287,7 +293,7 @@ function filterLabel(f: FilterType): string | undefined {
 
 // ── Default lines ─────────────────────────────────────────────────────────────
 function mkLine(isMain: boolean, drCr: "DR" | "CR", extra: Partial<VLine> = {}): VLine {
-  return { _key: uuid(), isMain, drCr, subLedgerId: "", subLedgerName: "", amount: "", narration: "", ...extra };
+  return { _key: uuid(), isMain, drCr, subLedgerId: "", subLedgerName: "", generalLedgerId: "", isGl: false, amount: "", narration: "", ...extra };
 }
 
 function buildDefaultLines(vtName: string): VLine[] {
@@ -302,7 +308,7 @@ function SlPicker({
   value, name, onChange, subLedgers, hint, autoOpen, amountRef, onEnterAmount,
 }: {
   value: string; name: string;
-  onChange: (id: string, name: string) => void;
+  onChange: (id: string, name: string, isGl: boolean) => void;
   subLedgers: any[];
   hint?: string;
   autoOpen?: boolean;
@@ -341,7 +347,7 @@ function SlPicker({
   }
 
   function select(s: any) {
-    onChange(s.id, s.name);
+    onChange(s.id, s.name, s.is_gl === true);
     setOpen(false);
     // After selecting, jump to amount
     setTimeout(() => amountRef?.current?.focus(), 60);
@@ -439,12 +445,18 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
   const [lines, setLines] = useState<VLine[]>(() => {
     if (editData?.lines?.length) {
-      return editData.lines.map((l: any, i: number) => ({
-        _key: uuid(), isMain: i === 0,
-        drCr: l.dr_cr as "DR" | "CR",
-        subLedgerId: l.sub_ledger_id || "", subLedgerName: l.sl_name || "",
-        amount: l.amount || "", narration: l.narration || "",
-      }));
+      return editData.lines.map((l: any, i: number) => {
+        const hasSlId = !!l.sub_ledger_id;
+        return {
+          _key: uuid(), isMain: i === 0,
+          drCr: l.dr_cr as "DR" | "CR",
+          subLedgerId:     hasSlId ? l.sub_ledger_id : "",
+          subLedgerName:   hasSlId ? (l.sl_name || "") : (l.gl_name || ""),
+          generalLedgerId: hasSlId ? "" : (l.general_ledger_id || ""),
+          isGl:            !hasSlId && !!l.general_ledger_id,
+          amount: l.amount || "", narration: l.narration || "",
+        };
+      });
     }
     return [mkLine(true, "DR"), mkLine(false, "CR")];
   });
@@ -480,13 +492,18 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   }, [vtCode, isEdit]);
 
   // ── Line operations ────────────────────────────────────────────────────────
-  function selectAccount(key: string, id: string, name: string) {
+  function selectAccount(key: string, id: string, name: string, isGl: boolean) {
     setLines(prev => {
       const updated = prev.map(l => l._key === key
-        ? { ...l, subLedgerId: id, subLedgerName: name, _err: undefined }
+        ? { ...l,
+            subLedgerId:     isGl ? "" : id,
+            subLedgerName:   name,
+            generalLedgerId: isGl ? id : "",
+            isGl,
+            _err: undefined }
         : l);
       const last = updated[updated.length - 1];
-      if (last.subLedgerId) {
+      if (last.subLedgerId || last.generalLedgerId) {
         updated.push(mkLine(false, nature === "journal" ? "CR" : detDrCr));
       }
       return updated;
@@ -513,7 +530,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   function handleAmountTab(key: string, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Tab" && e.key !== "Enter") return;
     const idx = lines.findIndex(l => l._key === key);
-    if (idx === lines.length - 1 && lines[idx].subLedgerId) {
+    if (idx === lines.length - 1 && (lines[idx].subLedgerId || lines[idx].generalLedgerId)) {
       e.preventDefault();
       const newLine = mkLine(false, nature === "journal" ? "CR" : detDrCr);
       setLines(prev => [...prev, newLine]);
@@ -525,7 +542,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       const remain = prev.filter(l => l._key !== key);
       if (remain.length < 2) return prev;
       const last = remain[remain.length - 1];
-      if (last.subLedgerId) remain.push(mkLine(false, nature === "journal" ? "CR" : detDrCr));
+      if (last.subLedgerId || last.generalLedgerId) remain.push(mkLine(false, nature === "journal" ? "CR" : detDrCr));
       return remain;
     });
   }
@@ -533,7 +550,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   function toggleJournalDrCr(key: string) {
     if (nature !== "journal") return;
     setLines(prev => prev.map(l =>
-      l._key === key ? { ...l, drCr: l.drCr === "DR" ? "CR" : "DR", subLedgerId: "", subLedgerName: "" } : l
+      l._key === key ? { ...l, drCr: l.drCr === "DR" ? "CR" : "DR", subLedgerId: "", subLedgerName: "", generalLedgerId: "", isGl: false } : l
     ));
   }
 
@@ -543,7 +560,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
   // ── Suggest amount for pending empty rows ───────────────────────────────────
   function suggestedAmount(l: VLine, idx: number): string {
-    if (l.amount || !l.subLedgerId) return "";
+    if (l.amount || (!l.subLedgerId && !l.generalLedgerId)) return "";
     // If last meaningful detail row and there's a remaining difference
     const remaining = Math.abs(diff);
     if (remaining > 0.005) return fmt2(remaining).toString();
@@ -558,14 +575,14 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   function validate(): ValidationError[] {
     const errs: ValidationError[] = [];
     if (!vtId) errs.push({ field: "general", msg: "Select a Voucher Type to proceed." });
-    const nonEmpty = lines.filter(l => l.subLedgerId || l.amount);
+    const nonEmpty = lines.filter(l => l.subLedgerId || l.generalLedgerId || l.amount);
     if (nonEmpty.length < 2) errs.push({ field: "general", msg: "At least two ledger entries are required." });
     nonEmpty.forEach(l => {
-      if (!l.subLedgerId) errs.push({ field: "account", key: l._key, msg: "Ledger not selected." });
+      if (!l.subLedgerId && !l.generalLedgerId) errs.push({ field: "account", key: l._key, msg: "Ledger not selected." });
       if (!l.amount || parseAmt(l.amount) <= 0) errs.push({ field: "amount", key: l._key, msg: "Amount must be > 0." });
     });
     // Duplicate ledger check
-    const ids = nonEmpty.map(l => l.subLedgerId).filter(Boolean);
+    const ids = nonEmpty.map(l => l.subLedgerId || l.generalLedgerId || "").filter(Boolean);
     const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
     if (dupes.length) errs.push({ field: "general", msg: "Same ledger appears more than once. Remove duplicates." });
     if (!balanced && totalDr + totalCr > 0) {
@@ -585,23 +602,25 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
         setTouched(true);
         throw new Error(errs.filter(e => e.field === "general").map(e => e.msg).join(" "));
       }
-      const nonEmpty = lines.filter(l => l.subLedgerId && parseAmt(l.amount) > 0);
+      const nonEmpty = lines.filter(l => (l.subLedgerId || l.generalLedgerId) && parseAmt(l.amount) > 0);
 
-      // Identify party and bank/cash sub-ledgers for balance updates
+      // Identify party and bank/cash ledgers for balance updates
       // Payment: Row 0 = Sundry Creditor (party), Row 1+ = Bank/Cash
       // Receipt:  Row 0 = Bank/Cash, Row 1+ = Sundry Debtor (party)
       const partyLine = (nature === "payment" || nature === "receipt")
         ? nonEmpty.find(l => {
-            const sl = (allSubs as any[]).find((s: any) => s.id === l.subLedgerId);
+            const sl = (allSubs as any[]).find((s: any) => s.id === (l.subLedgerId || l.generalLedgerId));
             const g = (sl?.gl_name || "").toLowerCase();
-            return g.includes("sundry creditor") || g.includes("sundry debtor");
+            const n = (sl?.name   || "").toLowerCase();
+            return g.includes("sundry creditor") || g.includes("sundry debtor") || n.includes("sundry creditor") || n.includes("sundry debtor");
           })
         : undefined;
       const bankLine = (nature === "payment" || nature === "receipt")
         ? nonEmpty.find(l => {
-            const sl = (allSubs as any[]).find((s: any) => s.id === l.subLedgerId);
+            const sl = (allSubs as any[]).find((s: any) => s.id === (l.subLedgerId || l.generalLedgerId));
             const g = (sl?.gl_name || "").toLowerCase();
-            return g.includes("bank") || g.includes("cash");
+            const n = (sl?.name   || "").toLowerCase();
+            return g.includes("bank") || g.includes("cash") || n.includes("bank") || n.includes("cash");
           })
         : undefined;
 
@@ -610,7 +629,9 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
         referenceNo: refNo, referenceDate: refDate,
         voucherDate: vDate, narration,
         lines: nonEmpty.map(l => ({
-          drCr: l.drCr, subLedgerId: l.subLedgerId,
+          drCr: l.drCr,
+          subLedgerId:     l.isGl ? null : l.subLedgerId,
+          generalLedgerId: l.isGl ? l.generalLedgerId : null,
           amount: String(parseAmt(l.amount)), narration: l.narration || narration,
         })),
         // Bill adjustment data
@@ -620,7 +641,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
           billAmount: b.billAmount, adjustedAmount: parseAmt(b.adjustAmount || "0"),
         })),
         partySubLedgerId: partyLine?.subLedgerId || "",
-        bankSubLedgerId: bankLine?.subLedgerId || "",
+        bankSubLedgerId: bankLine?.subLedgerId || bankLine?.generalLedgerId || "",
       };
       const res = await fetch("/api/accounting-vouchers", {
         method: "POST", credentials: "include",
@@ -780,8 +801,9 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                   const fhint      = filterLabel(f);
                   const isDr       = l.drCr === "DR";
                   const label      = drCrLabel(l.drCr);
-                  const suggested  = !l.amount && l.subLedgerId ? suggestedAmount(l, i) : "";
-                  const isEmpty    = !l.subLedgerId && !l.amount;
+                  const hasAccount = !!(l.subLedgerId || l.generalLedgerId);
+                  const suggested  = !l.amount && hasAccount ? suggestedAmount(l, i) : "";
+                  const isEmpty    = !hasAccount && !l.amount;
                   const isLast     = i === lines.length - 1;
                   const canToggle  = nature === "journal";
                   const lineErr    = touched ? validationErrors.find(e => e.key === l._key) : null;
@@ -820,8 +842,8 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                       {/* Account */}
                       <td className="px-2 py-2">
                         <SlPicker
-                          value={l.subLedgerId} name={l.subLedgerName}
-                          onChange={(id, name) => selectAccount(l._key, id, name)}
+                          value={l.subLedgerId || l.generalLedgerId || ""} name={l.subLedgerName}
+                          onChange={(id, name, isGl) => selectAccount(l._key, id, name, isGl)}
                           subLedgers={filtSls} hint={fhint}
                           amountRef={{ current: amtRefs.current[l._key] }}
                         />
