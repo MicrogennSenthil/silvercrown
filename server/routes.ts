@@ -1297,7 +1297,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // 2. Purchase invoices for the supplier linked to this sub-ledger
+      // 2. Purchase invoices for the supplier linked to this sub-ledger (Sundry Creditors)
       const supplierRes = await pool.query(
         `SELECT id FROM suppliers WHERE sub_ledger_id = $1 LIMIT 1`, [subLedgerId]
       );
@@ -1309,11 +1309,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             pi.invoice_number AS bill_no,
             pi.invoice_date  AS bill_date,
             pi.total_amount::numeric  AS bill_amount,
-            pi.paid_amount::numeric   AS paid_amount
+            COALESCE(pi.paid_amount::numeric, 0) AS paid_amount
           FROM purchase_invoices pi
           WHERE pi.supplier_id = $1
-            AND pi.total_amount::numeric > pi.paid_amount::numeric
-            AND pi.status != 'cancelled'
+            AND pi.total_amount::numeric > COALESCE(pi.paid_amount::numeric, 0)
+            AND (pi.status IS NULL OR pi.status != 'cancelled')
           ORDER BY pi.invoice_date
         `, [supplierId]);
 
@@ -1327,6 +1327,76 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               billDate: r.bill_date ? String(r.bill_date).slice(0, 10) : "",
               billNo: r.bill_no || "", billAmount: billAmt,
               paidAmount: paidAmt, balanceAmount: balance, crDr: "Cr",
+            });
+          }
+        }
+      }
+
+      // 3. Sales invoices for the customer linked to this sub-ledger (Sundry Debtors)
+      const customerRes = await pool.query(
+        `SELECT id FROM customers WHERE sub_ledger_id = $1 LIMIT 1`, [subLedgerId]
+      );
+      if (customerRes.rows.length > 0) {
+        const customerId = customerRes.rows[0].id;
+        // Also check sub_ledger_bills with Dr balance (debtor owes us)
+        const slBillsDr = await pool.query(`
+          SELECT
+            slb.id,
+            slb.ref_no AS bill_no,
+            slb.ref_date AS bill_date,
+            slb.amount::numeric AS bill_amount,
+            slb.cr_dr,
+            COALESCE((
+              SELECT SUM(ba.adjusted_amount::numeric)
+              FROM bill_adjustments ba
+              WHERE ba.bill_source = 'opening_bill' AND ba.bill_source_id = slb.id
+            ), 0) AS paid_amount
+          FROM sub_ledger_bills slb
+          WHERE slb.sub_ledger_id = $1
+            AND slb.cr_dr = 'Dr'
+            AND slb.amount::numeric > 0
+          ORDER BY slb.ref_date NULLS LAST, slb.id
+        `, [subLedgerId]);
+
+        for (const r of slBillsDr.rows) {
+          const billAmt = parseFloat(r.bill_amount || "0");
+          const paidAmt = parseFloat(r.paid_amount || "0");
+          const balance = parseFloat((billAmt - paidAmt).toFixed(2));
+          if (balance > 0.005) {
+            bills.push({
+              id: r.id, source: "opening_bill", sourceId: r.id,
+              billDate: r.bill_date ? String(r.bill_date).slice(0, 10) : "",
+              billNo: r.bill_no || "", billAmount: billAmt,
+              paidAmount: paidAmt, balanceAmount: balance, crDr: r.cr_dr || "Dr",
+            });
+          }
+        }
+
+        // Sales invoices with outstanding balance
+        const salesInvoices = await pool.query(`
+          SELECT
+            si.id,
+            si.invoice_number AS bill_no,
+            si.invoice_date   AS bill_date,
+            si.total_amount::numeric  AS bill_amount,
+            COALESCE(si.paid_amount::numeric, 0) AS paid_amount
+          FROM sales_invoices si
+          WHERE si.customer_id = $1
+            AND si.total_amount::numeric > COALESCE(si.paid_amount::numeric, 0)
+            AND (si.status IS NULL OR si.status != 'cancelled')
+          ORDER BY si.invoice_date
+        `, [customerId]);
+
+        for (const r of salesInvoices.rows) {
+          const billAmt = parseFloat(r.bill_amount || "0");
+          const paidAmt = parseFloat(r.paid_amount || "0");
+          const balance = parseFloat((billAmt - paidAmt).toFixed(2));
+          if (balance > 0.005) {
+            bills.push({
+              id: r.id, source: "sales_invoice", sourceId: r.id,
+              billDate: r.bill_date ? String(r.bill_date).slice(0, 10) : "",
+              billNo: r.bill_no || "", billAmount: billAmt,
+              paidAmount: paidAmt, balanceAmount: balance, crDr: "Dr",
             });
           }
         }
@@ -1431,8 +1501,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // ── Bill Adjustments ────────────────────────────────────────────────────
-      const isPayment = (voucherTypeName || voucherTypeCode || "").toLowerCase().includes("payment");
-      if (billAdjustments.length > 0 && isPayment) {
+      const vtLower = (voucherTypeName || voucherTypeCode || "").toLowerCase();
+      const isPaymentOrReceipt = vtLower.includes("payment") || vtLower.includes("receipt");
+      if (billAdjustments.length > 0 && isPaymentOrReceipt) {
         const totalAdjusted = billAdjustments.reduce((s: number, b: any) => s + parseFloat(b.adjustedAmount || 0), 0);
 
         for (const b of billAdjustments) {
@@ -1452,30 +1523,57 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (b.source === "purchase_invoice" && b.sourceId) {
             await client.query(`
               UPDATE purchase_invoices
-              SET paid_amount = LEAST(total_amount::numeric, paid_amount::numeric + $1),
+              SET paid_amount = LEAST(total_amount::numeric, COALESCE(paid_amount::numeric, 0) + $1),
                   status = CASE
-                    WHEN paid_amount::numeric + $1 >= total_amount::numeric THEN 'paid'
+                    WHEN COALESCE(paid_amount::numeric, 0) + $1 >= total_amount::numeric THEN 'paid'
                     ELSE 'partial'
                   END
               WHERE id = $2
             `, [adjAmt, b.sourceId]);
           }
+
+          // For sales invoices: update paid_amount and status
+          if (b.source === "sales_invoice" && b.sourceId) {
+            await client.query(`
+              UPDATE sales_invoices
+              SET paid_amount = LEAST(total_amount::numeric, COALESCE(paid_amount::numeric, 0) + $1),
+                  status = CASE
+                    WHEN COALESCE(paid_amount::numeric, 0) + $1 >= total_amount::numeric THEN 'paid'
+                    ELSE 'partial'
+                  END
+              WHERE id = $2
+            `, [adjAmt, b.sourceId]).catch(() => {}); // ignore if paid_amount column not on sales_invoices
+          }
         }
 
-        // Reduce party sub-ledger closing balance by total adjusted amount
+        // Update sub-ledger balances
         if (partySubLedgerId) {
           await reduceSlClosingBalance(client, partySubLedgerId, totalAdjusted);
         }
-
-        // Reduce bank/cash sub-ledger closing balance by total payment amount
         if (bankSubLedgerId) {
-          await reduceSlClosingBalance(client, bankSubLedgerId, totalAdjusted);
+          // For payment: bank balance reduces. For receipt: bank balance increases.
+          if (vtLower.includes("payment")) {
+            await reduceSlClosingBalance(client, bankSubLedgerId, totalAdjusted);
+          } else {
+            // Receipt — bank/cash balance increases (add to closing_balance)
+            await client.query(
+              `UPDATE sub_ledgers SET closing_balance = GREATEST(0, closing_balance::numeric + $1) WHERE id = $2`,
+              [totalAdjusted.toFixed(2), bankSubLedgerId]
+            ).catch(() => {});
+          }
         }
-      } else if (isPayment && partySubLedgerId && bankSubLedgerId) {
-        // Payment without bill adjustment: still reduce both balances
-        const paymentAmt = totalDr > 0 ? totalDr : totalCr;
-        await reduceSlClosingBalance(client, partySubLedgerId, paymentAmt);
-        await reduceSlClosingBalance(client, bankSubLedgerId, paymentAmt);
+      } else if (isPaymentOrReceipt && partySubLedgerId && bankSubLedgerId) {
+        // Payment/Receipt without bill adjustment: update balances by total voucher amount
+        const amt = totalDr > 0 ? totalDr : totalCr;
+        await reduceSlClosingBalance(client, partySubLedgerId, amt);
+        if (vtLower.includes("payment")) {
+          await reduceSlClosingBalance(client, bankSubLedgerId, amt);
+        } else {
+          await client.query(
+            `UPDATE sub_ledgers SET closing_balance = GREATEST(0, closing_balance::numeric + $1) WHERE id = $2`,
+            [amt.toFixed(2), bankSubLedgerId]
+          ).catch(() => {});
+        }
       }
 
       await client.query("COMMIT");

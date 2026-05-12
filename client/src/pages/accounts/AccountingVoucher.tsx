@@ -18,7 +18,7 @@ function uuid() { return crypto.randomUUID(); }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Nature     = "payment" | "receipt" | "contra" | "journal";
-type FilterType = "bank" | "cash" | "bank_cash" | "all";
+type FilterType = "bank" | "cash" | "bank_cash" | "sundry_creditors" | "sundry_debtors" | "all";
 
 type VLine = {
   _key: string;
@@ -51,13 +51,17 @@ function fmtDate(d: string) {
 }
 
 // ── Bill to Bill Adjustment Dialog ────────────────────────────────────────────
+// Opens immediately when a party (Sundry Creditor/Debtor) is selected.
+// User types partial or double-clicks row to fill full balance for N bills.
+// On confirm → total becomes the voucher amount for that party line.
 function BillAdjustmentDialog({
-  open, subLedgerId, paymentAmount, onConfirm, onClose,
+  open, subLedgerId, prevRows, partyName, onConfirm, onClose,
 }: {
   open: boolean;
   subLedgerId: string;
-  paymentAmount: number;
-  onConfirm: (rows: BillAdjRow[]) => void;
+  prevRows: BillAdjRow[];
+  partyName: string;
+  onConfirm: (rows: BillAdjRow[], total: number) => void;
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<BillAdjRow[]>([]);
@@ -72,47 +76,55 @@ function BillAdjustmentDialog({
 
   useEffect(() => {
     if (bills.length > 0) {
-      setRows(bills.map(b => ({ ...b, adjustAmount: "" })));
+      setRows(bills.map(b => {
+        const prev = prevRows.find(p => p.sourceId === b.sourceId);
+        return { ...b, adjustAmount: prev ? prev.adjustAmount : "" };
+      }));
     } else if (!isLoading) {
       setRows([]);
     }
   }, [bills, isLoading]);
 
   const totalAdj = rows.reduce((s, r) => s + parseAmt(r.adjustAmount || "0"), 0);
-  const remaining = parseFloat((paymentAmount - totalAdj).toFixed(2));
-  const isOver = totalAdj > paymentAmount + 0.005;
 
   function setAmt(id: string, val: string) {
-    setRows(prev => prev.map(r => r.id === id ? { ...r, adjustAmount: val } : r));
+    setRows(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const num = parseFloat(val);
+      if (!isNaN(num) && num > r.balanceAmount) return { ...r, adjustAmount: r.balanceAmount.toFixed(2) };
+      return { ...r, adjustAmount: val };
+    }));
   }
 
   function fillBalance(row: BillAdjRow) {
-    const canFill = Math.min(row.balanceAmount, remaining + parseAmt(row.adjustAmount || "0"));
-    setRows(prev => prev.map(r => r.id === row.id ? { ...r, adjustAmount: canFill.toFixed(2) } : r));
+    setRows(prev => prev.map(r => r.id === row.id ? { ...r, adjustAmount: r.balanceAmount.toFixed(2) } : r));
   }
 
   function handleConfirm() {
-    if (isOver) return;
-    onConfirm(rows.filter(r => parseAmt(r.adjustAmount || "0") > 0));
+    const confirmed = rows.filter(r => parseAmt(r.adjustAmount || "0") > 0);
+    onConfirm(confirmed, totalAdj);
   }
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden flex flex-col" style={{ maxHeight: "80vh" }}>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 overflow-hidden flex flex-col" style={{ maxHeight: "82vh" }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100" style={{ background: SC.tonal }}>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <FileText size={18} style={{ color: SC.primary }} />
-            <h2 className="font-bold text-gray-800 text-base">Bill to Bill Adjustment</h2>
+            <div>
+              <h2 className="font-bold text-gray-800 text-base leading-tight">Bill to Bill Adjustment</h2>
+              {partyName && <div className="text-xs text-gray-500 mt-0.5">{partyName}</div>}
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              Payment: <span className="font-bold" style={{ color: SC.primary }}>₹{fmtAmt(paymentAmount)}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500 bg-white/70 px-2.5 py-1 rounded-full border border-gray-200">
+              Double-click any row to fill full balance
             </span>
-            <button onClick={onClose} className="p-1 rounded hover:bg-white/60 text-gray-500">
+            <button onClick={onClose} className="p-1.5 rounded hover:bg-white/70 text-gray-500 transition-colors">
               <X size={16} />
             </button>
           </div>
@@ -121,49 +133,54 @@ function BillAdjustmentDialog({
         {/* Table */}
         <div className="overflow-auto flex-1">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12 text-gray-400 text-sm">Loading outstanding bills…</div>
+            <div className="flex items-center justify-center py-16 text-gray-400 text-sm gap-2">
+              <div className="w-4 h-4 border-2 border-[#027fa5] border-t-transparent rounded-full animate-spin" />
+              Loading outstanding bills…
+            </div>
           ) : rows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
-              <FileText size={32} className="opacity-30" />
-              <span className="text-sm">No outstanding bills found for this party</span>
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+              <FileText size={36} className="opacity-20" />
+              <div className="text-sm font-medium">No outstanding bills for this party</div>
+              <div className="text-xs text-gray-400">All bills may already be paid or no bills exist</div>
+              <button type="button" onClick={() => onConfirm([], 0)}
+                className="mt-2 text-sm px-5 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 font-semibold">
+                Continue without adjustment
+              </button>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
+            <table className="w-full text-sm border-collapse">
+              <thead className="sticky top-0">
                 <tr style={{ background: SC.primary }}>
-                  {["Bill Date", "Bill No", "Bill Amt ₹", "Paid Amt ₹", "Balance Amt ₹", "Cr/Dr", "Amount ₹"].map(h => (
-                    <th key={h} className="px-4 py-3 text-left font-semibold text-white text-xs">{h}</th>
+                  {["Bill Date", "Bill No", "Bill Amt ₹", "Paid ₹", "Balance ₹", "Cr/Dr", "Amount ₹"].map(h => (
+                    <th key={h} className="px-4 py-3 text-left font-semibold text-white text-xs whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, i) => (
                   <tr key={row.id}
-                    className={`border-b border-gray-100 hover:bg-[#d2f1fa]/30 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}
+                    className={`border-b border-gray-100 hover:bg-[#d2f1fa]/40 transition-colors cursor-pointer select-none ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
                     onDoubleClick={() => fillBalance(row)}
-                    title="Double-click to fill balance amount"
+                    title="Double-click to fill full balance"
                     data-testid={`row-bill-adj-${i}`}>
-                    <td className="px-4 py-3 text-gray-700">{fmtDate(row.billDate)}</td>
+                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{fmtDate(row.billDate)}</td>
                     <td className="px-4 py-3 font-mono text-gray-800 font-semibold">{row.billNo || "—"}</td>
                     <td className="px-4 py-3 text-right font-mono text-gray-800">{fmtAmt(row.billAmount)}</td>
                     <td className="px-4 py-3 text-right font-mono text-gray-500">{fmtAmt(row.paidAmount)}</td>
-                    <td className="px-4 py-3 text-right font-mono font-semibold" style={{ color: SC.primary }}>
+                    <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: SC.primary }}>
                       {fmtAmt(row.balanceAmount)}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className="px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">{row.crDr}</span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <input
-                        type="number"
-                        min={0}
-                        max={row.balanceAmount}
+                        type="number" min={0} max={row.balanceAmount}
                         value={row.adjustAmount}
                         onChange={e => setAmt(row.id, e.target.value)}
                         onFocus={e => e.target.select()}
                         placeholder="0.00"
-                        className="w-28 border rounded px-2 py-1 text-right text-sm font-mono outline-none focus:border-[#027fa5] focus:ring-1 focus:ring-[#027fa5]/20"
-                        style={{ borderColor: parseAmt(row.adjustAmount || "0") > row.balanceAmount ? "#ef4444" : "#d1d5db" }}
+                        className="w-28 border border-gray-300 rounded px-2 py-1.5 text-right text-sm font-mono outline-none focus:border-[#027fa5] focus:ring-1 focus:ring-[#027fa5]/20"
                         data-testid={`input-adj-amount-${i}`}
                       />
                     </td>
@@ -175,35 +192,35 @@ function BillAdjustmentDialog({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/60">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6 text-sm">
-              <span className="text-gray-600">
-                Total Adjusted: <span className={`font-bold font-mono ${isOver ? "text-red-600" : "text-gray-800"}`}>₹{fmtAmt(totalAdj)}</span>
-              </span>
-              <span className="text-gray-600">
-                Remaining: <span className={`font-bold font-mono ${remaining < -0.005 ? "text-red-600" : "text-green-700"}`}>₹{fmtAmt(Math.abs(remaining))}</span>
-              </span>
-              {isOver && (
-                <span className="flex items-center gap-1 text-xs text-red-600 font-semibold">
-                  <AlertCircle size={13} /> Total exceeds payment amount
-                </span>
-              )}
-            </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={onClose}
-                className="px-5 py-2 rounded border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                Cancel
-              </button>
-              <button type="button" onClick={handleConfirm} disabled={isOver || rows.length === 0}
-                className="px-7 py-2 rounded text-sm font-bold text-white disabled:opacity-50"
-                style={{ background: isOver ? "#9ca3af" : SC.orange }}
-                data-testid="btn-bill-adj-save">
-                Save Adjustment
-              </button>
+        {rows.length > 0 && (
+          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/70">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-5">
+                <div className="text-sm">
+                  <span className="text-gray-500">Total Adjusted Amount:</span>
+                  <span className="font-bold font-mono text-base ml-2" style={{ color: SC.orange }}>
+                    ₹{fmtAmt(totalAdj)}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-400">
+                  This total will be set as the voucher amount
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={onClose}
+                  className="px-5 py-2 rounded border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                  Cancel
+                </button>
+                <button type="button" onClick={handleConfirm} disabled={totalAdj <= 0}
+                  className="px-7 py-2 rounded text-sm font-bold text-white disabled:opacity-40 transition-opacity"
+                  style={{ background: SC.orange }}
+                  data-testid="btn-bill-adj-save">
+                  Save & Set Amount
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -234,13 +251,14 @@ function getLineFilter(vtName: string, idx: number): FilterType {
   const nature = getNature(vtName);
   if (n.includes("contra")) return "bank_cash";
   if (nature === "payment") {
-    if (idx === 0) return "all";
-    if (idx === 1) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "all";
-    return "all";
+    // Row 0 = party (Sundry Creditors — supplier), Row 1+ = Bank or Cash
+    if (idx === 0) return "sundry_creditors";
+    return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   if (nature === "receipt") {
-    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "all";
-    return "all";
+    // Row 0 = Bank or Cash, Row 1+ = party (Sundry Debtors — customer)
+    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+    return "sundry_debtors";
   }
   return "all";
 }
@@ -249,17 +267,21 @@ function applyFilter(sls: any[], f: FilterType) {
   if (f === "all") return sls;
   return sls.filter(s => {
     const g = (s.gl_name || "").toLowerCase();
-    if (f === "bank")      return g.includes("bank");
-    if (f === "cash")      return g.includes("cash");
-    if (f === "bank_cash") return g.includes("bank") || g.includes("cash");
+    if (f === "bank")             return g.includes("bank");
+    if (f === "cash")             return g.includes("cash");
+    if (f === "bank_cash")        return g.includes("bank") || g.includes("cash");
+    if (f === "sundry_creditors") return g.includes("sundry creditor");
+    if (f === "sundry_debtors")   return g.includes("sundry debtor");
     return true;
   });
 }
 
 function filterLabel(f: FilterType): string | undefined {
-  if (f === "bank")      return "Bank only";
-  if (f === "cash")      return "Cash only";
-  if (f === "bank_cash") return "Bank / Cash";
+  if (f === "bank")             return "Bank only";
+  if (f === "cash")             return "Cash only";
+  if (f === "bank_cash")        return "Bank / Cash";
+  if (f === "sundry_creditors") return "Sundry Creditors";
+  if (f === "sundry_debtors")   return "Sundry Debtors";
   return undefined;
 }
 
@@ -428,9 +450,10 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   });
 
   // Bill Adjustment state
-  const [showBillAdj,   setShowBillAdj]   = useState(false);
-  const [billAdjRows,   setBillAdjRows]   = useState<BillAdjRow[]>([]);
-  const [billAdjSlId,   setBillAdjSlId]   = useState("");
+  const [showBillAdj,       setShowBillAdj]       = useState(false);
+  const [billAdjRows,       setBillAdjRows]       = useState<BillAdjRow[]>([]);
+  const [billAdjSlId,       setBillAdjSlId]       = useState("");
+  const [billAdjPartyLineKey, setBillAdjPartyLineKey] = useState("");
 
   // Amount input refs for keyboard jump
   const amtRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -462,41 +485,34 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       const updated = prev.map(l => l._key === key
         ? { ...l, subLedgerId: id, subLedgerName: name, _err: undefined }
         : l);
-      // Auto-add empty row if this was the last row
       const last = updated[updated.length - 1];
       if (last.subLedgerId) {
         updated.push(mkLine(false, nature === "journal" ? "CR" : detDrCr));
       }
       return updated;
     });
+
+    // Trigger bill adjustment dialog immediately when a party ledger is selected
+    if (id && vtName) {
+      const idx = lines.findIndex(l => l._key === key);
+      const f = getLineFilter(vtName, idx);
+      if (f === "sundry_creditors" || f === "sundry_debtors") {
+        setBillAdjSlId(id);
+        setBillAdjPartyLineKey(key);
+        setBillAdjRows([]); // reset previous for new party
+        setTimeout(() => setShowBillAdj(true), 80);
+      }
+    }
   }
 
   function setAmount(key: string, val: string) {
     setLines(prev => prev.map(l => l._key === key ? { ...l, amount: val, _err: undefined } : l));
   }
 
-  // On Tab/Enter from amount field — also trigger bill adjustment for payment Row 0
+  // Tab/Enter on amount → just advance to next row
   function handleAmountTab(key: string, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Tab" && e.key !== "Enter") return;
     const idx = lines.findIndex(l => l._key === key);
-
-    // Bill adjustment trigger: Row 0 of payment voucher with a party (non-bank/cash) ledger
-    if (idx === 0 && nature === "payment" && e.key === "Enter") {
-      const line = lines[0];
-      if (line.subLedgerId && parseAmt(line.amount) > 0) {
-        const sl = (allSubs as any[]).find((s: any) => s.id === line.subLedgerId);
-        const glName = (sl?.gl_name || "").toLowerCase();
-        const isBank = glName.includes("bank");
-        const isCash = glName.includes("cash");
-        if (!isBank && !isCash) {
-          e.preventDefault();
-          setBillAdjSlId(line.subLedgerId);
-          setShowBillAdj(true);
-          return;
-        }
-      }
-    }
-
     if (idx === lines.length - 1 && lines[idx].subLedgerId) {
       e.preventDefault();
       const newLine = mkLine(false, nature === "journal" ? "CR" : detDrCr);
@@ -572,14 +588,16 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       const nonEmpty = lines.filter(l => l.subLedgerId && parseAmt(l.amount) > 0);
 
       // Identify party and bank/cash sub-ledgers for balance updates
-      const partyLine = nature === "payment"
+      // Payment: Row 0 = Sundry Creditor (party), Row 1+ = Bank/Cash
+      // Receipt:  Row 0 = Bank/Cash, Row 1+ = Sundry Debtor (party)
+      const partyLine = (nature === "payment" || nature === "receipt")
         ? nonEmpty.find(l => {
             const sl = (allSubs as any[]).find((s: any) => s.id === l.subLedgerId);
             const g = (sl?.gl_name || "").toLowerCase();
-            return !g.includes("bank") && !g.includes("cash");
+            return g.includes("sundry creditor") || g.includes("sundry debtor");
           })
         : undefined;
-      const bankLine = nature === "payment"
+      const bankLine = (nature === "payment" || nature === "receipt")
         ? nonEmpty.find(l => {
             const sl = (allSubs as any[]).find((s: any) => s.id === l.subLedgerId);
             const g = (sl?.gl_name || "").toLowerCase();
@@ -617,7 +635,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       qc.invalidateQueries({ queryKey: ["/api/bill-adjustments/outstanding"] });
       setVoucherNo(data.voucherNo || voucherNo);
       setSaved(true); setSubmitErr(""); setTouched(false);
-      setBillAdjRows([]); setBillAdjSlId("");
+      setBillAdjRows([]); setBillAdjSlId(""); setBillAdjPartyLineKey("");
       setTimeout(() => setSaved(false), 3500);
       setRefNo(""); setNarration("");
       setLines(vtName ? buildDefaultLines(vtName) : [mkLine(true, "DR"), mkLine(false, "CR")]);
@@ -915,7 +933,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
           </div>
 
           {/* Bill Adjustment Summary — shown after dialog confirms */}
-          {billAdjRows.length > 0 && nature === "payment" && (
+          {billAdjRows.length > 0 && (nature === "payment" || nature === "receipt") && (
             <div className="mt-3 rounded-lg border overflow-hidden" style={{ borderColor: SC.primary + "55" }}>
               <div className="flex items-center justify-between px-4 py-2" style={{ background: SC.tonal }}>
                 <span className="text-xs font-bold" style={{ color: SC.primary }}>
@@ -925,12 +943,12 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                   <span className="text-xs font-semibold text-gray-700">
                     Total: ₹{fmtAmt(billAdjRows.reduce((s, r) => s + parseAmt(r.adjustAmount || "0"), 0))}
                   </span>
-                  <button type="button" onClick={() => { setBillAdjSlId(lines[0]?.subLedgerId || ""); setShowBillAdj(true); }}
+                  <button type="button" onClick={() => setShowBillAdj(true)}
                     className="text-xs px-2 py-0.5 rounded border font-semibold"
                     style={{ color: SC.primary, borderColor: SC.primary + "66" }}>
                     Edit
                   </button>
-                  <button type="button" onClick={() => setBillAdjRows([])}
+                  <button type="button" onClick={() => { setBillAdjRows([]); setBillAdjPartyLineKey(""); setBillAdjSlId(""); }}
                     className="text-gray-400 hover:text-red-500 p-0.5 rounded">
                     <X size={13} />
                   </button>
@@ -991,30 +1009,24 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
           <div className="flex items-center gap-3">
             <div className="text-xs text-gray-400">
-              Press <kbd className="border border-gray-200 rounded px-1 py-0.5 bg-white font-mono">Tab</kbd> or <kbd className="border border-gray-200 rounded px-1 py-0.5 bg-white font-mono">Enter</kbd> on party row to adjust bills
+              Select a party ledger to open Bill Adjustment automatically
             </div>
-            {/* Manual bill adjustment trigger for payment vouchers */}
-            {nature === "payment" && lines[0]?.subLedgerId && parseAmt(lines[0]?.amount || "0") > 0 && (() => {
-              const sl = (allSubs as any[]).find((s: any) => s.id === lines[0].subLedgerId);
-              const g = (sl?.gl_name || "").toLowerCase();
-              const isParty = !g.includes("bank") && !g.includes("cash");
-              if (!isParty) return null;
-              return (
-                <button type="button"
-                  onClick={() => { setBillAdjSlId(lines[0].subLedgerId); setShowBillAdj(true); }}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border font-semibold"
-                  style={{ color: SC.primary, borderColor: SC.primary + "55", background: SC.tonal }}
-                  data-testid="btn-bill-adjustment">
-                  <FileText size={12} /> Bill Adjustment
-                  {billAdjRows.length > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 rounded-full text-white text-[10px] font-bold"
-                      style={{ background: SC.orange }}>
-                      {billAdjRows.length}
-                    </span>
-                  )}
-                </button>
-              );
-            })()}
+            {/* Manual re-open bill adjustment for payment or receipt */}
+            {(nature === "payment" || nature === "receipt") && billAdjPartyLineKey && billAdjSlId && (
+              <button type="button"
+                onClick={() => setShowBillAdj(true)}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border font-semibold"
+                style={{ color: SC.primary, borderColor: SC.primary + "55", background: SC.tonal }}
+                data-testid="btn-bill-adjustment">
+                <FileText size={12} /> Bill Adjustment
+                {billAdjRows.length > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-white text-[10px] font-bold"
+                    style={{ background: SC.orange }}>
+                    {billAdjRows.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
           <div className="flex gap-3">
             <button type="button" onClick={onBack}
@@ -1036,8 +1048,18 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       <BillAdjustmentDialog
         open={showBillAdj}
         subLedgerId={billAdjSlId}
-        paymentAmount={parseAmt(lines[0]?.amount || "0")}
-        onConfirm={(rows) => { setBillAdjRows(rows); setShowBillAdj(false); }}
+        prevRows={billAdjRows}
+        partyName={lines.find(l => l._key === billAdjPartyLineKey)?.subLedgerName || ""}
+        onConfirm={(rows, total) => {
+          setBillAdjRows(rows);
+          setShowBillAdj(false);
+          // Set the party line amount to the total adjusted
+          if (billAdjPartyLineKey && total > 0) {
+            setLines(prev => prev.map(l =>
+              l._key === billAdjPartyLineKey ? { ...l, amount: total.toFixed(2) } : l
+            ));
+          }
+        }}
         onClose={() => setShowBillAdj(false)}
       />
     </div>
