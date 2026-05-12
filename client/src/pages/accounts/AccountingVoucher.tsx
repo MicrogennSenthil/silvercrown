@@ -586,13 +586,34 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
   function fmt2(n: number) { return n.toFixed(2); }
 
+  // ── Auto-fill pending suggestions (called before save) ──────────────────────
+  function fillSuggestions(workLines: VLine[]): VLine[] {
+    let runningDr = workLines.filter(l => l.drCr === "DR" && l.amount).reduce((s, l) => s + parseAmt(l.amount), 0);
+    let runningCr = workLines.filter(l => l.drCr === "CR" && l.amount).reduce((s, l) => s + parseAmt(l.amount), 0);
+    return workLines.map(l => {
+      if (l.amount || (!l.subLedgerId && !l.generalLedgerId)) return l;
+      const rem = Math.abs(runningDr - runningCr);
+      if (rem > 0.005) {
+        const filled = fmt2(rem);
+        if (l.drCr === "DR") runningDr += parseAmt(filled);
+        else runningCr += parseAmt(filled);
+        return { ...l, amount: filled };
+      }
+      return l;
+    });
+  }
+
   // ── Inline validation ───────────────────────────────────────────────────────
   type ValidationError = { field: "account" | "amount" | "general"; key?: string; msg: string };
 
-  function validate(): ValidationError[] {
+  function validate(workLines?: VLine[]): ValidationError[] {
+    const wl = workLines ?? lines;
+    const wDr = wl.filter(l => l.drCr === "DR").reduce((s, l) => s + parseAmt(l.amount), 0);
+    const wCr = wl.filter(l => l.drCr === "CR").reduce((s, l) => s + parseAmt(l.amount), 0);
+    const wBalanced = Math.abs(wDr - wCr) < 0.005 && wDr > 0;
     const errs: ValidationError[] = [];
     if (!vtId) errs.push({ field: "general", msg: "Select a Voucher Type to proceed." });
-    const nonEmpty = lines.filter(l => l.subLedgerId || l.generalLedgerId || l.amount);
+    const nonEmpty = wl.filter(l => l.subLedgerId || l.generalLedgerId || l.amount);
     if (nonEmpty.length < 2) errs.push({ field: "general", msg: "At least two ledger entries are required." });
     nonEmpty.forEach(l => {
       if (!l.subLedgerId && !l.generalLedgerId) errs.push({ field: "account", key: l._key, msg: "Ledger not selected." });
@@ -602,8 +623,8 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     const ids = nonEmpty.map(l => l.subLedgerId || l.generalLedgerId || "").filter(Boolean);
     const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
     if (dupes.length) errs.push({ field: "general", msg: "Same ledger appears more than once. Remove duplicates." });
-    if (!balanced && totalDr + totalCr > 0) {
-      errs.push({ field: "general", msg: `Voucher is not balanced. Difference: ₹${fmtAmt(Math.abs(diff))} (${diff > 0 ? "Debit" : "Credit"} excess).` });
+    if (!wBalanced && wDr + wCr > 0) {
+      errs.push({ field: "general", msg: `Voucher is not balanced. Difference: ₹${fmtAmt(Math.abs(wDr - wCr))} (${wDr > wCr ? "Debit" : "Credit"} excess).` });
     }
     return errs;
   }
@@ -613,13 +634,13 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
   // ── Save ────────────────────────────────────────────────────────────────────
   const saveMut = useMutation({
-    mutationFn: async () => {
-      const errs = validate();
+    mutationFn: async (workLines: VLine[]) => {
+      const errs = validate(workLines);
       if (errs.length) {
         setTouched(true);
         throw new Error(errs.filter(e => e.field === "general").map(e => e.msg).join(" "));
       }
-      const nonEmpty = lines.filter(l => (l.subLedgerId || l.generalLedgerId) && parseAmt(l.amount) > 0);
+      const nonEmpty = workLines.filter(l => (l.subLedgerId || l.generalLedgerId) && parseAmt(l.amount) > 0);
 
       // Identify party and bank/cash ledgers for balance updates
       // Payment: Row 0 = Sundry Creditor (party), Row 1+ = Bank/Cash
@@ -1093,16 +1114,23 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               data-testid="btn-back">Back</button>
             <button type="button"
               onClick={() => {
+                // Fill any pending suggestion amounts before validating
+                const filledLines = fillSuggestions(lines);
+                setLines(filledLines);
                 setTouched(true);
-                if (!balanced && totalDr + totalCr > 0) {
+                // Compute balance from filled lines
+                const fDr = filledLines.filter(l => l.drCr === "DR").reduce((s, l) => s + parseAmt(l.amount), 0);
+                const fCr = filledLines.filter(l => l.drCr === "CR").reduce((s, l) => s + parseAmt(l.amount), 0);
+                const fBalanced = Math.abs(fDr - fCr) < 0.005 && fDr > 0;
+                if (!fBalanced && fDr + fCr > 0) {
                   setSubmitErr(
                     `Cannot save — voucher is not balanced. ` +
-                    `Debit: ₹${fmtAmt(totalDr)} | Credit: ₹${fmtAmt(totalCr)} | ` +
-                    `Difference: ₹${fmtAmt(Math.abs(diff))} (${diff > 0 ? "Debit excess" : "Credit excess"}).`
+                    `Debit: ₹${fmtAmt(fDr)} | Credit: ₹${fmtAmt(fCr)} | ` +
+                    `Difference: ₹${fmtAmt(Math.abs(fDr - fCr))} (${fDr > fCr ? "Debit excess" : "Credit excess"}).`
                   );
                   return;
                 }
-                saveMut.mutate();
+                saveMut.mutate(filledLines);
               }}
               disabled={saveMut.isPending}
               className="px-8 py-2 rounded text-sm font-bold text-white shadow-sm disabled:opacity-50 transition-opacity"
