@@ -17,7 +17,7 @@ type GrnItem = {
 };
 type GrnForm = {
   grn_date: string; store_id: string; store_name: string;
-  supplier_id: string; supplier_name_manual: string;
+  supplier_id: string; supplier_name_manual: string; sl_id: string;
   dc_no: string; bill_no: string; bill_date: string;
   payment_mode: string; purchase_type: string;
   po_id: string; po_no: string; round_off: number; remark: string;
@@ -32,7 +32,7 @@ const blankItem = (): GrnItem => ({
 });
 const blankForm = (): GrnForm => ({
   grn_date: new Date().toISOString().slice(0,10), store_id:"", store_name:"",
-  supplier_id:"", supplier_name_manual:"", dc_no:"", bill_no:"", bill_date:"",
+  supplier_id:"", supplier_name_manual:"", sl_id:"", dc_no:"", bill_no:"", bill_date:"",
   payment_mode:"Cash", purchase_type:"PO", po_id:"", po_no:"", round_off:0, remark:"",
   grand_total:0, items:[{ ...blankItem() }],
 });
@@ -70,8 +70,9 @@ function SupplierSelect({ value, name, onChange }: { value: string; name: string
           <div className="overflow-y-auto flex-1">
             {filtered.map((s: any) => (
               <button key={s.id} type="button"
-                onClick={() => { onChange("", s.name); setOpen(false); setQ(""); }}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] transition-colors">
+                onClick={() => { onChange(s.id, s.name); setOpen(false); setQ(""); }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] transition-colors"
+                data-testid={`supplier-option-${s.id}`}>
                 {s.name}
               </button>
             ))}
@@ -504,8 +505,8 @@ export default function GoodsReceiptNote() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 font-medium">Supplier Name</label>
-                  <SupplierSelect value={form.supplier_id} name={form.supplier_name_manual}
-                    onChange={(id,name) => setForm(f=>({...f,supplier_id:id,supplier_name_manual:name}))}/>
+                  <SupplierSelect value={form.sl_id} name={form.supplier_name_manual}
+                    onChange={(slId, name) => setForm(f => ({ ...f, sl_id: slId, supplier_name_manual: name }))}/>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 font-medium">DC No</label>

@@ -46,10 +46,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const SC_GL_PARTY = "20845da1-6847-43ce-98d5-7e3e3e44b86b"; // Sundry Creditors
 
   async function ensureSubLedger(pool: any, glId: string, name: string, existingSlId?: string | null): Promise<string> {
-    if (existingSlId) return existingSlId;
+    // If ID already exists — preserve it, just sync the name in case it changed
+    if (existingSlId) {
+      await pool.query(
+        `UPDATE sub_ledgers SET name=$1 WHERE id=$2`,
+        [name, existingSlId]
+      ).catch(() => {});
+      return existingSlId;
+    }
+    // No ID — try to find by name within the same GL (creation fallback only)
     const existing = await pool.query(
       `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND LOWER(name)=LOWER($2) LIMIT 1`, [glId, name]);
     if (existing.rows.length > 0) return existing.rows[0].id;
+    // Create new sub-ledger
     const res = await pool.query(
       `INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
        VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
@@ -1245,7 +1254,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const subLedgerId = req.query.subLedgerId as string;
       if (!subLedgerId) return res.json([]);
 
-      // Ensure bill_adjustments table exists
+      // Ensure bill_adjustments table exists + paid_amount on GRNs
       await pool.query(`
         CREATE TABLE IF NOT EXISTS bill_adjustments (
           id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -1260,6 +1269,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           created_at timestamp DEFAULT now()
         )
       `).catch(() => {});
+      await pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0`).catch(() => {});
 
       const bills: any[] = [];
 
@@ -1402,6 +1412,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
+      // 4. GRNs for supplier linked to this sub-ledger (Sundry Creditors side)
+      //    Match by: supplier_id = subLedgerId (new GRNs store sub-ledger ID)
+      //              OR by name match (legacy GRNs stored only supplier_name_manual)
+      const slNameRes = await pool.query(`SELECT name FROM sub_ledgers WHERE id=$1`, [subLedgerId]);
+      const slName = slNameRes.rows[0]?.name || "";
+
+      const grns = await pool.query(`
+        SELECT
+          g.id,
+          COALESCE(NULLIF(g.bill_no,''), g.voucher_no) AS bill_no,
+          COALESCE(g.bill_date::text, g.grn_date::text) AS bill_date,
+          g.grand_total::numeric AS bill_amount,
+          COALESCE(g.paid_amount::numeric, 0) AS paid_amount
+        FROM goods_receipt_notes g
+        WHERE (
+          g.sl_id = $1
+          OR (($2 != '') AND LOWER(TRIM(g.supplier_name_manual)) = LOWER(TRIM($2)))
+        )
+          AND g.grand_total::numeric > COALESCE(g.paid_amount::numeric, 0)
+          AND COALESCE(g.status,'Draft') NOT IN ('Cancelled','Paid')
+        ORDER BY COALESCE(g.bill_date, g.grn_date)
+      `, [subLedgerId, slName]);
+
+      const seenGrnIds = new Set<string>();
+      for (const r of grns.rows) {
+        if (seenGrnIds.has(r.id)) continue;
+        seenGrnIds.add(r.id);
+        const billAmt = parseFloat(r.bill_amount || "0");
+        const paidAmt = parseFloat(r.paid_amount || "0");
+        const balance = parseFloat((billAmt - paidAmt).toFixed(2));
+        if (balance > 0.005) {
+          bills.push({
+            id: r.id, source: "grn", sourceId: r.id,
+            billDate: r.bill_date ? String(r.bill_date).slice(0, 10) : "",
+            billNo: r.bill_no || "", billAmount: billAmt,
+            paidAmount: paidAmt, balanceAmount: balance, crDr: "Cr",
+          });
+        }
+      }
+
       // Sort by bill date ascending
       bills.sort((a, b) =>
         new Date(a.billDate || "1900-01-01").getTime() - new Date(b.billDate || "1900-01-01").getTime()
@@ -1452,6 +1502,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           created_at timestamp DEFAULT now()
         )
       `).catch(()=>{});
+      await pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0`).catch(()=>{});
 
       const { generateVoucherNo } = await import("./voucher");
       const { voucherTypeCode, voucherTypeName, referenceNo, referenceDate,
@@ -1542,7 +1593,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                     ELSE 'partial'
                   END
               WHERE id = $2
-            `, [adjAmt, b.sourceId]).catch(() => {}); // ignore if paid_amount column not on sales_invoices
+            `, [adjAmt, b.sourceId]).catch(() => {});
+          }
+
+          // For GRNs: update paid_amount and status
+          if (b.source === "grn" && b.sourceId) {
+            await client.query(`
+              UPDATE goods_receipt_notes
+              SET paid_amount = LEAST(grand_total::numeric, COALESCE(paid_amount::numeric, 0) + $1),
+                  status = CASE
+                    WHEN COALESCE(paid_amount::numeric, 0) + $1 >= grand_total::numeric THEN 'Paid'
+                    ELSE 'Partial'
+                  END
+              WHERE id = $2
+            `, [adjAmt, b.sourceId]).catch(() => {});
           }
         }
 
@@ -2829,33 +2893,50 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   }
 
   // ── Shared helper: resolve or auto-create Customer in masters ────────────────
+  // Always uses ID for lookup when available. Name is only used for initial creation fallback.
   async function resolvePartyMaster(client: any, partyId: string | null, partyName: string): Promise<string | null> {
     const name = (partyName || "").trim();
-    if (!name) return partyId || null;
+    if (!name && !partyId) return null;
 
-    // If party_id already provided, verify it exists and return it
+    // If party_id already provided, verify it exists and return it (ID is authoritative)
     if (partyId) {
       const chk = await client.query(`SELECT id FROM customers WHERE id=$1 LIMIT 1`, [partyId]);
       if (chk.rows.length > 0) return partyId;
     }
 
-    // Search by name (case-insensitive)
-    const nameChk = await client.query(
-      `SELECT id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [name]
-    );
-    if (nameChk.rows.length > 0) return nameChk.rows[0].id;
+    // Fallback: search by name only when no ID provided (initial resolution)
+    if (name) {
+      const nameChk = await client.query(
+        `SELECT id, sub_ledger_id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [name]
+      );
+      if (nameChk.rows.length > 0) {
+        // Ensure this customer has a sub-ledger (if missing, create one)
+        if (!nameChk.rows[0].sub_ledger_id) {
+          const slId = await ensureSubLedger(client, SD_GL, name, null);
+          await client.query(`UPDATE customers SET sub_ledger_id=$1 WHERE id=$2`, [slId, nameChk.rows[0].id]).catch(() => {});
+        }
+        return nameChk.rows[0].id;
+      }
 
-    // Not found — auto-create with minimal required fields
-    const ins = await client.query(
-      `INSERT INTO customers (id, name) VALUES (gen_random_uuid()::text, $1)
-       ON CONFLICT DO NOTHING RETURNING id`,
-      [name]
-    );
-    if (ins.rows.length > 0) return ins.rows[0].id;
+      // Not found — auto-create customer with sub-ledger under Sundry Debtors
+      const newId = (await client.query(
+        `INSERT INTO customers (id, name) VALUES (gen_random_uuid()::text, $1)
+         ON CONFLICT DO NOTHING RETURNING id`, [name]
+      )).rows[0]?.id;
 
-    // Fallback: fetch by name in case of a race
-    const retry = await client.query(`SELECT id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [name]);
-    return retry.rows[0]?.id || null;
+      if (newId) {
+        // Always create a sub-ledger by ID for the new customer
+        const slId = await ensureSubLedger(client, SD_GL, name, null);
+        await client.query(`UPDATE customers SET sub_ledger_id=$1 WHERE id=$2`, [slId, newId]).catch(() => {});
+        return newId;
+      }
+
+      // Race condition fallback — fetch by name
+      const retry = await client.query(`SELECT id FROM customers WHERE LOWER(name)=LOWER($1) LIMIT 1`, [name]);
+      return retry.rows[0]?.id || null;
+    }
+
+    return null;
   }
 
   app.post("/api/job-work-inward", requireAuth, async (req, res) => {
@@ -4360,20 +4441,24 @@ Return ONLY valid JSON (no markdown, no explanation):
     await client.query(`DELETE FROM voucher_mas WHERE source_type='grn' AND source_id=$1`, [hdr.id]);
     await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1`, [hdr.voucher_no]);
 
-    // Find or auto-create supplier sub_ledger under Sundry Creditors (lookup by name)
-    let supplierSlId: string | null = null;
-    if (suppName && (b.payment_mode||"Cash") === "Credit") {
+    // Find supplier sub_ledger — use sl_id stored on GRN (ID-first, name only as last resort)
+    let supplierSlId: string | null = hdr.sl_id || null;
+    if (!supplierSlId && suppName && (b.payment_mode||"Cash") === "Credit") {
+      // Legacy GRN without sl_id: find by name within Sundry Creditors GL
       const slRes = await client.query(
         `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND LOWER(name)=LOWER($2) LIMIT 1`,
         [SC_GL, suppName]);
       if (slRes.rows.length > 0) {
         supplierSlId = slRes.rows[0].id;
+        // Backfill sl_id on the GRN record so future lookups use ID
+        await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]).catch(()=>{});
       } else {
         const newSl = await client.query(`
           INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
           VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
           [`SL-${Date.now()}`, suppName, SC_GL]);
         supplierSlId = newSl.rows[0].id;
+        await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]).catch(()=>{});
       }
     }
 
@@ -4444,16 +4529,18 @@ Return ONLY valid JSON (no markdown, no explanation):
       const round_off      = +(b.round_off||0);
       const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + round_off);
 
+      await pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
       const hdrRes = await client.query(`
         INSERT INTO goods_receipt_notes
-          (voucher_no, grn_date, store_id, store_name, supplier_id, supplier_name_manual,
+          (voucher_no, grn_date, store_id, store_name, supplier_id, supplier_name_manual, sl_id,
            dc_no, bill_no, bill_date, payment_mode, purchase_type, po_id, po_no,
            total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
            remark, status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'Draft')
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'Draft')
         RETURNING *
       `, [voucher_no, b.grn_date||new Date().toISOString().slice(0,10),
           b.store_id||null, b.store_name||"", b.supplier_id||null, b.supplier_name_manual||"",
+          b.sl_id||null,
           b.dc_no||"", b.bill_no||"", b.bill_date||null, b.payment_mode||"Cash",
           b.purchase_type||"PO", b.po_id||null, b.po_no||"",
           total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
@@ -4506,11 +4593,12 @@ Return ONLY valid JSON (no markdown, no explanation):
       const hdrRes = await client.query(`
         UPDATE goods_receipt_notes SET
           grn_date=$1, store_id=$2, store_name=$3, supplier_id=$4, supplier_name_manual=$5,
-          dc_no=$6, bill_no=$7, bill_date=$8, payment_mode=$9, purchase_type=$10,
-          po_id=$11, po_no=$12, total_qty=$13, taxable_amount=$14, cgst_amount=$15,
-          sgst_amount=$16, igst_amount=$17, round_off=$18, grand_total=$19, remark=$20
-        WHERE id=$21 RETURNING *
+          sl_id=$6, dc_no=$7, bill_no=$8, bill_date=$9, payment_mode=$10, purchase_type=$11,
+          po_id=$12, po_no=$13, total_qty=$14, taxable_amount=$15, cgst_amount=$16,
+          sgst_amount=$17, igst_amount=$18, round_off=$19, grand_total=$20, remark=$21
+        WHERE id=$22 RETURNING *
       `, [b.grn_date, b.store_id||null, b.store_name||"", b.supplier_id||null, b.supplier_name_manual||"",
+          b.sl_id||null,
           b.dc_no||"", b.bill_no||"", b.bill_date||null, b.payment_mode||"Cash",
           b.purchase_type||"PO", b.po_id||null, b.po_no||"",
           total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
