@@ -948,7 +948,8 @@ export function TermTypes() {
 
 // ─── Department Modal ─────────────────────────────────────────────────────────
 function DepartmentModal({ item, onClose }: { item?: any; onClose: () => void }) {
-  const [name, setName] = useState(item?.name || "");
+  const [name, setName]         = useState(item?.name || "");
+  const [isActive, setIsActive] = useState(item?.isActive !== false);
   const qc = useQueryClient();
   const isEdit = !!item?.id;
 
@@ -960,7 +961,7 @@ function DepartmentModal({ item, onClose }: { item?: any; onClose: () => void })
       const res = await fetch(url, {
         method, credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, name: name.trim(), description: "", isActive: true }),
+        body: JSON.stringify({ code, name: name.trim(), description: "", isActive }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
       return res.json();
@@ -974,7 +975,7 @@ function DepartmentModal({ item, onClose }: { item?: any; onClose: () => void })
         <div className="px-6 py-5 border-b border-gray-100">
           <h2 className="text-base font-bold text-gray-800">{isEdit ? "Edit Department" : "New Department"}</h2>
         </div>
-        <div className="px-6 py-6">
+        <div className="px-6 py-6 space-y-4">
           <div className="relative">
             <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Department Name</label>
             <input
@@ -984,6 +985,11 @@ function DepartmentModal({ item, onClose }: { item?: any; onClose: () => void })
               data-testid="input-department-name" autoFocus
             />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
+              className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-active" />
+            <span className="text-sm text-gray-700">Active</span>
+          </label>
         </div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button onClick={onClose}

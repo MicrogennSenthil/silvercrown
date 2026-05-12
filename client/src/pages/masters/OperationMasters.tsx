@@ -37,22 +37,31 @@ function MFField({ label, value, onChange, placeholder = "", type = "text" }: an
   );
 }
 
-// Floating-label text dropdown with + button
-function MDropPlus({ label, value, onChange, options = [] }: any) {
+// Floating-label text input with suggestions dropdown
+function MDropPlus({ label, value, onChange, suggestions = [] }: any) {
+  const [open, setOpen] = useState(false);
+  const q = (value ?? "").toLowerCase();
+  const filtered = suggestions.filter((s: string) => !q || s.toLowerCase().includes(q));
   return (
     <div className="flex items-center gap-1.5 flex-1">
       <div className="relative flex-1">
         <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
-        <select value={value ?? ""} onChange={onChange}
-          className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none appearance-none bg-white pr-8"
-          data-testid={`select-${label.toLowerCase().replace(/\s+/g, "-")}`}>
-          <option value="">Select</option>
-          {options.map((o: string, i: number) => <option key={i} value={o}>{o}</option>)}
-        </select>
-        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input value={value ?? ""} onChange={e => { onChange(e); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Type or select..."
+          className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5] bg-white"
+          data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />
+        {open && filtered.length > 0 && (
+          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-30 max-h-32 overflow-y-auto mt-0.5">
+            {filtered.map((s: string, i: number) => (
+              <button key={i} type="button"
+                onMouseDown={() => { onChange({ target: { value: s } }); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-[#d2f1fa]">{s}</button>
+            ))}
+          </div>
+        )}
       </div>
-      <button className="flex-shrink-0 w-7 h-7 rounded flex items-center justify-center text-white font-bold mt-0.5"
-        style={{ background: SC.primary }}>+</button>
     </div>
   );
 }
@@ -61,6 +70,9 @@ function MachineModal({ initial, onClose }: any) {
   const EMPTY = { machineId: "", name: "", machineGroup: "", subGroup: "", dueTime: "", calibrationDate: "", company: "", notes: "", code: "" };
   const [form, setForm] = useState<any>({ ...EMPTY, ...initial, machineId: initial?.machineId || initial?.code || "" });
   const qc = useQueryClient();
+  const { data: allMachines = [] } = useQuery<any[]>({ queryKey: ["/api/machines"] });
+  const groupSuggestions = [...new Set((allMachines as any[]).map((m: any) => m.machineGroup || m.code).filter(Boolean))];
+  const subGroupSuggestions = [...new Set((allMachines as any[]).map((m: any) => m.subGroup).filter(Boolean))];
 
   const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.value }));
 
@@ -93,8 +105,8 @@ function MachineModal({ initial, onClose }: any) {
 
           {/* Row 2: Group + Sub Group */}
           <div className="flex gap-4">
-            <MDropPlus label="Group"     value={form.machineGroup} onChange={f("machineGroup")} />
-            <MDropPlus label="Sub Group" value={form.subGroup}     onChange={f("subGroup")} />
+            <MDropPlus label="Group"     value={form.machineGroup} onChange={f("machineGroup")} suggestions={groupSuggestions} />
+            <MDropPlus label="Sub Group" value={form.subGroup}     onChange={f("subGroup")}     suggestions={subGroupSuggestions} />
           </div>
 
           {/* Row 3: Due Time + Calibration Date + Company */}
@@ -374,7 +386,7 @@ function PurchaseStoreItemForm({ initial, onClose }: any) {
             <FField label="Max Qty"    value={form.maxNo}    onChange={f("maxNo")}    placeholder="000" type="number" />
           </div>
 
-          {/* Row 4: Expiry Date checkbox | Description */}
+          {/* Row 4: Expiry Date checkbox | Description | Active */}
           <div className="flex items-start gap-4">
             <label className="flex items-center gap-2 cursor-pointer mt-1 flex-shrink-0">
               <input type="checkbox" checked={!!form.expiryRequired} onChange={fChk("expiryRequired")}
@@ -382,6 +394,11 @@ function PurchaseStoreItemForm({ initial, onClose }: any) {
               <span className="text-sm text-gray-700">Expiry Date is Required</span>
             </label>
             <FField label="Description" value={form.description} onChange={f("description")} placeholder="Type Here..." className="flex-1" />
+            <label className="flex items-center gap-2 cursor-pointer mt-1 flex-shrink-0">
+              <input type="checkbox" checked={!!form.isActive} onChange={fChk("isActive")}
+                className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-active" />
+              <span className="text-sm text-gray-700">Active</span>
+            </label>
           </div>
         </div>
 

@@ -338,6 +338,11 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   function removeAll() { setItems([newRow()]); }
 
   function selectItem(rowKey: string, item: any) {
+    const existing = items.find(r => r._key !== rowKey && r.item_id === item.id);
+    if (existing) {
+      toast({ title: "Duplicate item", description: `${item.name} is already in the list.`, variant: "destructive" });
+      return;
+    }
     setItems(prev => prev.map(r => r._key === rowKey ? {
       ...r, item_id: item.id, item_code: item.code, item_name: item.name,
       unit: item.uom || r.unit, hsn: item.hsn_code || r.hsn,

@@ -50,7 +50,7 @@ function calcItem(it: GrnItem): GrnItem {
 function SupplierSelect({ value, name, onChange }: { value: string; name: string; onChange: (id: string, name: string) => void }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const { data: suppliers = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/creditors"] });
+  const { data: suppliers = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
   const filtered = (suppliers as any[]).filter((s: any) =>
     !q || s.name?.toLowerCase().includes(q.toLowerCase()));
   return (
@@ -91,7 +91,7 @@ function PoSelectorPanel({ supplierId, selectedPoId, onSelect }: { supplierId: s
   });
   const approvedPos = (pos as any[]).filter((p: any) =>
     ["Approved","Draft"].includes(p.status) &&
-    (!supplierId || p.supplier_id === supplierId || !p.supplier_id));
+    (!supplierId || p.supplier_id === supplierId));
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden text-xs">
       <div className="grid font-semibold text-gray-600 bg-gray-50 border-b" style={{ gridTemplateColumns: "1fr 1fr 1fr 50px" }}>
@@ -203,10 +203,7 @@ export default function GoodsReceiptNote() {
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
 
-  // Filter only Raw Material category products
-  const rawMaterials = (allProducts as any[]).filter((p: any) =>
-    p.category_name?.toLowerCase().includes("raw") || p.category_name?.toLowerCase() === "raw material"
-  );
+  const rawMaterials = (allProducts as any[]).filter((p: any) => p.isActive !== false);
 
   // Close item dropdown on outside click
   useEffect(() => {
@@ -273,7 +270,7 @@ export default function GoodsReceiptNote() {
   // Handle PO selection — prefill items from PO
   async function handlePoSelect(po: any) {
     if (form.po_id === po.id) {
-      setForm(f => ({ ...f, po_id:"", po_no:"" }));
+      setForm(f => ({ ...f, po_id:"", po_no:"", items: [blankItem()] }));
       return;
     }
     const full = await fetch(`/api/purchase-orders/${po.id}`, { credentials:"include" }).then(r=>r.json());
@@ -505,8 +502,8 @@ export default function GoodsReceiptNote() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 font-medium">Supplier Name</label>
-                  <SupplierSelect value={form.sl_id} name={form.supplier_name_manual}
-                    onChange={(slId, name) => setForm(f => ({ ...f, sl_id: slId, supplier_name_manual: name }))}/>
+                  <SupplierSelect value={form.supplier_id} name={form.supplier_name_manual}
+                    onChange={(suppId, name) => setForm(f => ({ ...f, supplier_id: suppId, supplier_name_manual: name }))}/>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 font-medium">DC No</label>
@@ -593,7 +590,7 @@ export default function GoodsReceiptNote() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b" style={{ background:"#e8f6fb" }}>
-                    {["S.no","Item Code","Item Name","Batch No","Expiry Date","Qty","Unit","Rate ₹","Taxable Amt ₹","CGST %","CGST ₹","SGST %","SGST ₹","IGST %","IGST ₹","Total ₹",""].map(h => (
+                    {["S.no","Item Code","Item Name","Batch No","Expiry Date","Qty","Unit","Rate ₹","Taxable ₹","CGST","SGST","IGST","Total ₹",""].map(h => (
                       <th key={h} className="px-2 py-2.5 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -662,21 +659,21 @@ export default function GoodsReceiptNote() {
                           className="border border-gray-200 rounded px-2 py-1.5 w-16 outline-none focus:border-[#027fa5] text-xs text-right"/>
                       </td>
                       <td className="px-2 py-1 text-right text-gray-700 font-medium w-20">{n2(it.taxable_amt)}</td>
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-1 w-20">
                         <input type="number" value={it.cgst_pct||""} onChange={e => updItem(i,"cgst_pct",parseFloat(e.target.value)||0)}
-                          className="border border-gray-200 rounded px-2 py-1.5 w-12 outline-none focus:border-[#027fa5] text-xs text-center"/>
+                          className="border border-gray-200 rounded px-2 py-1 w-full outline-none focus:border-[#027fa5] text-xs text-center mb-0.5" placeholder="%"/>
+                        <div className="text-xs text-right text-gray-500 px-1">{n2(it.cgst_amt)}</div>
                       </td>
-                      <td className="px-2 py-1 text-right text-gray-600 w-16">{n2(it.cgst_amt)}</td>
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-1 w-20">
                         <input type="number" value={it.sgst_pct||""} onChange={e => updItem(i,"sgst_pct",parseFloat(e.target.value)||0)}
-                          className="border border-gray-200 rounded px-2 py-1.5 w-12 outline-none focus:border-[#027fa5] text-xs text-center"/>
+                          className="border border-gray-200 rounded px-2 py-1 w-full outline-none focus:border-[#027fa5] text-xs text-center mb-0.5" placeholder="%"/>
+                        <div className="text-xs text-right text-gray-500 px-1">{n2(it.sgst_amt)}</div>
                       </td>
-                      <td className="px-2 py-1 text-right text-gray-600 w-16">{n2(it.sgst_amt)}</td>
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-1 w-20">
                         <input type="number" value={it.igst_pct||""} onChange={e => updItem(i,"igst_pct",parseFloat(e.target.value)||0)}
-                          className="border border-gray-200 rounded px-2 py-1.5 w-12 outline-none focus:border-[#027fa5] text-xs text-center"/>
+                          className="border border-gray-200 rounded px-2 py-1 w-full outline-none focus:border-[#027fa5] text-xs text-center mb-0.5" placeholder="%"/>
+                        <div className="text-xs text-right text-gray-500 px-1">{n2(it.igst_amt)}</div>
                       </td>
-                      <td className="px-2 py-1 text-right text-gray-600 w-16">{n2(it.igst_amt)}</td>
                       <td className="px-2 py-1 text-right font-semibold text-gray-800 w-20">{n2(it.total)}</td>
                       <td className="px-2 py-1">
                         <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600"

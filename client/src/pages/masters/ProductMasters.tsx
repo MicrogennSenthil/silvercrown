@@ -51,12 +51,13 @@ function DropPlus({ label, value, onChange, options, onPlus, className = "", err
 function SubCatModal({ initial, categories, onClose }: any) {
   const [name, setName]         = useState(initial?.name || "");
   const [categoryId, setCatId]  = useState(initial?.categoryId || "");
+  const [isActive, setIsActive] = useState(initial?.isActive !== false);
   const qc = useQueryClient();
 
   const saveMut = useMutation({
     mutationFn: async () => {
       const code = initial?.code || name.trim().toUpperCase().replace(/\s+/g, "_") || `SUB-${Date.now()}`;
-      const payload = { code, name: name.trim(), categoryId, description: "", isActive: true };
+      const payload = { code, name: name.trim(), categoryId, description: "", isActive };
       const url    = initial?.id ? `/api/sub-categories/${initial.id}` : "/api/sub-categories";
       const method = initial?.id ? "PATCH" : "POST";
       const res = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -91,6 +92,11 @@ function SubCatModal({ initial, categories, onClose }: any) {
             </select>
             <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
+              className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-active" />
+            <span className="text-sm text-gray-700">Active</span>
+          </label>
         </div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button onClick={onClose} className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
