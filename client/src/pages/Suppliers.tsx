@@ -452,8 +452,8 @@ function SupplierList({ suppliers, onEdit, onDelete, onNew }: any) {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: SC.tonal }}>
-              {["S.No", "Company Name", "Short Name", "City", "State", "GSTIN", "Phone", "Email", "Ledger Account", "Actions"].map(h =>
-                <th key={h} className="text-left px-4 py-2.5 font-semibold text-gray-600 whitespace-nowrap">{h}</th>
+              {["S.No", "Company Name", "Short Name", "City", "State", "GSTIN", "Phone", "Email", "Ledger Account", "Outstanding Balance", "Actions"].map(h =>
+                <th key={h} className={`text-left px-4 py-2.5 font-semibold text-gray-600 whitespace-nowrap ${h === "Outstanding Balance" ? "text-right" : ""}`}>{h}</th>
               )}
             </tr>
           </thead>
@@ -474,6 +474,20 @@ function SupplierList({ suppliers, onEdit, onDelete, onNew }: any) {
                     {s.sub_ledger_name
                       ? <span className="flex items-center gap-1 text-green-700 text-xs"><CheckCircle2 size={12} />{s.sub_ledger_name}</span>
                       : <span className="text-xs text-gray-400">Not linked</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    {(() => {
+                      const bal = parseFloat(s.outstanding_balance || "0");
+                      const type = s.outstanding_balance_type || "Cr";
+                      if (!s.sub_ledger_id || bal === 0) return <span className="text-gray-300 text-xs">—</span>;
+                      const color = bal > 0 ? "#d74700" : SC.primary;
+                      return (
+                        <span className="font-semibold text-xs tabular-nums" style={{ color }}>
+                          ₹{Math.abs(bal).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <span className="ml-1 text-gray-400 font-normal">{type}</span>
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-2">

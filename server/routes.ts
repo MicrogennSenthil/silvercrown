@@ -92,7 +92,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT s.*, sl.name AS sub_ledger_name, sl.code AS sub_ledger_code
+        SELECT s.*,
+          sl.name AS sub_ledger_name,
+          sl.code AS sub_ledger_code,
+          -- Live outstanding balance: opening + bills + vouchers
+          CASE
+            WHEN s.sub_ledger_id IS NULL THEN 0
+            ELSE COALESCE((
+              SELECT
+                -- opening balance seed
+                CASE WHEN sl2.opening_balance_type = 'Credit' THEN sl2.opening_balance::numeric
+                     ELSE -sl2.opening_balance::numeric END
+                -- add sub_ledger_bills
+                + COALESCE((SELECT SUM(CASE WHEN UPPER(slb.cr_dr)='CR' THEN slb.amount::numeric ELSE -slb.amount::numeric END)
+                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = s.sub_ledger_id), 0)
+                -- add posted vouchers
+                + COALESCE((SELECT SUM(CASE WHEN UPPER(vd.dr_cr)='CR' THEN vd.amount::numeric ELSE -vd.amount::numeric END)
+                            FROM voucher_det vd WHERE vd.sub_ledger_id = s.sub_ledger_id), 0)
+              FROM sub_ledgers sl2 WHERE sl2.id = s.sub_ledger_id
+            ), 0)
+          END AS outstanding_balance,
+          CASE
+            WHEN s.sub_ledger_id IS NULL THEN 'Cr'
+            ELSE CASE WHEN COALESCE((
+              SELECT
+                CASE WHEN sl2.opening_balance_type = 'Credit' THEN sl2.opening_balance::numeric
+                     ELSE -sl2.opening_balance::numeric END
+                + COALESCE((SELECT SUM(CASE WHEN UPPER(slb.cr_dr)='CR' THEN slb.amount::numeric ELSE -slb.amount::numeric END)
+                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = s.sub_ledger_id), 0)
+                + COALESCE((SELECT SUM(CASE WHEN UPPER(vd.dr_cr)='CR' THEN vd.amount::numeric ELSE -vd.amount::numeric END)
+                            FROM voucher_det vd WHERE vd.sub_ledger_id = s.sub_ledger_id), 0)
+              FROM sub_ledgers sl2 WHERE sl2.id = s.sub_ledger_id
+            ), 0) >= 0 THEN 'Cr' ELSE 'Dr' END
+          END AS outstanding_balance_type
         FROM suppliers s
         LEFT JOIN sub_ledgers sl ON sl.id = s.sub_ledger_id
         ORDER BY s.name
@@ -158,7 +190,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT c.*, sl.name AS sub_ledger_name, sl.code AS sub_ledger_code
+        SELECT c.*,
+          sl.name AS sub_ledger_name,
+          sl.code AS sub_ledger_code,
+          -- Live outstanding balance: opening + bills + vouchers (DR positive for receivables)
+          CASE
+            WHEN c.sub_ledger_id IS NULL THEN 0
+            ELSE COALESCE((
+              SELECT
+                CASE WHEN sl2.opening_balance_type = 'Debit' THEN sl2.opening_balance::numeric
+                     ELSE -sl2.opening_balance::numeric END
+                + COALESCE((SELECT SUM(CASE WHEN UPPER(slb.cr_dr)='DR' THEN slb.amount::numeric ELSE -slb.amount::numeric END)
+                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = c.sub_ledger_id), 0)
+                + COALESCE((SELECT SUM(CASE WHEN UPPER(vd.dr_cr)='DR' THEN vd.amount::numeric ELSE -vd.amount::numeric END)
+                            FROM voucher_det vd WHERE vd.sub_ledger_id = c.sub_ledger_id), 0)
+              FROM sub_ledgers sl2 WHERE sl2.id = c.sub_ledger_id
+            ), 0)
+          END AS outstanding_balance,
+          CASE
+            WHEN c.sub_ledger_id IS NULL THEN 'Dr'
+            ELSE CASE WHEN COALESCE((
+              SELECT
+                CASE WHEN sl2.opening_balance_type = 'Debit' THEN sl2.opening_balance::numeric
+                     ELSE -sl2.opening_balance::numeric END
+                + COALESCE((SELECT SUM(CASE WHEN UPPER(slb.cr_dr)='DR' THEN slb.amount::numeric ELSE -slb.amount::numeric END)
+                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = c.sub_ledger_id), 0)
+                + COALESCE((SELECT SUM(CASE WHEN UPPER(vd.dr_cr)='DR' THEN vd.amount::numeric ELSE -vd.amount::numeric END)
+                            FROM voucher_det vd WHERE vd.sub_ledger_id = c.sub_ledger_id), 0)
+              FROM sub_ledgers sl2 WHERE sl2.id = c.sub_ledger_id
+            ), 0) >= 0 THEN 'Dr' ELSE 'Cr' END
+          END AS outstanding_balance_type
         FROM customers c
         LEFT JOIN sub_ledgers sl ON sl.id = c.sub_ledger_id
         ORDER BY c.name

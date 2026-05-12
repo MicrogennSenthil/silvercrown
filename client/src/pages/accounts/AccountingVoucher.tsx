@@ -690,6 +690,11 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["/api/accounting-vouchers"] });
       qc.invalidateQueries({ queryKey: ["/api/bill-adjustments/outstanding"] });
+      qc.invalidateQueries({ queryKey: ["/api/customers"] });
+      qc.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/customer-receivable"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/supplier-payables"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/ageing-list"] });
       setVoucherNo(data.voucherNo || voucherNo);
       setSaved(true); setSubmitErr(""); setTouched(false);
       setBillAdjRows([]); setBillAdjSlId(""); setBillAdjPartyLineKey("");
