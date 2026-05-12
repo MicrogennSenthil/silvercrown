@@ -887,6 +887,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                             max={rowMaxAllowed !== undefined ? rowMaxAllowed : undefined}
                             value={l.amount}
                             onChange={e => setAmount(l._key, e.target.value)}
+                            onBlur={() => { if (!l.amount && suggested) setAmount(l._key, suggested); }}
                             onKeyDown={e => handleAmountTab(l._key, e)}
                             placeholder={isFullyAllocated ? "Fully allocated" : (suggested || "0.00")}
                             disabled={isFullyAllocated}
