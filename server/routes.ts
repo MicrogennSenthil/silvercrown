@@ -3396,11 +3396,14 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
                (di.qty_despatched * di.rate) AS amount,
                d.voucher_no AS despatch_voucher_no,
                iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no AS inward_voucher_no,
-               di.cgst_rate, di.sgst_rate, di.igst_rate,
+               COALESCE(NULLIF(di.cgst_rate, 0), prod.cgst_rate, 0) AS cgst_rate,
+               COALESCE(NULLIF(di.sgst_rate, 0), prod.sgst_rate, 0) AS sgst_rate,
+               COALESCE(NULLIF(di.igst_rate, 0), prod.igst_rate, 0) AS igst_rate,
                di.cgst_amt, di.sgst_amt, di.igst_amt
         FROM job_work_despatch_items di
         JOIN job_work_despatch d ON d.id = di.despatch_id
         JOIN job_work_inward iw ON iw.id = di.inward_id
+        LEFT JOIN products prod ON prod.id = di.item_id
         WHERE di.despatch_id = $1
         ORDER BY di.seq_no
       `, [req.params.id]);

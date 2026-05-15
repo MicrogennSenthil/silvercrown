@@ -675,7 +675,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                       <th className="px-2 py-2 text-left w-16">Unit</th>
                       <th className="px-2 py-2 text-right w-24">Rate ₹</th>
                       <th className="px-2 py-2 text-right w-28">Taxable Amt ₹</th>
-                      <th className="px-2 py-2 text-center w-20">GST %</th>
+                      <th className="px-2 py-2 text-center w-20">{isInterState ? "IGST %" : "GST %"}</th>
                       {isInterState
                         ? <th className="px-2 py-2 text-right w-24">IGST ₹</th>
                         : <>
@@ -756,8 +756,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                               data-testid={`input-gst-pct-${idx}`}
                               className="border rounded px-1 py-0.5 text-xs text-center w-16"
                               value={isInterState
-                                ? (parseFloat(it.igst_rate || 0) || "")
-                                : (parseFloat(it.cgst_rate || 0) * 2 || "")}
+                                ? parseFloat(it.igst_rate ?? 0)
+                                : parseFloat(it.cgst_rate ?? 0) * 2}
                               onChange={e => {
                                 const pct = parseFloat(e.target.value || "0");
                                 const half = pct / 2;
