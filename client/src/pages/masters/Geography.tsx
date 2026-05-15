@@ -45,7 +45,7 @@ function EditRow({ fields, initial, onSave, onCancel }: any) {
 }
 
 // ─── Compact card shell ───────────────────────────────────────────────────────
-function GeoCard({ title, search, setSearch, placeholder, onAdd, onCancel, children }: any) {
+function GeoCard({ title, search, setSearch, placeholder, onAdd, onCancel, error, children }: any) {
   return (
     <div className="max-w-2xl">
       <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
@@ -59,6 +59,13 @@ function GeoCard({ title, search, setSearch, placeholder, onAdd, onCancel, child
               data-testid="input-search" />
           </div>
         </div>
+
+        {/* Inline error banner */}
+        {error && (
+          <div className="px-5 py-2 bg-red-50 border-b border-red-100 text-red-600 text-xs font-medium">
+            {(error as Error).message || String(error)}
+          </div>
+        )}
 
         {/* Table */}
         {children}
@@ -119,7 +126,8 @@ export function Countries() {
   return (
     <GeoCard title="Country" search={search} setSearch={setSearch}
       placeholder="Search Country name..." onAdd={() => { setAddRow(true); setEditId(null); }}
-      onCancel={() => { setAddRow(false); setEditId(null); }}>
+      onCancel={() => { setAddRow(false); setEditId(null); }}
+      error={saveMut.isError ? saveMut.error : null}>
       <div className="overflow-y-auto" style={{ maxHeight: "380px" }}>
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10">
@@ -213,7 +221,8 @@ export function States() {
   return (
     <GeoCard title="State" search={search} setSearch={setSearch}
       placeholder="Search State name..." onAdd={() => { setAddRow(true); setEditId(null); }}
-      onCancel={() => { setAddRow(false); setEditId(null); }}>
+      onCancel={() => { setAddRow(false); setEditId(null); }}
+      error={saveMut.isError ? saveMut.error : null}>
       <div className="overflow-y-auto" style={{ maxHeight: "380px" }}>
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10">
@@ -308,7 +317,8 @@ export function Cities() {
   return (
     <GeoCard title="City" search={search} setSearch={setSearch}
       placeholder="Search City name..." onAdd={() => { setAddRow(true); setEditId(null); }}
-      onCancel={() => { setAddRow(false); setEditId(null); }}>
+      onCancel={() => { setAddRow(false); setEditId(null); }}
+      error={saveMut.isError ? saveMut.error : null}>
       <div className="overflow-y-auto" style={{ maxHeight: "380px" }}>
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10">

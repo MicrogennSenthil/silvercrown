@@ -424,7 +424,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Warehouses
-  async listWarehouses() { return db.select().from(warehouses).orderBy(warehouses.name); }
+  async listWarehouses() { return db.select().from(warehouses).where(eq(warehouses.isActive, true)).orderBy(warehouses.name); }
   async createWarehouse(w: InsertWarehouse) {
     const [ex] = await db.select().from(warehouses).where(ilike(warehouses.name, w.name.trim())).limit(1);
     if (ex) throw new Error(`Warehouse "${w.name}" already exists`);
@@ -458,7 +458,8 @@ export class DatabaseStorage implements IStorage {
   async createCountry(c: InsertCountry) {
     const [ex] = await db.select().from(countries).where(ilike(countries.name, c.name.trim())).limit(1);
     if (ex) throw new Error(`Country "${c.name}" already exists`);
-    const [r] = await db.insert(countries).values({ ...c, id: randomUUID() }).returning(); return r;
+    const code = (c as any).code?.trim() || c.name.trim().toUpperCase().replace(/\s+/g, "_").slice(0, 10);
+    const [r] = await db.insert(countries).values({ ...c, code, id: randomUUID() }).returning(); return r;
   }
   async updateCountry(id: string, c: Partial<InsertCountry>) { const [r] = await db.update(countries).set(c).where(eq(countries.id, id)).returning(); return r; }
   async deleteCountry(id: string) { await db.delete(countries).where(eq(countries.id, id)); }

@@ -607,7 +607,7 @@ export default function StoreOpening() {
                     <td className="px-1 py-1">
                       <input value={it.item_code}
                         onChange={e => setForm(f => { const items=[...f.items]; items[i]={...items[i], item_code: e.target.value}; return {...f,items}; })}
-                        onBlur={() => updItem(i, "item_code", it.item_code)}
+                        onBlur={e => updItem(i, "item_code", e.target.value)}
                         className={`border rounded px-2 py-1.5 w-24 outline-none focus:border-[#027fa5] text-xs uppercase
                           ${isBatchContinue ? "border-blue-200 bg-blue-50/50 text-gray-400" : "border-gray-300"}`}
                         placeholder="Code" data-testid={`input-code-${i}`}/>

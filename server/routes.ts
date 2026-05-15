@@ -3963,9 +3963,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT po.*, c.name AS supplier_name_db
+        SELECT po.*, s.name AS supplier_name_db
         FROM purchase_orders po
-        LEFT JOIN customers c ON c.id = po.supplier_id
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
         ORDER BY po.created_at DESC
       `);
       res.json(r.rows);
@@ -3976,9 +3976,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     try {
       const { pool } = await import("./db");
       const [hdr] = (await pool.query(`
-        SELECT po.*, c.name AS supplier_name_db
+        SELECT po.*, s.name AS supplier_name_db
         FROM purchase_orders po
-        LEFT JOIN customers c ON c.id = po.supplier_id
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
         WHERE po.id=$1
       `, [req.params.id])).rows;
       if (!hdr) return res.status(404).json({ message: "Not found" });

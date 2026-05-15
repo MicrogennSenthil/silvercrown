@@ -79,18 +79,20 @@ export async function generateVoucherNo(
   const startingNum = seriesRow.starting_number || 1;
   let counterNum = seriesRow.current_number || startingNum;
 
-  // Sync counter with actual max in the target table to recover from counter drift
+  // Sync counter with actual max in the target table to recover from counter drift.
+  // IMPORTANT: Always use db.execute (a separate pool connection) here — never the client
+  // transaction connection — so that a missing table error cannot abort the outer transaction.
   const tableName = TYPE_TABLE[transactionType];
   if (tableName) {
     try {
-      const maxRes = await exec(
+      const maxRes = await db.execute(sql.raw(
         `SELECT MAX(
            CASE WHEN voucher_no ~ '[0-9]+$'
                 THEN CAST(SUBSTRING(voucher_no FROM '[0-9]+$') AS INTEGER)
                 ELSE 0
            END
          ) AS max_num FROM "${tableName}"`
-      );
+      ));
       const maxInTable: number = parseInt((maxRes as any).rows?.[0]?.max_num ?? "0", 10) || 0;
       if (maxInTable >= counterNum) {
         counterNum = maxInTable + 1;

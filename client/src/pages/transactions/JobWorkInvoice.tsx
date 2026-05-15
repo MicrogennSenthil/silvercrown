@@ -109,9 +109,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     !partySearch || c.name?.toLowerCase().includes(partySearch.toLowerCase())
   );
 
-  // Despatch Notes mode: despatches for party not yet invoiced
+  // Despatch Notes mode: despatches for party that are finalised (not Draft/Cancelled) and not yet invoiced
   const partyDespatches = (despatchList as any[]).filter((d: any) =>
-    d.party_id === partyId && !invoicedDespatchIds.has(d.id)
+    d.party_id === partyId &&
+    !invoicedDespatchIds.has(d.id) &&
+    d.status !== "Draft" && d.status !== "Cancelled" && d.status != null
   );
   // Direct Invoice mode: inwards for party with NO despatch and NOT yet directly invoiced
   const partyDirectInwards = (inwardList as any[]).filter((r: any) =>

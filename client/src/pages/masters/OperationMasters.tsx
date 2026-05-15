@@ -38,19 +38,19 @@ function MFField({ label, value, onChange, placeholder = "", type = "text" }: an
 }
 
 // Floating-label text input with suggestions dropdown
-function MDropPlus({ label, value, onChange, suggestions = [] }: any) {
+function MDropPlus({ label, value, onChange, suggestions = [], error = false }: any) {
   const [open, setOpen] = useState(false);
   const q = (value ?? "").toLowerCase();
   const filtered = suggestions.filter((s: string) => !q || s.toLowerCase().includes(q));
   return (
     <div className="flex items-center gap-1.5 flex-1">
       <div className="relative flex-1">
-        <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label}</label>
+        <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>{label}{error && " *"}</label>
         <input value={value ?? ""} onChange={e => { onChange(e); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder="Type or select..."
-          className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5] bg-white"
+          className={`w-full border rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none bg-white ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-[#027fa5]"}`}
           data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />
         {open && filtered.length > 0 && (
           <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-30 max-h-32 overflow-y-auto mt-0.5">
@@ -69,12 +69,22 @@ function MDropPlus({ label, value, onChange, suggestions = [] }: any) {
 function MachineModal({ initial, onClose }: any) {
   const EMPTY = { machineId: "", name: "", machineGroup: "", subGroup: "", dueTime: "", calibrationDate: "", company: "", notes: "", code: "" };
   const [form, setForm] = useState<any>({ ...EMPTY, ...initial, machineId: initial?.machineId || initial?.code || "" });
+  const [errs, setErrs] = useState<Record<string, string>>({});
   const qc = useQueryClient();
   const { data: allMachines = [] } = useQuery<any[]>({ queryKey: ["/api/machines"] });
   const groupSuggestions = [...new Set((allMachines as any[]).map((m: any) => m.machineGroup || m.code).filter(Boolean))];
   const subGroupSuggestions = [...new Set((allMachines as any[]).map((m: any) => m.subGroup).filter(Boolean))];
 
-  const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.value }));
+  const f = (key: string) => (e: any) => { setErrs(p => ({ ...p, [key]: "" })); setForm((p: any) => ({ ...p, [key]: e.target.value })); };
+
+  function handleSave() {
+    const e: Record<string, string> = {};
+    if (!form.machineId.trim()) e.machineId = "Required";
+    if (!form.machineGroup.trim()) e.machineGroup = "Required";
+    if (!form.subGroup.trim()) e.subGroup = "Required";
+    if (Object.keys(e).length) { setErrs(e); return; }
+    saveMut.mutate(form);
+  }
 
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
@@ -105,8 +115,8 @@ function MachineModal({ initial, onClose }: any) {
 
           {/* Row 2: Group + Sub Group */}
           <div className="flex gap-4">
-            <MDropPlus label="Group"     value={form.machineGroup} onChange={f("machineGroup")} suggestions={groupSuggestions} />
-            <MDropPlus label="Sub Group" value={form.subGroup}     onChange={f("subGroup")}     suggestions={subGroupSuggestions} />
+            <MDropPlus label="Group"     value={form.machineGroup} onChange={f("machineGroup")} suggestions={groupSuggestions} error={!!errs.machineGroup} />
+            <MDropPlus label="Sub Group" value={form.subGroup}     onChange={f("subGroup")}     suggestions={subGroupSuggestions} error={!!errs.subGroup} />
           </div>
 
           {/* Row 3: Due Time + Calibration Date + Company */}
@@ -129,7 +139,7 @@ function MachineModal({ initial, onClose }: any) {
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button onClick={onClose} className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
             style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
-          <button onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending || !form.machineId.trim()}
+          <button onClick={handleSave} disabled={saveMut.isPending}
             className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: SC.orange }} data-testid="button-add">
             {saveMut.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}

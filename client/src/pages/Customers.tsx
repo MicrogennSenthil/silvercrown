@@ -104,7 +104,7 @@ function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | 
           </div>
           {type === "city" && (
             <div className="relative">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">State (optional)</label>
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">State *</label>
               <select value={stateId} onChange={e => setStateId(e.target.value)}
                 className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm focus:outline-none focus:border-blue-400 bg-white appearance-none"
                 data-testid="select-quick-add-state">
@@ -119,7 +119,7 @@ function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | 
         <div className="flex gap-3 justify-end mt-4">
           <button type="button" onClick={onCancel} className="px-5 py-2 rounded border text-sm font-medium text-gray-600 hover:bg-gray-50"
             data-testid="button-quick-add-cancel">Cancel</button>
-          <button type="button" onClick={() => mut.mutate()} disabled={!name.trim() || mut.isPending}
+          <button type="button" onClick={() => mut.mutate()} disabled={!name.trim() || (type === "city" && !stateId) || mut.isPending}
             className="px-5 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: SC.orange }} data-testid="button-quick-add-save">
             {mut.isPending ? "Saving…" : "Save"}

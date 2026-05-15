@@ -81,7 +81,7 @@ function ItemDropdown({ open, anchorRect, products, query, onPick, onClose }: It
   return (
     <div ref={ref} style={style}>
       {opts.length === 0 ? (
-        <div className="px-3 py-3 text-gray-400">No raw material items found</div>
+        <div className="px-3 py-3 text-gray-400">No items found</div>
       ) : opts.map((p: any) => (
         <div key={p.id || p.code}
           onMouseDown={(e) => { e.preventDefault(); onPick(p); }}
@@ -116,11 +116,7 @@ export default function StoreRequestNote() {
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
 
-  // Only raw material products
-  const products = (allProducts as any[]).filter((p: any) =>
-    p.is_active !== false &&
-    p.category_name?.toLowerCase().includes("raw material")
-  );
+  const products = (allProducts as any[]).filter((p: any) => p.is_active !== false);
 
   const totalQty = form.items.reduce((s, it) => s + (+it.qty || 0), 0);
   const grandTotal = form.items.reduce((s, it) => s + (+it.amount || 0), 0);

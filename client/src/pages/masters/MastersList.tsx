@@ -341,6 +341,7 @@ const baseCols = (extra?: any[]) => [
 // --- Categories (Figma-matched compact card) ---
 function NewCategoryModal({ onClose }: any) {
   const [name, setName] = useState("");
+  const [isActive, setIsActive] = useState(true);
   const qc = useQueryClient();
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -348,7 +349,7 @@ function NewCategoryModal({ onClose }: any) {
       const res = await fetch("/api/categories", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, name: name.trim(), description: "", isActive: true }),
+        body: JSON.stringify({ code, name: name.trim(), description: "", isActive }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
       return res.json();
@@ -361,7 +362,7 @@ function NewCategoryModal({ onClose }: any) {
         <div className="px-6 py-5 border-b border-gray-100">
           <h2 className="text-base font-bold text-gray-800">New Category</h2>
         </div>
-        <div className="px-6 py-6">
+        <div className="px-6 py-6 space-y-4">
           <div className="relative">
             <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category type</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Type Category..."
@@ -369,6 +370,11 @@ function NewCategoryModal({ onClose }: any) {
               className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
               data-testid="input-category-name" autoFocus />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
+              className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-active" />
+            <span className="text-sm text-gray-700">Active</span>
+          </label>
         </div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button onClick={onClose} className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -387,13 +393,14 @@ function NewCategoryModal({ onClose }: any) {
 
 function EditCategoryModal({ item, onClose }: any) {
   const [name, setName] = useState(item.name || "");
+  const [isActive, setIsActive] = useState(item.isActive !== false);
   const qc = useQueryClient();
   const saveMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/categories/${item.id}`, {
         method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), code: item.code }),
+        body: JSON.stringify({ name: name.trim(), code: item.code, isActive }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
       return res.json();
@@ -406,13 +413,18 @@ function EditCategoryModal({ item, onClose }: any) {
         <div className="px-6 py-5 border-b border-gray-100">
           <h2 className="text-base font-bold text-gray-800">Edit Category</h2>
         </div>
-        <div className="px-6 py-6">
+        <div className="px-6 py-6 space-y-4">
           <div className="relative">
             <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category type</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Type Category..."
               className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
               data-testid="input-category-name" autoFocus />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
+              className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-active" />
+            <span className="text-sm text-gray-700">Active</span>
+          </label>
         </div>
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button onClick={onClose} className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
@@ -423,6 +435,7 @@ function EditCategoryModal({ item, onClose }: any) {
             {saveMut.isPending ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}Save
           </button>
         </div>
+        {saveMut.isError && <p className="px-6 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>}
       </div>
     </div>
   );
