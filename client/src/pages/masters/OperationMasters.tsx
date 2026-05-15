@@ -37,30 +37,114 @@ function MFField({ label, value, onChange, placeholder = "", type = "text" }: an
   );
 }
 
-// Floating-label text input with suggestions dropdown
-function MDropPlus({ label, value, onChange, suggestions = [], error = false }: any) {
+// Floating-label dropdown select with a "+" quick-add button
+function MSelectWithAdd({ label, value, onSelect, options = [], onQuickAdd, error = false }: any) {
   const [open, setOpen] = useState(false);
-  const q = (value ?? "").toLowerCase();
-  const filtered = suggestions.filter((s: string) => !q || s.toLowerCase().includes(q));
+  const [search, setSearch] = useState("");
+  const filtered = options.filter((s: string) => !search || s.toLowerCase().includes(search.toLowerCase()));
+  const tid = label.toLowerCase().replace(/\s+/g, "-");
+
   return (
     <div className="flex items-center gap-1.5 flex-1">
+      {/* Dropdown trigger + list */}
       <div className="relative flex-1">
-        <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>{label}{error && " *"}</label>
-        <input value={value ?? ""} onChange={e => { onChange(e); setOpen(true); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          placeholder="Type or select..."
-          className={`w-full border rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none bg-white ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-[#027fa5]"}`}
-          data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />
-        {open && filtered.length > 0 && (
-          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded shadow-lg z-30 max-h-32 overflow-y-auto mt-0.5">
-            {filtered.map((s: string, i: number) => (
-              <button key={i} type="button"
-                onMouseDown={() => { onChange({ target: { value: s } }); setOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-sm hover:bg-[#d2f1fa]">{s}</button>
-            ))}
+        <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>
+          {label}{error && " *"}
+        </label>
+        {/* Trigger button */}
+        <button type="button"
+          onClick={() => { setOpen(o => !o); setSearch(""); }}
+          onBlur={() => setTimeout(() => { setOpen(false); setSearch(""); }, 180)}
+          className={`w-full border rounded px-3 pt-3.5 pb-2 text-sm text-left flex items-center justify-between focus:outline-none bg-white
+            ${error ? "border-red-400" : open ? "border-[#027fa5]" : "border-gray-300 hover:border-[#027fa5]"}`}
+          data-testid={`select-${tid}`}>
+          <span className={value ? "text-gray-800" : "text-gray-400"}>{value || "Select…"}</span>
+          <ChevronDown size={14} className={`text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+
+        {/* Dropdown panel */}
+        {open && (
+          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl z-40 mt-0.5">
+            {/* Search */}
+            <div className="p-2 border-b border-gray-100">
+              <div className="relative">
+                <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder={`Search ${label}…`}
+                  className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-[#027fa5]"
+                  data-testid={`input-search-${tid}`}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && filtered.length > 0) {
+                      onSelect(filtered[0]); setOpen(false); setSearch("");
+                    }
+                    if (e.key === "Escape") { setOpen(false); setSearch(""); }
+                  }} />
+              </div>
+            </div>
+
+            {/* Options */}
+            <div className="max-h-40 overflow-y-auto">
+              {filtered.length === 0 ? (
+                <p className="px-3 py-2.5 text-xs text-gray-400 text-center">No options found</p>
+              ) : filtered.map((s: string, i: number) => (
+                <button key={i} type="button"
+                  onMouseDown={() => { onSelect(s); setOpen(false); setSearch(""); }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] flex items-center gap-2
+                    ${value === s ? "bg-[#e8f6fb] font-semibold text-[#027fa5]" : "text-gray-700"}`}>
+                  {value === s && <span className="w-1.5 h-1.5 rounded-full bg-[#027fa5] flex-shrink-0" />}
+                  {s}
+                </button>
+              ))}
+            </div>
+
+            {/* Quick-add from dropdown footer */}
+            <div className="border-t border-gray-100 p-2">
+              <button type="button" onMouseDown={onQuickAdd}
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded text-xs font-semibold text-[#d74700] hover:bg-orange-50"
+                data-testid={`button-quick-add-${tid}`}>
+                <Plus size={13} /> Add new {label.toLowerCase()}
+              </button>
+            </div>
           </div>
         )}
+      </div>
+
+      {/* Standalone "+" button outside dropdown */}
+      <button type="button" onClick={() => { setOpen(false); onQuickAdd(); }}
+        title={`Add new ${label}`}
+        className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded border border-dashed border-[#027fa5] text-[#027fa5] hover:bg-[#d2f1fa] transition-colors"
+        data-testid={`button-add-${tid}`}>
+        <Plus size={14} />
+      </button>
+    </div>
+  );
+}
+
+// Inline quick-add popover for Group / Sub Group
+function QuickAddInline({ label, onAdd, onCancel }: any) {
+  const [val, setVal] = useState("");
+  return (
+    <div className="border border-[#027fa5] rounded-lg p-3 bg-[#f0faff] space-y-2">
+      <p className="text-xs font-semibold text-[#027fa5]">Add new {label}</p>
+      <input autoFocus value={val} onChange={e => setVal(e.target.value)}
+        placeholder={`Enter ${label} name…`}
+        className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#027fa5]"
+        onKeyDown={e => {
+          if (e.key === "Enter" && val.trim()) onAdd(val.trim());
+          if (e.key === "Escape") onCancel();
+        }}
+        data-testid={`input-quick-add-${label.toLowerCase().replace(/\s+/g, "-")}`} />
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onCancel}
+          className="px-3 py-1 text-xs rounded border text-gray-600 hover:bg-gray-50" style={{ borderColor: "#9ca3af" }}>
+          Cancel
+        </button>
+        <button type="button" onClick={() => val.trim() && onAdd(val.trim())}
+          disabled={!val.trim()}
+          className="px-4 py-1 text-xs rounded font-semibold text-white disabled:opacity-40"
+          style={{ background: "#d74700" }}>
+          Add
+        </button>
       </div>
     </div>
   );
@@ -68,20 +152,31 @@ function MDropPlus({ label, value, onChange, suggestions = [], error = false }: 
 
 function MachineModal({ initial, onClose }: any) {
   const EMPTY = { machineId: "", name: "", machineGroup: "", subGroup: "", dueTime: "", calibrationDate: "", company: "", notes: "", code: "" };
-  const [form, setForm] = useState<any>({ ...EMPTY, ...initial, machineId: initial?.machineId || initial?.code || "" });
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [form, setForm]   = useState<any>({ ...EMPTY, ...initial, machineId: initial?.machineId || initial?.code || "" });
+  const [errs, setErrs]   = useState<Record<string, string>>({});
+  const [addingGroup, setAddingGroup]       = useState(false);
+  const [addingSubGroup, setAddingSubGroup] = useState(false);
+  const [extraGroups, setExtraGroups]       = useState<string[]>([]);
+  const [extraSubGroups, setExtraSubGroups] = useState<string[]>([]);
   const qc = useQueryClient();
-  const { data: allMachines = [] } = useQuery<any[]>({ queryKey: ["/api/machines"] });
-  const groupSuggestions = [...new Set((allMachines as any[]).map((m: any) => m.machineGroup || m.code).filter(Boolean))];
-  const subGroupSuggestions = [...new Set((allMachines as any[]).map((m: any) => m.subGroup).filter(Boolean))];
 
-  const f = (key: string) => (e: any) => { setErrs(p => ({ ...p, [key]: "" })); setForm((p: any) => ({ ...p, [key]: e.target.value })); };
+  const { data: allMachines = [] } = useQuery<any[]>({ queryKey: ["/api/machines"] });
+  const baseGroups    = [...new Set((allMachines as any[]).map((m: any) => m.machineGroup).filter(Boolean))] as string[];
+  const baseSubGroups = [...new Set((allMachines as any[]).map((m: any) => m.subGroup).filter(Boolean))] as string[];
+  const allGroups    = [...new Set([...baseGroups,    ...extraGroups])];
+  const allSubGroups = [...new Set([...baseSubGroups, ...extraSubGroups])];
+
+  const setField = (key: string, val: string) => {
+    setErrs(p => ({ ...p, [key]: "" }));
+    setForm((p: any) => ({ ...p, [key]: val }));
+  };
+  const f = (key: string) => (e: any) => setField(key, e.target.value);
 
   function handleSave() {
     const e: Record<string, string> = {};
-    if (!form.machineId.trim()) e.machineId = "Required";
+    if (!form.machineId.trim())    e.machineId    = "Required";
     if (!form.machineGroup.trim()) e.machineGroup = "Required";
-    if (!form.subGroup.trim()) e.subGroup = "Required";
+    if (!form.subGroup.trim())     e.subGroup     = "Required";
     if (Object.keys(e).length) { setErrs(e); return; }
     saveMut.mutate(form);
   }
@@ -109,21 +204,49 @@ function MachineModal({ initial, onClose }: any) {
         <div className="px-6 py-5 space-y-5">
           {/* Row 1: Machine ID + Machine Name */}
           <div className="flex gap-4">
-            <MFField label="Machine ID" value={form.machineId} onChange={f("machineId")} placeholder="Enter Id..." className="flex-1" />
-            <MFField label="Machine Name" value={form.name} onChange={f("name")} placeholder="Enter Machine Name Here..." className="flex-1" />
+            <MFField label="Machine ID"   value={form.machineId} onChange={f("machineId")} placeholder="Enter Id..." />
+            <MFField label="Machine Name" value={form.name}      onChange={f("name")}      placeholder="Enter Machine Name Here..." />
           </div>
 
-          {/* Row 2: Group + Sub Group */}
+          {/* Row 2: Group + Sub Group with quick-add */}
           <div className="flex gap-4">
-            <MDropPlus label="Group"     value={form.machineGroup} onChange={f("machineGroup")} suggestions={groupSuggestions} error={!!errs.machineGroup} />
-            <MDropPlus label="Sub Group" value={form.subGroup}     onChange={f("subGroup")}     suggestions={subGroupSuggestions} error={!!errs.subGroup} />
+            <div className="flex-1 space-y-2">
+              <MSelectWithAdd
+                label="Group"
+                value={form.machineGroup}
+                options={allGroups}
+                onSelect={(v: string) => { setField("machineGroup", v); setAddingGroup(false); }}
+                onQuickAdd={() => { setAddingGroup(true); setAddingSubGroup(false); }}
+                error={!!errs.machineGroup}
+              />
+              {addingGroup && (
+                <QuickAddInline label="Group"
+                  onAdd={(v: string) => { setExtraGroups(p => [...p, v]); setField("machineGroup", v); setAddingGroup(false); }}
+                  onCancel={() => setAddingGroup(false)} />
+              )}
+            </div>
+            <div className="flex-1 space-y-2">
+              <MSelectWithAdd
+                label="Sub Group"
+                value={form.subGroup}
+                options={allSubGroups}
+                onSelect={(v: string) => { setField("subGroup", v); setAddingSubGroup(false); }}
+                onQuickAdd={() => { setAddingSubGroup(true); setAddingGroup(false); }}
+                error={!!errs.subGroup}
+              />
+              {addingSubGroup && (
+                <QuickAddInline label="Sub Group"
+                  onAdd={(v: string) => { setExtraSubGroups(p => [...p, v]); setField("subGroup", v); setAddingSubGroup(false); }}
+                  onCancel={() => setAddingSubGroup(false)} />
+              )}
+            </div>
           </div>
 
           {/* Row 3: Due Time + Calibration Date + Company */}
           <div className="grid grid-cols-3 gap-4">
-            <MFField label="Due Time"         value={form.dueTime}          onChange={f("dueTime")}          placeholder="Type Here..." />
-            <MFField label="Calibration Date" value={form.calibrationDate}  onChange={f("calibrationDate")}  placeholder="Type Here..." />
-            <MFField label="Company"          value={form.company}          onChange={f("company")}           placeholder="Type Here..." />
+            <MFField label="Due Time"         value={form.dueTime}         onChange={f("dueTime")}         placeholder="Type Here..." />
+            <MFField label="Calibration Date" value={form.calibrationDate} onChange={f("calibrationDate")} placeholder="Type Here..." />
+            <MFField label="Company"          value={form.company}         onChange={f("company")}          placeholder="Type Here..." />
           </div>
 
           {/* Row 4: Notes */}
