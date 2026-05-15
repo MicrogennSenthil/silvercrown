@@ -191,6 +191,133 @@ export function SubCategories() {
   );
 }
 
+// ─── Quick Add Category Modal ─────────────────────────────────────────────────
+function QuickAddCategoryModal({ onCreated, onClose }: { onCreated: (cat: any) => void; onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [isActive, setIsActive] = useState(true);
+  const qc = useQueryClient();
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const code = name.trim().toUpperCase().replace(/\s+/g, "_") || `CAT-${Date.now()}`;
+      const res = await fetch("/api/categories", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: name.trim(), description: "", isActive }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["/api/categories"] });
+      onCreated(data);
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-xs shadow-2xl">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h2 className="text-sm font-bold text-gray-800">Quick Add — Category</h2>
+        </div>
+        <div className="px-5 py-5 space-y-4">
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Type category name"
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
+              autoFocus data-testid="input-quick-cat-name"
+              onKeyDown={e => { if (e.key === "Enter" && name.trim()) saveMut.mutate(); }} />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
+              className="w-4 h-4 accent-[#027fa5]" />
+            <span className="text-sm text-gray-700">Active</span>
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100">
+          <button onClick={onClose} className="px-6 py-1.5 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }}>Cancel</button>
+          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()}
+            className="px-6 py-1.5 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }}>
+            {saveMut.isPending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : null}Add
+          </button>
+        </div>
+        {saveMut.isError && <p className="px-5 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Quick Add Sub Category Modal ─────────────────────────────────────────────
+function QuickAddSubCategoryModal({ categories, defaultCategoryId, onCreated, onClose }: { categories: any[]; defaultCategoryId?: string; onCreated: (sub: any) => void; onClose: () => void }) {
+  const [name, setName]         = useState("");
+  const [categoryId, setCatId]  = useState(defaultCategoryId || "");
+  const [isActive, setIsActive] = useState(true);
+  const qc = useQueryClient();
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const code = name.trim().toUpperCase().replace(/\s+/g, "_") || `SUB-${Date.now()}`;
+      const res = await fetch("/api/sub-categories", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: name.trim(), categoryId, description: "", isActive }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["/api/sub-categories"] });
+      onCreated(data);
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl w-full max-w-xs shadow-2xl">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h2 className="text-sm font-bold text-gray-800">Quick Add — Sub Category</h2>
+        </div>
+        <div className="px-5 py-5 space-y-4">
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Sub Category Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Type sub category name"
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
+              autoFocus data-testid="input-quick-subcat-name"
+              onKeyDown={e => { if (e.key === "Enter" && name.trim()) saveMut.mutate(); }} />
+          </div>
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category</label>
+            <select value={categoryId} onChange={e => setCatId(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none appearance-none bg-white"
+              data-testid="select-quick-subcat-category">
+              <option value="">Select</option>
+              {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
+              className="w-4 h-4 accent-[#027fa5]" />
+            <span className="text-sm text-gray-700">Active</span>
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100">
+          <button onClick={onClose} className="px-6 py-1.5 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
+            style={{ borderColor: "#9ca3af" }}>Cancel</button>
+          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !name.trim()}
+            className="px-6 py-1.5 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }}>
+            {saveMut.isPending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : null}Add
+          </button>
+        </div>
+        {saveMut.isError && <p className="px-5 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>}
+      </div>
+    </div>
+  );
+}
+
 // ─── New Product Modal ────────────────────────────────────────────────────────
 const EMPTY_PRODUCT = {
   name: "", unit: "", categoryId: "", subCategoryId: "",
@@ -202,6 +329,8 @@ const EMPTY_PRODUCT = {
 
 function ProductModal({ initial, categories, subCategories, uomList, onClose }: any) {
   const [form, setForm] = useState<any>({ ...EMPTY_PRODUCT, ...initial });
+  const [showQuickCat, setShowQuickCat] = useState(false);
+  const [showQuickSub, setShowQuickSub] = useState(false);
   const qc = useQueryClient();
   const { validate, hasError, clearError, showApiError } = useFormValidation();
 
@@ -288,9 +417,9 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
           <div className="flex gap-3">
             <DropPlus label="Category" value={form.categoryId}
               onChange={(e: any) => { clearError("categoryId"); clearError("subCategoryId"); setForm((p: any) => ({ ...p, categoryId: e.target.value, subCategoryId: "" })); }}
-              options={catOptions} onPlus={() => {}} className="flex-1" error={hasError("categoryId")} />
+              options={catOptions} onPlus={() => setShowQuickCat(true)} className="flex-1" error={hasError("categoryId")} />
             <DropPlus label="Sub Category" value={form.subCategoryId} onChange={f("subCategoryId")}
-              options={subOptions} onPlus={() => {}} className="flex-1" error={hasError("subCategoryId")} />
+              options={subOptions} onPlus={() => setShowQuickSub(true)} className="flex-1" error={hasError("subCategoryId")} />
           </div>
 
           {/* Row 3: DRG No, SAP No, HSN Code, Location */}
@@ -329,6 +458,29 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
           </button>
         </div>
       </div>
+
+      {showQuickCat && (
+        <QuickAddCategoryModal
+          onCreated={(cat) => {
+            setForm((p: any) => ({ ...p, categoryId: cat.id, subCategoryId: "" }));
+            clearError("categoryId");
+            setShowQuickCat(false);
+          }}
+          onClose={() => setShowQuickCat(false)}
+        />
+      )}
+      {showQuickSub && (
+        <QuickAddSubCategoryModal
+          categories={categories}
+          defaultCategoryId={form.categoryId}
+          onCreated={(sub) => {
+            setForm((p: any) => ({ ...p, subCategoryId: sub.id }));
+            clearError("subCategoryId");
+            setShowQuickSub(false);
+          }}
+          onClose={() => setShowQuickSub(false)}
+        />
+      )}
     </div>
   );
 }
