@@ -49,9 +49,11 @@ function DropPlus({ label, value, onChange, options, onPlus, className = "", err
 // ─── Sub Categories ───────────────────────────────────────────────────────────
 
 function SubCatModal({ initial, categories, onClose }: any) {
-  const [name, setName]         = useState(initial?.name || "");
-  const [categoryId, setCatId]  = useState(initial?.categoryId || "");
-  const [isActive, setIsActive] = useState(initial?.isActive !== false);
+  const [name, setName]           = useState(initial?.name || "");
+  const [categoryId, setCatId]    = useState(initial?.categoryId || "");
+  const [isActive, setIsActive]   = useState(initial?.isActive !== false);
+  const [addingCat, setAddingCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
   const qc = useQueryClient();
 
   const saveMut = useMutation({
@@ -65,6 +67,25 @@ function SubCatModal({ initial, categories, onClose }: any) {
       return res.json();
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/sub-categories"] }); onClose(); },
+  });
+
+  const addCatMut = useMutation({
+    mutationFn: async (catName: string) => {
+      const code = catName.trim().toUpperCase().replace(/\s+/g, "_") || `CAT-${Date.now()}`;
+      const res = await fetch("/api/categories", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: catName.trim(), description: "", isActive: true }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: (created: any) => {
+      qc.invalidateQueries({ queryKey: ["/api/categories"] });
+      setCatId(created.id);
+      setNewCatName("");
+      setAddingCat(false);
+    },
   });
 
   return (
@@ -81,17 +102,58 @@ function SubCatModal({ initial, categories, onClose }: any) {
               className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
               data-testid="input-sub-category" autoFocus />
           </div>
-          {/* Category dropdown */}
-          <div className="relative">
-            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category</label>
-            <select value={categoryId} onChange={e => setCatId(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none appearance-none bg-white"
-              data-testid="select-category">
-              <option value="">Select</option>
-              {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+
+          {/* Category dropdown + quick-add */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex-1">
+                <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Category</label>
+                <select value={categoryId} onChange={e => { setCatId(e.target.value); setAddingCat(false); }}
+                  className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none appearance-none bg-white"
+                  data-testid="select-category">
+                  <option value="">Select</option>
+                  {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+              {/* Quick-add "+" button */}
+              <button type="button" onClick={() => { setAddingCat(v => !v); setNewCatName(""); }}
+                title="Add new category"
+                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded border border-dashed border-[#027fa5] text-[#027fa5] hover:bg-[#d2f1fa] transition-colors mt-0.5"
+                data-testid="button-quick-add-category">
+                <Plus size={14} />
+              </button>
+            </div>
+
+            {/* Inline quick-add category panel */}
+            {addingCat && (
+              <div className="border border-[#027fa5] rounded-lg p-3 bg-[#f0faff] space-y-2">
+                <p className="text-xs font-semibold text-[#027fa5]">Add new category</p>
+                <input autoFocus value={newCatName} onChange={e => setNewCatName(e.target.value)}
+                  placeholder="Enter category name…"
+                  className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#027fa5]"
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newCatName.trim()) addCatMut.mutate(newCatName.trim());
+                    if (e.key === "Escape") { setAddingCat(false); setNewCatName(""); }
+                  }}
+                  data-testid="input-quick-add-category" />
+                {addCatMut.isError && <p className="text-red-500 text-xs">{(addCatMut.error as Error).message}</p>}
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={() => { setAddingCat(false); setNewCatName(""); }}
+                    className="px-3 py-1 text-xs rounded border text-gray-600 hover:bg-gray-50" style={{ borderColor: "#9ca3af" }}>
+                    Cancel
+                  </button>
+                  <button type="button" onClick={() => newCatName.trim() && addCatMut.mutate(newCatName.trim())}
+                    disabled={!newCatName.trim() || addCatMut.isPending}
+                    className="px-4 py-1 text-xs rounded font-semibold text-white disabled:opacity-40"
+                    style={{ background: SC.orange }} data-testid="button-save-category">
+                    {addCatMut.isPending ? <Loader2 size={11} className="animate-spin inline mr-1" /> : null}Add
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
+
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
               className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-active" />
