@@ -668,14 +668,129 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } finally { client.release(); }
   });
 
-  // Tasks
-  app.get("/api/tasks", requireAuth, async (_req, res) => res.json(await storage.listTasks()));
+  // ── Task Categories ────────────────────────────────────────────────────────
+  {
+    const { pool } = await import("./db");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS task_categories (
+        id      varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        name    text NOT NULL,
+        is_active boolean NOT NULL DEFAULT true,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    // Add assigned_employee_id to tasks if not present
+    await pool.query(`
+      ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_employee_id varchar
+    `).catch(() => {});
+  }
+
+  app.get("/api/task-categories", requireAuth, async (_req, res) => {
+    const { pool } = await import("./db");
+    const r = await pool.query(`SELECT * FROM task_categories WHERE is_active=true ORDER BY name`);
+    res.json(r.rows);
+  });
+  app.post("/api/task-categories", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ message: "Name required" });
+    const r = await pool.query(
+      `INSERT INTO task_categories (name) VALUES ($1) RETURNING *`, [name.trim()]
+    );
+    res.json(r.rows[0]);
+  });
+  app.patch("/api/task-categories/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const r = await pool.query(
+      `UPDATE task_categories SET name=$1 WHERE id=$2 RETURNING *`,
+      [req.body.name, req.params.id]
+    );
+    res.json(r.rows[0]);
+  });
+  app.delete("/api/task-categories/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    await pool.query(`UPDATE task_categories SET is_active=false WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  });
+
+  // Tasks — enhanced with employee name + overdue support
+  app.get("/api/tasks", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT t.*,
+          e.name AS assigned_employee_name,
+          e.employee_code AS assigned_employee_code
+        FROM tasks t
+        LEFT JOIN employees e ON e.id = t.assigned_employee_id
+        ORDER BY t.created_at DESC
+      `);
+      res.json(r.rows);
+    } catch { res.json(await storage.listTasks()); }
+  });
+  app.get("/api/tasks/overdue", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const today = new Date().toISOString().slice(0, 10);
+      const r = await pool.query(`
+        SELECT t.*, e.name AS assigned_employee_name
+        FROM tasks t
+        LEFT JOIN employees e ON e.id = t.assigned_employee_id
+        WHERE t.status NOT IN ('completed','cancelled')
+          AND t.due_date != '' AND t.due_date IS NOT NULL
+          AND t.due_date < $1
+        ORDER BY t.due_date ASC
+        LIMIT 20
+      `, [today]);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
   app.post("/api/tasks", requireAuth, async (req, res) => {
-    const data = insertTaskSchema.parse(req.body);
-    res.json(await storage.createTask(data));
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const r = await pool.query(`
+        INSERT INTO tasks
+          (title, description, due_date, due_time, priority, status,
+           category, is_reminder, reminder_date, assigned_to, assigned_employee_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        RETURNING *
+      `, [
+        b.title, b.description||"", b.dueDate||b.due_date||"", b.dueTime||b.due_time||"",
+        b.priority||"medium", b.status||"pending",
+        b.category||"", b.isReminder||b.is_reminder||false,
+        b.reminderDate||b.reminder_date||"",
+        b.assignedTo||b.assigned_to||null, b.assignedEmployeeId||b.assigned_employee_id||null,
+      ]);
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
-    res.json(await storage.updateTask(req.params.id, req.body));
+    try {
+      const { pool } = await import("./db");
+      const b = req.body;
+      const sets: string[] = [];
+      const vals: any[] = [];
+      let i = 1;
+      const map: Record<string,string> = {
+        title:"title", description:"description", dueDate:"due_date", dueTime:"due_time",
+        priority:"priority", status:"status", category:"category",
+        isReminder:"is_reminder", reminderDate:"reminder_date",
+        assignedTo:"assigned_to", assignedEmployeeId:"assigned_employee_id",
+      };
+      for (const [jsKey, dbCol] of Object.entries(map)) {
+        if (jsKey in b || dbCol in b) {
+          sets.push(`${dbCol}=$${i++}`);
+          vals.push(b[jsKey] ?? b[dbCol]);
+        }
+      }
+      if (sets.length === 0) return res.json({});
+      vals.push(req.params.id);
+      const r = await pool.query(
+        `UPDATE tasks SET ${sets.join(",")} WHERE id=$${i} RETURNING *`, vals
+      );
+      res.json(r.rows[0]);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.delete("/api/tasks/:id", requireAuth, async (req, res) => {
     await storage.deleteTask(req.params.id);

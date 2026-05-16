@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend
 } from "recharts";
-import { TrendingUp, TrendingDown, ArrowUpRight, Bell, Eye } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowUpRight, Bell, Eye, AlertCircle } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed", accent: "#f96a0b" };
 
@@ -30,10 +31,7 @@ const AGEING = [
   { party: "Lakshmi",total: 2.5, d0:  "",  d15: 1.2, d30: "",  d45: 1.3, d60: ""  },
 ];
 
-const REMINDERS = [
-  { sno: "01", desc: "Plasma Cutter Machine", due: "04-April", lapsed: "+16 Days", late: true },
-  { sno: "02", desc: "Punching Press",        due: "12-April", lapsed: "+24 Days", late: true },
-];
+// REMINDERS — now loaded live from /api/tasks/overdue
 
 const OVERALL = [
   { label: "Job Work", value: 12 },
@@ -108,8 +106,24 @@ function WipCircle({ pct }: { pct: number }) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
+function daysDiff(dateStr: string) {
+  const due = new Date(dateStr);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.floor((now.getTime() - due.getTime()) / 86400000);
+}
+function fmtDate(d: string) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export default function Dashboard() {
   const [chartFilter, setChartFilter] = useState("Last 10-days");
+  const { data: overdueTasks = [] } = useQuery<any[]>({
+    queryKey: ["/api/tasks/overdue"],
+    queryFn: () => fetch("/api/tasks/overdue", { credentials: "include" }).then(r => r.json()),
+    refetchInterval: 60000,
+  });
 
   return (
     <div className="space-y-4 text-sm">
@@ -249,32 +263,56 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Quick Reminder */}
+          {/* Quick Reminder — live overdue tasks */}
           <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
               <Bell size={14} style={{ color: SC.orange }} />
-              <span className="font-semibold text-gray-700 text-sm">Quick reminder</span>
+              <span className="font-semibold text-gray-700 text-sm">Overdue Tasks / Reminders</span>
+              {(overdueTasks as any[]).length > 0 && (
+                <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white" style={{ background: SC.orange }}>
+                  {(overdueTasks as any[]).length}
+                </span>
+              )}
             </div>
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: SC.tonal }}>
                   <th className="text-left px-3 py-2 font-semibold text-gray-600">S.No</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Description</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Task</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Assigned To</th>
                   <th className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">Due Date</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">Date Lapsed</th>
+                  <th className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">Lapsed</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {REMINDERS.map(r => (
-                  <tr key={r.sno} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 text-gray-500">{r.sno}</td>
-                    <td className="px-3 py-2 text-gray-700">{r.desc}</td>
-                    <td className="px-3 py-2 text-gray-600">{r.due}</td>
-                    <td className="px-3 py-2">
-                      <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: "#fff0e6", color: SC.orange }}>{r.lapsed}</span>
+                {(overdueTasks as any[]).length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-5 text-center text-gray-400">
+                      No overdue tasks — all tasks are on schedule ✓
                     </td>
                   </tr>
-                ))}
+                ) : (overdueTasks as any[]).map((t: any, idx: number) => {
+                  const due = t.due_date || t.dueDate || "";
+                  const lapsed = due ? daysDiff(due) : 0;
+                  return (
+                    <tr key={t.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-gray-500">{String(idx + 1).padStart(2, "0")}</td>
+                      <td className="px-3 py-2 text-gray-700 font-medium">
+                        {t.title}
+                        {t.category && (
+                          <span className="ml-2 text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{t.category}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500">{t.assigned_employee_name || "—"}</td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(due)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: "#fff0e6", color: SC.orange }}>
+                          +{lapsed} Day{lapsed !== 1 ? "s" : ""}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
