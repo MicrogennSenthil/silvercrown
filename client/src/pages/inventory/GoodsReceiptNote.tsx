@@ -197,6 +197,8 @@ export default function GoodsReceiptNote() {
   const [grnInterState, setGrnInterState] = useState(false); // Within State by default
   const [itemSearch, setItemSearch] = useState<Record<number, string>>({});
   const [itemDropOpen, setItemDropOpen] = useState<number | null>(null);
+  const [dropPos, setDropPos] = useState<{top:number;left:number;width:number}|null>(null);
+  const itemInputRefs = useRef<Record<number, HTMLInputElement|null>>({});
   const tableRef = useRef<HTMLDivElement>(null);
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
@@ -622,48 +624,30 @@ export default function GoodsReceiptNote() {
                         <input readOnly value={it.item_code}
                           className="border border-gray-200 bg-gray-50 rounded px-2 py-1.5 w-20 text-xs text-gray-600"/>
                       </td>
-                      <td className="px-1 py-1 relative">
+                      <td className="px-1 py-1">
                         <div className="relative w-40">
                           <input
+                            ref={el => { itemInputRefs.current[i] = el; }}
                             value={itemDropOpen === i ? (itemSearch[i] ?? it.item_name) : it.item_name}
-                            onFocus={() => { setItemDropOpen(i); setItemSearch(p => ({...p,[i]: it.item_name})); }}
-                            onChange={e => { setItemSearch(p => ({...p,[i]:e.target.value})); setItemDropOpen(i); }}
+                            onFocus={e => {
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: 288 });
+                              setItemDropOpen(i);
+                              setItemSearch(p => ({...p,[i]: it.item_name}));
+                            }}
+                            onChange={e => {
+                              const r = itemInputRefs.current[i]?.getBoundingClientRect();
+                              if (r) setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: 288 });
+                              setItemSearch(p => ({...p,[i]:e.target.value}));
+                              setItemDropOpen(i);
+                            }}
+                            onBlur={() => setTimeout(() => { setItemDropOpen(null); setDropPos(null); }, 150)}
                             className="w-full border border-gray-300 rounded px-2 py-1.5 outline-none focus:border-[#027fa5] text-xs pr-6"
                             placeholder="Search item…"
                             data-testid={`input-itemname-${i}`}
                           />
                           <Search size={10} className="absolute right-1.5 top-2.5 text-gray-400 pointer-events-none"/>
                         </div>
-                        {itemDropOpen === i && (() => {
-                          const q = (itemSearch[i] ?? "").toLowerCase();
-                          const opts = rawMaterials.filter((p: any) =>
-                            !q || p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q)
-                          ).slice(0, 50);
-                          return opts.length > 0 ? (
-                            <div className="absolute z-50 left-1 top-full mt-0.5 w-72 bg-white border border-gray-200 rounded shadow-lg max-h-52 overflow-y-auto text-xs">
-                              {opts.map((p: any) => (
-                                <div key={`${p._source}-${p.id}`}
-                                  onMouseDown={e => { e.preventDefault(); pickProductForGrn(i, p); }}
-                                  className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center gap-2 border-b border-gray-50 last:border-0">
-                                  <div className="flex flex-col min-w-0">
-                                    <span className="font-medium text-gray-800 truncate">{p.name}</span>
-                                    {p.code && <span className="text-gray-400 text-[10px]">{p.code}</span>}
-                                  </div>
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0 font-semibold"
-                                    style={p._source === "inventory"
-                                      ? { background: "#d2f1fa", color: "#027fa5" }
-                                      : { background: "#fef3c7", color: "#92400e" }}>
-                                    {p._source === "inventory" ? "Inventory" : "Product"}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="absolute z-50 left-1 top-full mt-0.5 w-64 bg-white border border-gray-200 rounded shadow-lg px-3 py-2 text-xs text-gray-400">
-                              No items found{q ? ` matching "${q}"` : ""}
-                            </div>
-                          );
-                        })()}
                       </td>
                       <td className="px-1 py-1">
                         <input value={it.batch_no} onChange={e => updItem(i,"batch_no",e.target.value)}
@@ -792,6 +776,41 @@ export default function GoodsReceiptNote() {
       {showScan && (
         <ScanModal onClose={() => setShowScan(false)} onExtracted={applyScannedData}/>
       )}
+
+      {/* Item search dropdown — fixed position to escape overflow-x-auto clipping */}
+      {itemDropOpen !== null && dropPos && (() => {
+        const i = itemDropOpen;
+        const q = (itemSearch[i] ?? "").toLowerCase();
+        const opts = rawMaterials.filter((p: any) =>
+          !q || p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q)
+        ).slice(0, 50);
+        return (
+          <div
+            style={{ position:"fixed", top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
+            className="bg-white border border-gray-200 rounded shadow-lg max-h-52 overflow-y-auto text-xs"
+            onMouseDown={e => e.preventDefault()}
+          >
+            {opts.length === 0 ? (
+              <div className="px-3 py-2 text-gray-400">No items found{q ? ` matching "${q}"` : ""}</div>
+            ) : opts.map((p: any) => (
+              <div key={`${p._source}-${p.id}`}
+                onMouseDown={e => { e.preventDefault(); pickProductForGrn(i, p); setItemDropOpen(null); setDropPos(null); }}
+                className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center gap-2 border-b border-gray-50 last:border-0">
+                <div className="flex flex-col min-w-0">
+                  <span className="font-medium text-gray-800 truncate">{p.name}</span>
+                  {p.code && <span className="text-gray-400 text-[10px]">{p.code}</span>}
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0 font-semibold"
+                  style={p._source === "inventory"
+                    ? { background: "#d2f1fa", color: "#027fa5" }
+                    : { background: "#fef3c7", color: "#92400e" }}>
+                  {p._source === "inventory" ? "Inventory" : "Product"}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
