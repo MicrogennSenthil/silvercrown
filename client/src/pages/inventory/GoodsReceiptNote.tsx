@@ -228,6 +228,19 @@ export default function GoodsReceiptNote() {
       .map((p: any) => ({ ...p, _source: "product" })),
   ];
 
+  // When tax type toggles, zero out the inactive tax on all rows and recalculate
+  useEffect(() => {
+    setForm(f => ({
+      ...f,
+      items: f.items.map(it => calcItem({
+        ...it,
+        cgst_pct: grnInterState ? 0 : (it.igst_pct > 0 ? it.igst_pct / 2 : it.cgst_pct),
+        sgst_pct: grnInterState ? 0 : (it.igst_pct > 0 ? it.igst_pct / 2 : it.sgst_pct),
+        igst_pct: grnInterState ? (it.cgst_pct > 0 ? it.cgst_pct * 2 : it.igst_pct) : 0,
+      }))
+    }));
+  }, [grnInterState]);
+
   // Close item dropdown on outside click — exclude portal dropdown too
   useEffect(() => {
     function h(e: MouseEvent) {
@@ -676,19 +689,28 @@ export default function GoodsReceiptNote() {
                       </td>
                       <td className="px-2 py-1 text-right text-gray-700 font-medium w-20">{n2(it.taxable_amt)}</td>
                       <td className="px-1 py-1 w-20">
-                        <input type="number" value={it.cgst_pct||""} onChange={e => updItem(i,"cgst_pct",parseFloat(e.target.value)||0)}
-                          className="border border-gray-200 rounded px-2 py-1 w-full outline-none focus:border-[#027fa5] text-xs text-center mb-0.5" placeholder="%"/>
-                        <div className="text-xs text-right text-gray-500 px-1">{n2(it.cgst_amt)}</div>
+                        <input type="number" value={grnInterState ? "" : (it.cgst_pct||"")}
+                          readOnly={grnInterState}
+                          onChange={e => updItem(i,"cgst_pct",parseFloat(e.target.value)||0)}
+                          className={`border rounded px-2 py-1 w-full outline-none text-xs text-center mb-0.5 ${grnInterState ? "bg-gray-100 border-gray-100 text-gray-300 cursor-not-allowed" : "border-gray-200 focus:border-[#027fa5]"}`}
+                          placeholder="%"/>
+                        <div className="text-xs text-right text-gray-500 px-1">{grnInterState ? "—" : n2(it.cgst_amt)}</div>
                       </td>
                       <td className="px-1 py-1 w-20">
-                        <input type="number" value={it.sgst_pct||""} onChange={e => updItem(i,"sgst_pct",parseFloat(e.target.value)||0)}
-                          className="border border-gray-200 rounded px-2 py-1 w-full outline-none focus:border-[#027fa5] text-xs text-center mb-0.5" placeholder="%"/>
-                        <div className="text-xs text-right text-gray-500 px-1">{n2(it.sgst_amt)}</div>
+                        <input type="number" value={grnInterState ? "" : (it.sgst_pct||"")}
+                          readOnly={grnInterState}
+                          onChange={e => updItem(i,"sgst_pct",parseFloat(e.target.value)||0)}
+                          className={`border rounded px-2 py-1 w-full outline-none text-xs text-center mb-0.5 ${grnInterState ? "bg-gray-100 border-gray-100 text-gray-300 cursor-not-allowed" : "border-gray-200 focus:border-[#027fa5]"}`}
+                          placeholder="%"/>
+                        <div className="text-xs text-right text-gray-500 px-1">{grnInterState ? "—" : n2(it.sgst_amt)}</div>
                       </td>
                       <td className="px-1 py-1 w-20">
-                        <input type="number" value={it.igst_pct||""} onChange={e => updItem(i,"igst_pct",parseFloat(e.target.value)||0)}
-                          className="border border-gray-200 rounded px-2 py-1 w-full outline-none focus:border-[#027fa5] text-xs text-center mb-0.5" placeholder="%"/>
-                        <div className="text-xs text-right text-gray-500 px-1">{n2(it.igst_amt)}</div>
+                        <input type="number" value={grnInterState ? (it.igst_pct||"") : ""}
+                          readOnly={!grnInterState}
+                          onChange={e => updItem(i,"igst_pct",parseFloat(e.target.value)||0)}
+                          className={`border rounded px-2 py-1 w-full outline-none text-xs text-center mb-0.5 ${!grnInterState ? "bg-gray-100 border-gray-100 text-gray-300 cursor-not-allowed" : "border-gray-200 focus:border-[#027fa5]"}`}
+                          placeholder="%"/>
+                        <div className="text-xs text-right text-gray-500 px-1">{!grnInterState ? "—" : n2(it.igst_amt)}</div>
                       </td>
                       <td className="px-2 py-1 text-right font-semibold text-gray-800 w-20">{n2(it.total)}</td>
                       <td className="px-2 py-1">
