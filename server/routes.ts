@@ -2213,7 +2213,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const days = Math.max(1, parseInt((req.query.days as string) || "15", 10));
       const rows = (await pool.query(`
-        WITH invoice_txns AS (
+        WITH customer_sl AS (
+          -- Customers with sub_ledger_id set (populated by resolvePartyMaster on invoice creation)
+          SELECT c.id AS customer_id, c.sub_ledger_id
+          FROM customers c
+          WHERE c.sub_ledger_id IS NOT NULL
+        ),
+        invoice_txns AS (
           -- Primary receivables: each job-work invoice is a DR against the customer
           SELECT
             jwi.party_id                                              AS customer_id,
@@ -2243,40 +2249,42 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           WHERE jwi.party_id IS NOT NULL
             AND COALESCE(jwi.status,'') NOT IN ('Cancelled','Voided')
         ),
-        payment_txns AS (
-          -- Payments / credits received: CR against customer sub-ledger via vouchers
+        voucher_txns AS (
+          -- ALL voucher entries against customer sub-ledgers:
+          --   Receipt vouchers  → CR (payment received, reduces receivable shown in Others)
+          --   Payment vouchers  → DR (refund/advance paid out, shown in DR buckets)
+          --   Manual journals   → DR or CR as entered
           SELECT
-            c.id                                                      AS customer_id,
+            cs.customer_id,
             c.name                                                    AS customer_name,
             COALESCE(c.phone, c.telephone, '')                        AS contact_no,
             COALESCE(c.contact_person, c.contact_name, '')            AS contact_person,
             vm.voucher_date                                           AS txn_date,
             vd.amount::numeric                                        AS amount,
             UPPER(vd.dr_cr)                                           AS dr_cr
-          FROM customers c
-          JOIN sub_ledgers sl ON sl.id = c.sub_ledger_id
-          JOIN voucher_det vd ON vd.sub_ledger_id = sl.id
+          FROM customer_sl cs
+          JOIN customers c ON c.id = cs.customer_id
+          JOIN voucher_det vd ON vd.sub_ledger_id = cs.sub_ledger_id
           JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
-          WHERE UPPER(vd.dr_cr) = 'CR'
         ),
         opening_txns AS (
-          -- Opening balance bills under customer sub-ledgers
+          -- Opening balance bills under customer sub-ledgers (DR = opening receivable, CR = opening credit)
           SELECT
-            c.id                                                      AS customer_id,
+            cs.customer_id,
             c.name                                                    AS customer_name,
             COALESCE(c.phone, c.telephone, '')                        AS contact_no,
             COALESCE(c.contact_person, c.contact_name, '')            AS contact_person,
             COALESCE(slb.ref_date, slb.voucher_date, NOW()::date)     AS txn_date,
             slb.amount::numeric                                       AS amount,
             UPPER(slb.cr_dr)                                          AS dr_cr
-          FROM customers c
-          JOIN sub_ledgers sl ON sl.id = c.sub_ledger_id
-          JOIN sub_ledger_bills slb ON slb.sub_ledger_id = sl.id
+          FROM customer_sl cs
+          JOIN customers c ON c.id = cs.customer_id
+          JOIN sub_ledger_bills slb ON slb.sub_ledger_id = cs.sub_ledger_id
         ),
         txns AS (
           SELECT * FROM invoice_txns
           UNION ALL
-          SELECT * FROM payment_txns
+          SELECT * FROM voucher_txns
           UNION ALL
           SELECT * FROM opening_txns
         ),
