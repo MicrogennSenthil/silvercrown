@@ -69,8 +69,21 @@ function TaskForm({ initial, onClose }: any) {
   const [showCatMgr, setShowCatMgr] = useState(false);
   const qc = useQueryClient();
 
-  const { data: categories = [] } = useQuery<any[]>({ queryKey: ["/api/task-categories"] });
+  // Task categories come from the existing categories master + any task-specific ones
+  const { data: invCategories = [] } = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const { data: taskCats = [] } = useQuery<any[]>({ queryKey: ["/api/task-categories"] });
+  // Merge: task-specific categories first, then inventory categories (de-duped by name)
+  const catNames = new Set((taskCats as any[]).map((c: any) => c.name.toLowerCase()));
+  const categories = [
+    ...(taskCats as any[]),
+    ...(invCategories as any[]).filter((c: any) => !catNames.has(c.name.toLowerCase())),
+  ];
+
+  // Assigned To: prefer employees master; fall back to users master if employees empty
   const { data: employees = [] } = useQuery<any[]>({ queryKey: ["/api/employees"] });
+  const { data: users = [] } = useQuery<any[]>({ queryKey: ["/api/users"] });
+  // Use employees if populated, otherwise fall back to users
+  const assignees = (employees as any[]).length > 0 ? (employees as any[]) : (users as any[]);
 
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
@@ -149,14 +162,18 @@ function TaskForm({ initial, onClose }: any) {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-600">Assigned To (Employee)</label>
-                <select value={form.assignedEmployeeId || ""} onChange={e => set("assignedEmployeeId", e.target.value)}
+                <label className="block text-sm font-medium mb-1 text-gray-600">Assigned To</label>
+                <select value={form.assignedEmployeeId || ""} onChange={e => {
+                    const selected = assignees.find((a: any) => a.id === e.target.value);
+                    set("assignedEmployeeId", e.target.value);
+                    set("assignedName", selected ? (selected.name || selected.username || "") : "");
+                  }}
                   className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#027fa5]"
                   style={{ borderColor: "#00000040" }} data-testid="select-assigned-to">
                   <option value="">— Unassigned —</option>
-                  {(employees as any[]).map((emp: any) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.name} {emp.employeeCode ? `(${emp.employeeCode})` : ""}
+                  {assignees.map((a: any) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name || a.username}{(a.employeeCode || a.employee_code) ? ` (${a.employeeCode || a.employee_code})` : ""}
                     </option>
                   ))}
                 </select>
