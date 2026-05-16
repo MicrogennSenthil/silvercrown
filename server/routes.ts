@@ -944,6 +944,144 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Sub Ledgers
   app.get("/api/sub-ledgers", requireAuth, async (req, res) => { res.json(await storage.listSubLedgers()); });
 
+  // Combined account list for Ledger Report — returns both GL accounts and sub-ledgers
+  app.get("/api/ledger-accounts", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT
+          'gl'   AS account_type,
+          gl.id,
+          gl.name,
+          gl.code,
+          gl.gl_type,
+          NULL   AS gl_name,
+          gl.gl_type AS group_label
+        FROM general_ledgers gl
+        WHERE gl.is_active = true
+
+        UNION ALL
+
+        SELECT
+          'sl'   AS account_type,
+          sl.id,
+          sl.name,
+          sl.code,
+          gl.gl_type,
+          gl.name AS gl_name,
+          gl.name AS group_label
+        FROM sub_ledgers sl
+        JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+        WHERE sl.is_active = true
+
+        ORDER BY group_label, name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Ledger statement for either a GL account or a sub-ledger
+  app.get("/api/ledger-accounts/:type/:id/statement", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { type, id } = req.params; // type = 'gl' | 'sl'
+
+      if (type === "gl") {
+        // GL-level statement: voucher_det entries where general_ledger_id=id AND no sub_ledger
+        const vRes = await pool.query(`
+          SELECT
+            vm.ref_no,
+            vm.voucher_date   AS txn_date,
+            vm.voucher_no,
+            vd.amount,
+            vd.dr_cr,
+            vm.source_type,
+            vm.narration,
+            COALESCE(sl.name,'') AS party_name
+          FROM voucher_det vd
+          JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+          LEFT JOIN sub_ledgers sl ON sl.id = vd.sub_ledger_id
+          WHERE vd.general_ledger_id = $1
+          ORDER BY vm.voucher_date, vm.voucher_no, vd.seq_no
+        `, [id]);
+
+        const glRes = await pool.query(`SELECT opening_balance, balance_type FROM general_ledgers WHERE id=$1`, [id]);
+        const gl = glRes.rows[0];
+        const obAmt  = parseFloat(gl?.opening_balance || "0");
+        const obType = gl?.balance_type === "Cr" ? "Credit" : (gl?.balance_type === "Dr" ? "Debit" : "Credit");
+
+        let balance = obType === "Credit" ? obAmt : -obAmt;
+        const statement = vRes.rows.map((r: any) => {
+          const amt  = parseFloat(r.amount || "0");
+          const drCr = (r.dr_cr || "CR").toUpperCase();
+          if (drCr === "CR") balance += amt; else balance -= amt;
+          return {
+            refNo: r.ref_no || "",
+            txnDate: r.txn_date ? String(r.txn_date).slice(0, 10) : "",
+            voucherNo: r.voucher_no || "",
+            narration: r.party_name
+              ? `${r.narration || ""} [${r.party_name}]`.trim()
+              : (r.narration || ""),
+            sourceType: r.source_type || "",
+            debit:  drCr === "DR" ? amt : 0,
+            credit: drCr === "CR" ? amt : 0,
+            balance: Math.abs(balance),
+            balanceType: balance >= 0 ? "Cr" : "Dr",
+          };
+        });
+        return res.json({ openingBalance: obAmt, openingBalanceType: obType, statement });
+
+      } else {
+        // Sub-ledger statement: same logic as existing /api/sub-ledgers/:id/statement
+        const billsRes = await pool.query(`
+          SELECT ref_no, ref_date AS txn_date, voucher_no, voucher_date,
+                 amount, cr_dr AS dr_cr, 'Opening Bill' AS source_type, '' AS narration
+          FROM sub_ledger_bills WHERE sub_ledger_id = $1
+          ORDER BY ref_date NULLS FIRST, id
+        `, [id]);
+
+        const voucherRes = await pool.query(`
+          SELECT vm.ref_no, vm.voucher_date AS txn_date, vm.voucher_no,
+                 vm.voucher_date, vd.amount, vd.dr_cr, vm.source_type, vm.narration
+          FROM voucher_det vd
+          JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+          WHERE vd.sub_ledger_id = $1
+          ORDER BY vm.voucher_date, vm.voucher_no, vd.seq_no
+        `, [id]);
+
+        const slRes = await pool.query(
+          `SELECT opening_balance, opening_balance_type FROM sub_ledgers WHERE id=$1`, [id]
+        );
+        const sl = slRes.rows[0];
+        const obAmt  = parseFloat(sl?.opening_balance || "0");
+        const obType = sl?.opening_balance_type || "Credit";
+
+        const rows = [...billsRes.rows, ...voucherRes.rows].sort((a: any, b: any) =>
+          new Date(a.txn_date || "1900-01-01").getTime() - new Date(b.txn_date || "1900-01-01").getTime()
+        );
+
+        let balance = obType === "Credit" ? obAmt : -obAmt;
+        const statement = rows.map((r: any) => {
+          const amt  = parseFloat(r.amount || "0");
+          const drCr = (r.dr_cr || "CR").toUpperCase();
+          if (drCr === "CR") balance += amt; else balance -= amt;
+          return {
+            refNo: r.ref_no || "",
+            txnDate: r.txn_date ? String(r.txn_date).slice(0, 10) : "",
+            voucherNo: r.voucher_no || "",
+            narration: r.narration || "",
+            sourceType: r.source_type || "",
+            debit:  drCr === "DR" ? amt : 0,
+            credit: drCr === "CR" ? amt : 0,
+            balance: Math.abs(balance),
+            balanceType: balance >= 0 ? "Cr" : "Dr",
+          };
+        });
+        return res.json({ openingBalance: obAmt, openingBalanceType: obType, statement });
+      }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Sub-ledgers enriched with GL name — used for voucher entry filtering
   app.get("/api/sub-ledgers/with-gl", requireAuth, async (_req, res) => {
     try {

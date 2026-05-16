@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, Download, Search } from "lucide-react";
+import { TrendingUp, Search } from "lucide-react";
 import { ReportShell, exportToCSV } from "@/components/ReportShell";
 
 const SC = { primary: "#027fa5", tonal: "#d2f1fa" };
@@ -16,7 +16,15 @@ function fmtDate(d: string | null | undefined) {
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-type SubLedger = { id: string; name: string; code: string };
+type LedgerAccount = {
+  id: string;
+  name: string;
+  code: string;
+  account_type: "gl" | "sl";
+  gl_type: string;
+  gl_name: string | null;
+  group_label: string;
+};
 type StmtRow = {
   refNo: string; txnDate: string; voucherNo: string;
   narration: string; sourceType: string;
@@ -27,25 +35,40 @@ type StmtData = {
   statement: StmtRow[];
 };
 
+const GL_TYPE_LABELS: Record<string, string> = {
+  bank: "Bank Accounts",
+  cash: "Cash Accounts",
+  sundry_debtor: "Sundry Debtors",
+  sundry_creditor: "Sundry Creditors",
+  purchase: "Purchase Accounts",
+  expense: "Expense Accounts",
+  tax: "Tax Accounts",
+  roundoff: "Round Off",
+  liability: "Liability Accounts",
+  income: "Income Accounts",
+  other: "Other Accounts",
+};
+
 export default function LedgerReport() {
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
   const fmt2 = (d: Date) => d.toISOString().split("T")[0];
 
   const [selectedId, setSelectedId] = useState("");
+  const [selectedType, setSelectedType] = useState<"gl" | "sl">("sl");
   const [fromDate, setFromDate] = useState(fmt2(firstDay));
   const [toDate, setToDate] = useState(fmt2(today));
   const [search, setSearch] = useState("");
   const [applyDates, setApplyDates] = useState(false);
 
-  const { data: allLedgers = [] } = useQuery<SubLedger[]>({
-    queryKey: ["/api/sub-ledgers"],
+  const { data: allAccounts = [] } = useQuery<LedgerAccount[]>({
+    queryKey: ["/api/ledger-accounts"],
   });
 
   const { data: stmtData, isLoading } = useQuery<StmtData>({
-    queryKey: ["/api/sub-ledgers", selectedId, "statement"],
+    queryKey: ["/api/ledger-accounts", selectedType, selectedId, "statement"],
     queryFn: () =>
-      fetch(`/api/sub-ledgers/${selectedId}/statement`, { credentials: "include" }).then(r => r.json()),
+      fetch(`/api/ledger-accounts/${selectedType}/${selectedId}/statement`, { credentials: "include" }).then(r => r.json()),
     enabled: !!selectedId,
   });
 
@@ -74,9 +97,9 @@ export default function LedgerReport() {
   const totalDebit  = filtered.reduce((s, r) => s + r.debit, 0);
   const totalCredit = filtered.reduce((s, r) => s + r.credit, 0);
   const closingBal  = filtered.length > 0 ? filtered[filtered.length - 1].balance : (stmtData?.openingBalance ?? 0);
-  const closingType = filtered.length > 0 ? filtered[filtered.length - 1].balanceType : (stmtData?.openingBalanceType?.slice(0,2) ?? "Cr");
+  const closingType = filtered.length > 0 ? filtered[filtered.length - 1].balanceType : (stmtData?.openingBalanceType?.slice(0, 2) ?? "Cr");
 
-  const selectedLedger = allLedgers.find(l => l.id === selectedId);
+  const selectedAccount = allAccounts.find(a => a.id === selectedId);
 
   function handleExport() {
     const headers = ["#", "Date", "Voucher No", "Ref No", "Narration", "Source", "Debit ₹", "Credit ₹", "Balance ₹", "Bal Type"];
@@ -87,8 +110,21 @@ export default function LedgerReport() {
       r.credit > 0 ? fmt(r.credit) : "0.00",
       fmt(r.balance), r.balanceType,
     ]);
-    exportToCSV(`LedgerReport_${selectedLedger?.name || "Account"}.csv`, headers, data);
+    exportToCSV(`LedgerReport_${selectedAccount?.name || "Account"}.csv`, headers, data);
   }
+
+  // Group accounts for the select optgroups
+  const groups = useMemo(() => {
+    const map = new Map<string, LedgerAccount[]>();
+    for (const a of allAccounts) {
+      const label = a.account_type === "gl"
+        ? (GL_TYPE_LABELS[a.gl_type] || "Other Accounts")
+        : (a.gl_name || "Sub-Ledgers");
+      if (!map.has(label)) map.set(label, []);
+      map.get(label)!.push(a);
+    }
+    return map;
+  }, [allAccounts]);
 
   return (
     <ReportShell
@@ -100,18 +136,31 @@ export default function LedgerReport() {
       {/* ── Filters ── */}
       <div className="flex flex-wrap items-end gap-3 p-4 border-b border-gray-100 bg-gray-50">
         {/* Account selector */}
-        <div className="flex flex-col gap-1 min-w-[260px]">
+        <div className="flex flex-col gap-1 min-w-[280px]">
           <label className="text-xs font-semibold text-gray-600">Account / Sub-Ledger</label>
           <select
             data-testid="select-account"
             value={selectedId}
-            onChange={e => { setSelectedId(e.target.value); setApplyDates(false); }}
+            onChange={e => {
+              const val = e.target.value;
+              if (!val) { setSelectedId(""); return; }
+              const [type, id] = val.split("|");
+              setSelectedId(id);
+              setSelectedType(type as "gl" | "sl");
+              setApplyDates(false);
+            }}
             className="h-9 rounded-md border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2"
             style={{ "--tw-ring-color": SC.primary } as any}
           >
             <option value="">— Select Account —</option>
-            {allLedgers.map(l => (
-              <option key={l.id} value={l.id}>{l.name}{l.code ? ` (${l.code})` : ""}</option>
+            {Array.from(groups.entries()).map(([label, accounts]) => (
+              <optgroup key={label} label={label}>
+                {accounts.map(a => (
+                  <option key={a.id} value={`${a.account_type}|${a.id}`}>
+                    {a.name}{a.code ? ` (${a.code})` : ""}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
@@ -168,18 +217,29 @@ export default function LedgerReport() {
       </div>
 
       {/* ── Account Header ── */}
-      {stmtData && selectedLedger && (
+      {stmtData && selectedAccount && (
         <div className="flex items-center justify-between px-5 py-3 border-b" style={{ background: SC.tonal }}>
           <div className="flex items-center gap-2">
             <TrendingUp size={14} style={{ color: SC.primary }} />
-            <span className="text-sm font-bold text-gray-800">{selectedLedger.name}</span>
-            {selectedLedger.code && <span className="text-xs text-gray-500">({selectedLedger.code})</span>}
+            <span className="text-sm font-bold text-gray-800">{selectedAccount.name}</span>
+            {selectedAccount.code && <span className="text-xs text-gray-500">({selectedAccount.code})</span>}
+            {selectedAccount.gl_name && (
+              <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: SC.tonal, color: SC.primary }}>
+                {selectedAccount.gl_name}
+              </span>
+            )}
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase"
+              style={{ background: selectedAccount.account_type === "gl" ? "#f0fdf4" : "#fff7ed", color: selectedAccount.account_type === "gl" ? "#166534" : "#9a3412" }}
+            >
+              {selectedAccount.account_type === "gl" ? "GL Account" : "Sub-Ledger"}
+            </span>
           </div>
           <div className="flex items-center gap-5 text-xs text-gray-600">
             <span>
               Opening Balance:{" "}
               <strong className="font-mono">₹{fmt(stmtData.openingBalance)}</strong>{" "}
-              <span className="text-gray-400">{stmtData.openingBalanceType?.slice(0,2)}</span>
+              <span className="text-gray-400">{stmtData.openingBalanceType?.slice(0, 2)}</span>
             </span>
             {filtered.length > 0 && (
               <span>
@@ -236,7 +296,7 @@ export default function LedgerReport() {
                 </td>
                 <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
                   {fmt(stmtData.openingBalance)}{" "}
-                  <span className="text-gray-400 text-[10px]">{stmtData.openingBalanceType?.slice(0,2)}</span>
+                  <span className="text-gray-400 text-[10px]">{stmtData.openingBalanceType?.slice(0, 2)}</span>
                 </td>
               </tr>
 
@@ -273,7 +333,7 @@ export default function LedgerReport() {
                         className="inline-block text-[10px] px-1.5 py-0.5 rounded mt-0.5 font-medium"
                         style={{ background: SC.tonal, color: SC.primary }}
                       >
-                        {r.sourceType === "grn" ? "Purchase" : r.sourceType}
+                        {r.sourceType === "grn" ? "Purchase" : r.sourceType === "job_work_invoice" ? "Sales Invoice" : r.sourceType}
                       </span>
                     )}
                   </td>
