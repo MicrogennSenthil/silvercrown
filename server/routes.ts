@@ -2647,12 +2647,15 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // GET /api/reports/ageing-list — customer aging with custom bucket ranges
+  // GET /api/reports/ageing-list — ageing with custom bucket ranges
+  // ?party=customer|supplier  (default: customer)
   // ?ranges=0-7,7-14,14-21,21-28   (last bucket becomes "above last.to")
   app.get("/api/reports/ageing-list", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
+      const party = (req.query.party as string) === "supplier" ? "supplier" : "customer";
       const raw = (req.query.ranges as string) || "0-7,7-14,14-21,21-28";
+
       // Parse and sanitise bucket ranges — only allow integers
       const buckets = raw.split(",").map(seg => {
         const [a, b] = seg.split("-").map(n => Math.max(0, parseInt(n, 10) || 0));
@@ -2660,74 +2663,154 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       }).filter(b => b.to > b.from);
       if (buckets.length === 0) buckets.push({ from: 0, to: 7 });
 
-      // Build per-customer DR transaction base
-      const baseSQL = `
-        WITH txns AS (
-          SELECT
-            c.id            AS customer_id,
-            c.name          AS customer_name,
-            COALESCE(c.phone, c.telephone, '')          AS contact_no,
-            COALESCE(c.contact_person, c.contact_name, '') AS contact_person,
-            COALESCE(slb.ref_date, slb.voucher_date, NOW()::date) AS txn_date,
-            slb.amount::numeric AS amount,
-            UPPER(slb.cr_dr)   AS dr_cr
-          FROM customers c
-          JOIN sub_ledgers sl ON sl.id = c.sub_ledger_id
-          JOIN sub_ledger_bills slb ON slb.sub_ledger_id = sl.id
+      let baseSQL: string;
+      let idCol: string;
+      let nameCol: string;
 
-          UNION ALL
+      if (party === "customer") {
+        // ── Customer Receivable aging ─────────────────────────────────────
+        // Primary: job work invoices (DR — amounts owed by customer)
+        // Secondary: non-invoice vouchers (receipt CR, manual DR/CR)
+        // Exclude invoice-originated sub_ledger entries (already in invoice_txns)
+        idCol   = "customer_id";
+        nameCol = "customer_name";
+        baseSQL = `
+          WITH customer_sl AS (
+            SELECT c.id AS customer_id, c.sub_ledger_id
+            FROM customers c WHERE c.sub_ledger_id IS NOT NULL
+          ),
+          invoice_txns AS (
+            SELECT
+              jwi.party_id AS customer_id,
+              COALESCE(c.name, jwi.party_name_manual, '') AS customer_name,
+              COALESCE(c.phone, c.telephone, '')          AS contact_no,
+              COALESCE(c.contact_person, c.contact_name, '') AS contact_person,
+              jwi.invoice_date::date AS txn_date,
+              (
+                COALESCE((SELECT SUM(ii.amount + COALESCE(ii.cgst_amt,0) + COALESCE(ii.sgst_amt,0) + COALESCE(ii.igst_amt,0))
+                  FROM job_work_invoice_items ii WHERE ii.invoice_id = jwi.id), 0)
+                + COALESCE((SELECT SUM(ch.amount) FROM job_work_invoice_charges ch WHERE ch.invoice_id = jwi.id), 0)
+              ) AS amount,
+              'DR' AS dr_cr
+            FROM job_work_invoices jwi
+            LEFT JOIN customers c ON c.id = jwi.party_id
+            WHERE jwi.party_id IS NOT NULL
+              AND COALESCE(jwi.status,'') NOT IN ('Cancelled','Voided')
+          ),
+          voucher_txns AS (
+            SELECT
+              cs.customer_id,
+              c.name AS customer_name,
+              COALESCE(c.phone, c.telephone, '')           AS contact_no,
+              COALESCE(c.contact_person, c.contact_name, '') AS contact_person,
+              vm.voucher_date AS txn_date,
+              vd.amount::numeric AS amount,
+              UPPER(vd.dr_cr) AS dr_cr
+            FROM customer_sl cs
+            JOIN customers c ON c.id = cs.customer_id
+            JOIN voucher_det vd ON vd.sub_ledger_id = cs.sub_ledger_id
+            JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+            WHERE vm.source_type IS DISTINCT FROM 'job_work_invoice'
+          ),
+          txns AS (
+            SELECT * FROM invoice_txns
+            UNION ALL
+            SELECT * FROM voucher_txns
+          ),
+          aged AS (SELECT *, (CURRENT_DATE - txn_date::date) AS age_days FROM txns)
+        `;
+      } else {
+        // ── Supplier Payable aging ────────────────────────────────────────
+        // Primary: sub_ledger_bills (GRN-based payables — CR entries)
+        // Secondary: non-GRN voucher entries (payment DR reduces payable)
+        idCol   = "supplier_id";
+        nameCol = "supplier_name";
+        baseSQL = `
+          WITH supplier_sl AS (
+            SELECT DISTINCT grn.supplier_id, grn.sl_id AS sub_ledger_id
+            FROM goods_receipt_notes grn
+            WHERE grn.sl_id IS NOT NULL AND grn.supplier_id IS NOT NULL
+            UNION
+            SELECT s.id AS supplier_id, s.sub_ledger_id
+            FROM suppliers s WHERE s.sub_ledger_id IS NOT NULL
+          ),
+          txns AS (
+            SELECT
+              ss.supplier_id,
+              s.name AS supplier_name,
+              COALESCE(s.phone, s.telephone, '')             AS contact_no,
+              COALESCE(s.contact_person, s.contact_name, '') AS contact_person,
+              COALESCE(slb.ref_date, slb.voucher_date, NOW()::date) AS txn_date,
+              slb.amount::numeric AS amount,
+              UPPER(slb.cr_dr) AS dr_cr
+            FROM supplier_sl ss
+            JOIN suppliers s ON s.id = ss.supplier_id
+            JOIN sub_ledger_bills slb ON slb.sub_ledger_id = ss.sub_ledger_id
 
-          SELECT
-            c.id, c.name,
-            COALESCE(c.phone, c.telephone, ''),
-            COALESCE(c.contact_person, c.contact_name, ''),
-            vm.voucher_date,
-            vd.amount::numeric,
-            UPPER(vd.dr_cr)
-          FROM customers c
-          JOIN sub_ledgers sl ON sl.id = c.sub_ledger_id
-          JOIN voucher_det vd ON vd.sub_ledger_id = sl.id
-          JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
-        ),
-        aged AS (
-          SELECT *, (CURRENT_DATE - txn_date::date) AS age_days FROM txns
-        )
-      `;
+            UNION ALL
 
-      // Build bucket CASE expressions using numeric literals (safe — sanitised above)
+            SELECT
+              ss.supplier_id,
+              s.name AS supplier_name,
+              COALESCE(s.phone, s.telephone, '')             AS contact_no,
+              COALESCE(s.contact_person, s.contact_name, '') AS contact_person,
+              vm.voucher_date AS txn_date,
+              vd.amount::numeric AS amount,
+              UPPER(vd.dr_cr) AS dr_cr
+            FROM supplier_sl ss
+            JOIN suppliers s ON s.id = ss.supplier_id
+            JOIN voucher_det vd ON vd.sub_ledger_id = ss.sub_ledger_id
+            JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+            WHERE vm.source_type IS DISTINCT FROM 'grn'
+          ),
+          aged AS (SELECT *, (CURRENT_DATE - txn_date::date) AS age_days FROM txns)
+        `;
+      }
+
+      // Bucket direction: customer = DR in buckets; supplier = CR in buckets
+      const drCrBucket = party === "customer" ? "DR" : "CR";
+      const drCrOther  = party === "customer" ? "CR" : "DR";
+
       const bucketCases = buckets.map((b, i) => {
         if (i === buckets.length - 1) {
-          // Last defined bucket = "above last from"
-          return `COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days >= ${b.from} THEN amount END),0)`;
+          return `COALESCE(SUM(CASE WHEN dr_cr='${drCrBucket}' AND age_days >= ${b.from} THEN amount END),0)`;
         }
-        return `COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days >= ${b.from} AND age_days < ${b.to} THEN amount END),0)`;
+        return `COALESCE(SUM(CASE WHEN dr_cr='${drCrBucket}' AND age_days >= ${b.from} AND age_days < ${b.to} THEN amount END),0)`;
       });
+
+      const totalExpr = party === "customer"
+        ? `COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount ELSE -amount END),0)`
+        : `COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount ELSE -amount END),0)`;
+
+      const havingExpr = party === "customer"
+        ? `COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount ELSE -amount END),0) <> 0
+           OR COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount END),0) > 0`
+        : `COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount ELSE -amount END),0) <> 0
+           OR COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount END),0) > 0`;
 
       const selectSQL = `
         SELECT
-          customer_id,
-          customer_name,
+          ${idCol}   AS party_id,
+          ${nameCol} AS party_name,
           contact_no,
           contact_person,
           ${bucketCases.map((c, i) => `${c} AS bkt${i}`).join(",\n          ")},
-          COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount END),0) AS others,
-          COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount ELSE -amount END),0) AS total
+          COALESCE(SUM(CASE WHEN dr_cr='${drCrOther}' THEN amount END),0) AS others,
+          ${totalExpr} AS total
         FROM aged
-        GROUP BY customer_id, customer_name, contact_no, contact_person
-        HAVING COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount ELSE -amount END),0) <> 0
-          OR COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount END),0) > 0
-        ORDER BY customer_name
+        GROUP BY ${idCol}, ${nameCol}, contact_no, contact_person
+        HAVING ${havingExpr}
+        ORDER BY ${nameCol}
       `;
 
       const result = await pool.query(baseSQL + selectSQL);
 
-      // Reshape: convert bkt0,bkt1,... columns into a buckets[] array
-      const rows = result.rows.map(row => ({
-        customer_id:    row.customer_id,
-        customer_name:  row.customer_name,
-        contact_no:     row.contact_no,
+      const rows = result.rows.map((row: any) => ({
+        party_id:      row.party_id,
+        party_name:    row.party_name,
+        contact_no:    row.contact_no,
         contact_person: row.contact_person,
-        buckets: buckets.map((_, i) => parseFloat(row[`bkt${i}`] || "0")),
+        buckets: buckets.map((_: any, i: number) => parseFloat(row[`bkt${i}`] || "0")),
         others:  parseFloat(row.others || "0"),
         total:   parseFloat(row.total  || "0"),
       }));

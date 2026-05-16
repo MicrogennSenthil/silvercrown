@@ -1,19 +1,20 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Phone, User, Plus, X, Settings2 } from "lucide-react";
+import { AlertCircle, Phone, User, Plus, X, Settings2, Users, Truck } from "lucide-react";
 import { ReportShell, RTh, RTd, exportToCSV } from "@/components/ReportShell";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa" };
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 type Bucket = { from: number; to: number };
+type PartyType = "customer" | "supplier";
 
 type AgeRow = {
-  customer_id: string;
-  customer_name: string;
+  party_id: string;
+  party_name: string;
   contact_no: string;
   contact_person: string;
-  buckets: number[];   // one value per bucket
+  buckets: number[];
   others: number;
   total: number;
 };
@@ -85,20 +86,17 @@ function CustomizeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-
-      {/* Dialog */}
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 z-10">
-        {/* Header */}
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-bold text-gray-800">Ageing Days</h2>
+          <h2 className="text-lg font-bold text-gray-800">Customize Ageing Days</h2>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
             <X size={18}/>
           </button>
         </div>
 
         {/* Preset chips */}
+        <p className="text-xs font-semibold text-gray-500 mb-2">Quick Presets</p>
         <div className="flex gap-3 mb-5">
           {[10, 15, 30].map(d => (
             <button
@@ -111,18 +109,13 @@ function CustomizeModal({
           ))}
         </div>
 
-        {/* Customize label */}
-        <p className="text-sm font-semibold text-gray-600 mb-3">Customize</p>
+        <p className="text-sm font-semibold text-gray-600 mb-3">Custom Ranges</p>
 
-        {/* Bucket rows */}
         <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-1">
           {rows.map((row, idx) => (
             <div key={idx} className="flex items-center gap-2">
-              {/* From */}
               <div className="relative flex-1">
-                <span className="text-[10px] text-gray-400 absolute -top-2 left-2 bg-white px-0.5 z-10 leading-none">
-                  From
-                </span>
+                <span className="text-[10px] text-gray-400 absolute -top-2 left-2 bg-white px-0.5 z-10 leading-none">From</span>
                 <input
                   type="number" min="0"
                   value={row.from}
@@ -131,11 +124,8 @@ function CustomizeModal({
                     focus:outline-none focus:border-[#027fa5] focus:ring-1 focus:ring-[#027fa5]/20"
                   data-testid={`bucket-from-${idx}`}/>
               </div>
-              {/* To */}
               <div className="relative flex-1">
-                <span className="text-[10px] text-gray-400 absolute -top-2 left-2 bg-white px-0.5 z-10 leading-none">
-                  To
-                </span>
+                <span className="text-[10px] text-gray-400 absolute -top-2 left-2 bg-white px-0.5 z-10 leading-none">To</span>
                 <input
                   type="number" min="0"
                   value={row.to}
@@ -144,7 +134,6 @@ function CustomizeModal({
                     focus:outline-none focus:border-[#027fa5] focus:ring-1 focus:ring-[#027fa5]/20"
                   data-testid={`bucket-to-${idx}`}/>
               </div>
-              {/* Remove */}
               {rows.length > 1 && (
                 <button onClick={() => removeRow(idx)}
                   className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
@@ -156,7 +145,6 @@ function CustomizeModal({
           ))}
         </div>
 
-        {/* Add More */}
         <button
           onClick={addRow}
           className="mt-3 w-full py-2 rounded-lg border border-dashed border-gray-300 text-sm text-gray-500
@@ -165,14 +153,13 @@ function CustomizeModal({
           <Plus size={14}/> Add More
         </button>
 
-        {/* Footer */}
         <div className="flex gap-3 mt-5">
           <button
             onClick={() => setRows(DEFAULT_BUCKETS.map(b => ({ ...b })))}
             className="flex-1 py-2.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-600
               hover:bg-gray-50 transition-colors"
             data-testid="clear-all">
-            Clear-all
+            Reset
           </button>
           <button
             onClick={() => { onApply(rows); onClose(); }}
@@ -189,17 +176,19 @@ function CustomizeModal({
 
 /* ─── Main Page ──────────────────────────────────────────────────────── */
 export default function AgeingList() {
-  const [search,      setSearch]      = useState("");
-  const [buckets,     setBuckets]     = useState<Bucket[]>(DEFAULT_BUCKETS);
-  const [showModal,   setShowModal]   = useState(false);
+  const [search,    setSearch]    = useState("");
+  const [buckets,   setBuckets]   = useState<Bucket[]>(DEFAULT_BUCKETS);
+  const [showModal, setShowModal] = useState(false);
+  const [party,     setParty]     = useState<PartyType>("customer");
 
   const rangesParam = bucketsToParam(buckets);
   const aboveLabel  = `Above ${buckets[buckets.length - 1]?.to ?? 0} Days`;
+  const isCustomer  = party === "customer";
 
   const { data: apiData, isLoading } = useQuery<AgeRow[]>({
-    queryKey: ["/api/reports/ageing-list", rangesParam],
+    queryKey: ["/api/reports/ageing-list", party, rangesParam],
     queryFn: () =>
-      fetch(`/api/reports/ageing-list?ranges=${encodeURIComponent(rangesParam)}`, { credentials: "include" })
+      fetch(`/api/reports/ageing-list?party=${party}&ranges=${encodeURIComponent(rangesParam)}`, { credentials: "include" })
         .then(r => r.json()),
   });
 
@@ -208,13 +197,12 @@ export default function AgeingList() {
   const filtered = useMemo(() =>
     rawRows.filter(r => {
       if (!search.trim()) return true;
-      return [r.customer_name, r.contact_no, r.contact_person]
+      return [r.party_name, r.contact_no, r.contact_person]
         .join(" ").toLowerCase().includes(search.toLowerCase());
     }),
   [rawRows, search]);
 
-  const grandTotal = useMemo(() =>
-    filtered.reduce((s, r) => s + r.total, 0), [filtered]);
+  const grandTotal = useMemo(() => filtered.reduce((s, r) => s + r.total, 0), [filtered]);
 
   const colTotals = useMemo(() => {
     const bkts = Array(buckets.length).fill(0);
@@ -227,32 +215,64 @@ export default function AgeingList() {
     return { bkts, others, total };
   }, [filtered, buckets.length]);
 
-  /* Customize button shown in the filter area */
-  const customizeBtn = (
-    <button
-      onClick={() => setShowModal(true)}
-      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
-      style={{ background: SC.primary }}
-      data-testid="btn-customize-days">
-      <Settings2 size={14}/> Customize Aging Days
-    </button>
-  );
-
   function handleExcel() {
+    const partyLabel = isCustomer ? "Customer Name" : "Supplier Name";
     const headers = [
-      "S.No", "Customer Name",
+      "S.No", partyLabel,
       ...buckets.map((b, i) => colLabel(b, i === buckets.length - 1)),
       aboveLabel, "Others", "Total",
       "Contact No", "Contact Person",
     ];
-    const rows = filtered.map((r, i) => [
-      i + 1, r.customer_name,
+    const csvRows = filtered.map((r, i) => [
+      i + 1, r.party_name,
       ...r.buckets.map(plain),
       plain(r.others), plain(r.total),
       r.contact_no || "", r.contact_person || "",
     ]);
-    exportToCSV(`AgeingList.csv`, headers, rows);
+    exportToCSV(`AgeingList_${party}.csv`, headers, csvRows);
   }
+
+  /* ── Filter bar extras ── */
+  const extraFilters = (
+    <div className="flex items-center gap-2">
+      {/* Customer / Supplier toggle */}
+      <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm font-semibold">
+        <button
+          onClick={() => setParty("customer")}
+          data-testid="btn-party-customer"
+          className="flex items-center gap-1.5 px-3 py-1.5 transition-colors"
+          style={isCustomer
+            ? { background: SC.primary, color: "#fff" }
+            : { background: "#fff", color: "#6b7280" }}>
+          <Users size={13}/> Customer
+        </button>
+        <button
+          onClick={() => setParty("supplier")}
+          data-testid="btn-party-supplier"
+          className="flex items-center gap-1.5 px-3 py-1.5 transition-colors border-l border-gray-200"
+          style={!isCustomer
+            ? { background: SC.orange, color: "#fff" }
+            : { background: "#fff", color: "#6b7280" }}>
+          <Truck size={13}/> Supplier
+        </button>
+      </div>
+
+      {/* Customize Aging Days */}
+      <button
+        onClick={() => setShowModal(true)}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+        style={{ background: SC.primary }}
+        data-testid="btn-customize-days">
+        <Settings2 size={14}/> Customize Aging Days
+      </button>
+    </div>
+  );
+
+  const partyLabel = isCustomer ? "Customer Name" : "Supplier Name";
+  const summaryLabel = isCustomer ? "Customers" : "Suppliers";
+  const emptyMsg = isCustomer
+    ? "No outstanding customer receivables found."
+    : "No outstanding supplier payables found.";
 
   return (
     <>
@@ -268,16 +288,30 @@ export default function AgeingList() {
         search={search} onSearch={setSearch}
         onExcelExport={handleExcel}
         recordCount={filtered.length}
-        extraFilters={customizeBtn}
+        extraFilters={extraFilters}
       >
         {/* Summary strip */}
         {!isLoading && filtered.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-8 gap-y-1 px-5 py-2 border-b border-gray-100 bg-gray-50/50 text-xs">
-            <span className="text-gray-500">Customers: <b className="text-gray-800">{filtered.length}</b></span>
-            <span className="text-gray-500">Grand Total: <b className="font-bold" style={{ color: SC.primary }}>
-              ₹ {plain(grandTotal)}
-            </b></span>
-            <span className="text-gray-400 italic">Buckets: {buckets.map(b => `${b.from}–${b.to}`).join(", ")} → Above {buckets[buckets.length-1]?.to}</span>
+            <span className="text-gray-500">
+              {summaryLabel}: <b className="text-gray-800">{filtered.length}</b>
+            </span>
+            <span className="text-gray-500">
+              Grand Total:{" "}
+              <b className="font-bold" style={{ color: isCustomer ? SC.primary : SC.orange }}>
+                ₹ {plain(grandTotal)}
+              </b>
+            </span>
+            <span className="text-gray-400 italic">
+              Buckets: {buckets.map(b => `${b.from}–${b.to}`).join(", ")} → Above {buckets[buckets.length-1]?.to}
+            </span>
+            <span
+              className="ml-auto text-[11px] px-2 py-0.5 rounded font-semibold"
+              style={isCustomer
+                ? { background: "#e0f2fe", color: SC.primary }
+                : { background: "#fff7ed", color: SC.orange }}>
+              {isCustomer ? "Receivables" : "Payables"}
+            </span>
           </div>
         )}
 
@@ -286,7 +320,7 @@ export default function AgeingList() {
             <thead className="sticky top-0">
               <tr>
                 <RTh>S.no</RTh>
-                <RTh>Customer Name</RTh>
+                <RTh>{partyLabel}</RTh>
                 {buckets.map((b, i) => (
                   <RTh key={i} right>{colLabel(b, false)}</RTh>
                 ))}
@@ -313,18 +347,18 @@ export default function AgeingList() {
                   <div className="flex flex-col items-center gap-2 text-gray-400">
                     <AlertCircle size={28} className="text-gray-300"/>
                     <span className="text-sm">
-                      {search ? "No customers match the search." : "No outstanding ageing entries found."}
+                      {search ? `No ${summaryLabel.toLowerCase()} match the search.` : emptyMsg}
                     </span>
                   </div>
                 </td></tr>
               )}
               {!isLoading && filtered.map((row, idx) => (
-                <tr key={row.customer_id}
+                <tr key={row.party_id}
                   className={`border-t border-gray-50 hover:bg-[#f0f9ff] transition-colors
                     ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/20"}`}
                   data-testid={`row-age-${idx}`}>
                   <RTd muted>{String(idx + 1).padStart(2, "0")}</RTd>
-                  <td className="px-4 py-2.5 font-semibold text-gray-800">{row.customer_name}</td>
+                  <td className="px-4 py-2.5 font-semibold text-gray-800">{row.party_name}</td>
                   {row.buckets.map((v, bi) => {
                     const isLast = bi === row.buckets.length - 1;
                     const cls = isLast && v > 0 ? "text-red-600 font-bold"
@@ -359,7 +393,7 @@ export default function AgeingList() {
               <tfoot>
                 <tr className="border-t-2" style={{ background: SC.tonal }}>
                   <td colSpan={2} className="px-4 py-2.5 text-sm font-bold text-gray-700">
-                    Grand Total — {filtered.length} customer{filtered.length !== 1 ? "s" : ""}
+                    Grand Total — {filtered.length} {summaryLabel.toLowerCase()}
                   </td>
                   {colTotals.bkts.map((v, i) => (
                     <RTd key={i} right bold>{fmtAmt(v)}</RTd>
