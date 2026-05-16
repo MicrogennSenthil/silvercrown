@@ -603,8 +603,8 @@ export default function GoodsReceiptNote() {
             </div>
           </div>
 
-          {/* Items Table */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
+          {/* Items Table — overflow-visible so item-search dropdown is not clipped */}
+          <div className="border border-gray-200 rounded-lg overflow-visible">
             <div className="overflow-x-auto" ref={tableRef}>
               <table className="w-full text-xs">
                 <thead>
