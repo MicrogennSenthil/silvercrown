@@ -200,6 +200,7 @@ export default function GoodsReceiptNote() {
   const [itemDropOpen, setItemDropOpen] = useState<number | null>(null);
   const [dropPos, setDropPos] = useState<{top:number;left:number;width:number}|null>(null);
   const itemInputRefs = useRef<Record<number, HTMLInputElement|null>>({});
+  const portalDropRef = useRef<HTMLDivElement|null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
@@ -227,10 +228,13 @@ export default function GoodsReceiptNote() {
       .map((p: any) => ({ ...p, _source: "product" })),
   ];
 
-  // Close item dropdown on outside click
+  // Close item dropdown on outside click — exclude portal dropdown too
   useEffect(() => {
     function h(e: MouseEvent) {
-      if (!tableRef.current?.contains(e.target as Node)) setItemDropOpen(null);
+      const t = e.target as Node;
+      const inTable = tableRef.current?.contains(t);
+      const inPortal = portalDropRef.current?.contains(t);
+      if (!inTable && !inPortal) { setItemDropOpen(null); setDropPos(null); }
     }
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
@@ -787,9 +791,9 @@ export default function GoodsReceiptNote() {
         ).slice(0, 50);
         return (
           <div
+            ref={portalDropRef}
             style={{ position:"fixed", top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 99999 }}
             className="bg-white border border-gray-200 rounded shadow-xl max-h-52 overflow-y-auto text-xs"
-            onMouseDown={e => e.preventDefault()}
           >
             {opts.length === 0 ? (
               <div className="px-3 py-2 text-gray-400">No items found{q ? ` matching "${q}"` : " — type to search"}</div>
