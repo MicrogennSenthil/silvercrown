@@ -576,6 +576,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       await client.query("BEGIN");
       const { lines = [], ...entryData } = req.body;
+
+      const totalDebit  = lines.reduce((s: number, l: any) => s + (parseFloat(l.debit)  || 0), 0);
+      const totalCredit = lines.reduce((s: number, l: any) => s + (parseFloat(l.credit) || 0), 0);
+
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: `Journal is not balanced. Debit: ₹${totalDebit.toFixed(2)}, Credit: ₹${totalCredit.toFixed(2)}` });
+      }
+
+      // 1. Write to legacy journal_entries table (for backward compatibility)
       const entryRes = await client.query(`
         INSERT INTO journal_entries
           (id, entry_number, date, description, reference, total_debit, total_credit)
@@ -585,8 +595,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           entryData.date || null,
           entryData.description || "",
           entryData.reference || "",
-          entryData.totalDebit || entryData.total_debit || 0,
-          entryData.totalCredit || entryData.total_credit || 0]);
+          totalDebit, totalCredit]);
       const entry = entryRes.rows[0];
       for (const line of lines) {
         await client.query(`
@@ -596,8 +605,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `, [entry.id, line.accountId || null, line.accountName || "",
             line.description || "", line.debit || 0, line.credit || 0]);
       }
+
+      // 2. Dual-write to voucher_mas + voucher_det for ledger integration
+      const { generateVoucherNo } = await import("./voucher");
+      const fyRes = await client.query(`SELECT id, label FROM financial_years WHERE is_current=true LIMIT 1`);
+      const fy = fyRes.rows[0] || { id: null, label: "" };
+      const voucherNo = await generateVoucherNo("journal_voucher", client);
+
+      const vmRes = await client.query(`
+        INSERT INTO voucher_mas
+          (voucher_no, voucher_type, voucher_date, ref_no, ref_date,
+           financial_year_id, financial_year, total_amount, taxable_amount, tax_amount,
+           narration, source_type, source_id)
+        VALUES ($1,'Journal Voucher',$2,$3,$4,$5,$6,$7,$8,'0',$9,'journal',$10)
+        RETURNING id
+      `, [
+        voucherNo,
+        entryData.date || new Date().toISOString().slice(0,10),
+        entryData.reference || voucherNo,
+        entryData.date || null,
+        fy.id, fy.label,
+        totalDebit.toFixed(2), totalDebit.toFixed(2),
+        entryData.description || "",
+        entry.id,
+      ]);
+      const vmId = vmRes.rows[0].id;
+
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        const glId = l.generalLedgerId || null;
+        const slId = l.subLedgerId || null;
+        const drAmt = parseFloat(l.debit)  || 0;
+        const crAmt = parseFloat(l.credit) || 0;
+        if (drAmt <= 0 && crAmt <= 0) continue;
+        if (!glId) continue; // skip lines without a GL account
+
+        let resolvedGlId = glId;
+        if (!resolvedGlId && slId) {
+          const slR = await client.query(`SELECT general_ledger_id FROM sub_ledgers WHERE id=$1`, [slId]);
+          resolvedGlId = slR.rows[0]?.general_ledger_id || null;
+        }
+        if (!resolvedGlId) continue;
+
+        if (drAmt > 0) {
+          await client.query(`INSERT INTO voucher_det (voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration)
+            VALUES ($1,$2,$3,$4,'DR',$5,$6)`,
+            [vmId, i*2+1, resolvedGlId, slId, drAmt, l.description || entryData.description || ""]);
+        }
+        if (crAmt > 0) {
+          await client.query(`INSERT INTO voucher_det (voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration)
+            VALUES ($1,$2,$3,$4,'CR',$5,$6)`,
+            [vmId, i*2+2, resolvedGlId, slId, crAmt, l.description || entryData.description || ""]);
+        }
+      }
+
       await client.query("COMMIT");
-      res.json(entry);
+      res.json({ ...entry, voucherNo });
     } catch (e: any) {
       await client.query("ROLLBACK");
       console.error("Journal entry create error:", e.message);
@@ -2644,6 +2707,87 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         return res.json({ ...h, items, terms, charges });
       }
       res.status(400).json({ message: "Unknown type" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/reports/trial-balance — closing balances for all active GL accounts
+  app.get("/api/reports/trial-balance", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = req.query.from as string || "";
+      const to   = req.query.to   as string || "";
+
+      const dateFilter = (from && to)
+        ? `AND vm.voucher_date >= '${from}' AND vm.voucher_date <= '${to}'`
+        : "";
+
+      const r = await pool.query(`
+        WITH ob AS (
+          SELECT
+            gl.id,
+            gl.name,
+            gl.code,
+            gl.gl_type,
+            COALESCE(gl.opening_balance::numeric, 0) AS ob_amt,
+            COALESCE(gl.balance_type, 'Dr')          AS ob_type
+          FROM general_ledgers gl
+          WHERE gl.is_active = true
+        ),
+        movements AS (
+          SELECT
+            vd.general_ledger_id AS gl_id,
+            SUM(CASE WHEN UPPER(vd.dr_cr)='DR' THEN vd.amount::numeric ELSE 0 END) AS total_dr,
+            SUM(CASE WHEN UPPER(vd.dr_cr)='CR' THEN vd.amount::numeric ELSE 0 END) AS total_cr
+          FROM voucher_det vd
+          JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+          WHERE 1=1 ${dateFilter}
+          GROUP BY vd.general_ledger_id
+        )
+        SELECT
+          ob.id,
+          ob.name,
+          ob.code,
+          ob.gl_type,
+          ob.ob_amt,
+          ob.ob_type,
+          COALESCE(m.total_dr, 0) AS period_dr,
+          COALESCE(m.total_cr, 0) AS period_cr,
+          -- Opening signed (Dr = positive, Cr = negative)
+          CASE WHEN ob.ob_type='Dr' THEN ob.ob_amt ELSE -ob.ob_amt END
+            + COALESCE(m.total_dr, 0) - COALESCE(m.total_cr, 0) AS closing_signed
+        FROM ob
+        LEFT JOIN movements m ON m.gl_id = ob.id
+        ORDER BY ob.gl_type, ob.name
+      `);
+
+      const rows = r.rows.map((row: any) => {
+        const closing = parseFloat(row.closing_signed || "0");
+        return {
+          id: row.id,
+          name: row.name,
+          code: row.code,
+          gl_type: row.gl_type,
+          ob_amt: parseFloat(row.ob_amt || "0"),
+          ob_type: row.ob_type,
+          period_dr: parseFloat(row.period_dr || "0"),
+          period_cr: parseFloat(row.period_cr || "0"),
+          closing_dr: closing > 0 ? closing : 0,
+          closing_cr: closing < 0 ? Math.abs(closing) : 0,
+        };
+      });
+
+      // Grand totals
+      const totals = rows.reduce((acc: any, r: any) => {
+        acc.opening_dr += r.ob_type === "Dr" ? r.ob_amt : 0;
+        acc.opening_cr += r.ob_type !== "Dr" ? r.ob_amt : 0;
+        acc.period_dr  += r.period_dr;
+        acc.period_cr  += r.period_cr;
+        acc.closing_dr += r.closing_dr;
+        acc.closing_cr += r.closing_cr;
+        return acc;
+      }, { opening_dr: 0, opening_cr: 0, period_dr: 0, period_cr: 0, closing_dr: 0, closing_cr: 0 });
+
+      res.json({ rows, totals });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
