@@ -631,13 +631,13 @@ export default function GoodsReceiptNote() {
                             value={itemDropOpen === i ? (itemSearch[i] ?? it.item_name) : it.item_name}
                             onFocus={e => {
                               const r = e.currentTarget.getBoundingClientRect();
-                              setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: 288 });
+                              setDropPos({ top: r.bottom, left: r.left, width: 288 });
                               setItemDropOpen(i);
                               setItemSearch(p => ({...p,[i]: it.item_name}));
                             }}
                             onChange={e => {
                               const r = itemInputRefs.current[i]?.getBoundingClientRect();
-                              if (r) setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: 288 });
+                              if (r) setDropPos({ top: r.bottom, left: r.left, width: 288 });
                               setItemSearch(p => ({...p,[i]:e.target.value}));
                               setItemDropOpen(i);
                             }}
