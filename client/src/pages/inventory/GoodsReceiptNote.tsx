@@ -201,9 +201,28 @@ export default function GoodsReceiptNote() {
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
+  const { data: allInvItems = [] } = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
 
-  const rawMaterials = (allProducts as any[]).filter((p: any) => p.isActive !== false);
+  // Merge inventory items + engineering products for GRN item search
+  const rawMaterials = [
+    ...(allInvItems as any[]).map((it: any) => ({
+      id: it.id,
+      code: it.code,
+      name: it.name,
+      unit: it.unit,
+      uom: it.unit,
+      purchase_price: it.purchasePrice ?? it.purchase_price ?? "0",
+      cost_price: it.purchasePrice ?? it.purchase_price ?? "0",
+      cgst_rate: String(parseFloat(it.taxRate ?? it.tax_rate ?? "0") / 2),
+      sgst_rate: String(parseFloat(it.taxRate ?? it.tax_rate ?? "0") / 2),
+      igst_rate: it.taxRate ?? it.tax_rate ?? "0",
+      _source: "inventory",
+    })),
+    ...(allProducts as any[])
+      .filter((p: any) => p.isActive !== false)
+      .map((p: any) => ({ ...p, _source: "product" })),
+  ];
 
   // Close item dropdown on outside click
   useEffect(() => {
@@ -619,21 +638,29 @@ export default function GoodsReceiptNote() {
                           const q = (itemSearch[i] ?? "").toLowerCase();
                           const opts = rawMaterials.filter((p: any) =>
                             !q || p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q)
-                          );
+                          ).slice(0, 50);
                           return opts.length > 0 ? (
-                            <div className="absolute z-50 left-1 top-full mt-0.5 w-64 bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto text-xs">
+                            <div className="absolute z-50 left-1 top-full mt-0.5 w-72 bg-white border border-gray-200 rounded shadow-lg max-h-52 overflow-y-auto text-xs">
                               {opts.map((p: any) => (
-                                <div key={p.id}
-                                  onMouseDown={() => pickProductForGrn(i, p)}
-                                  className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center">
-                                  <span className="font-medium text-gray-800">{p.name}</span>
-                                  <span className="text-gray-400 text-[10px]">{p.code}</span>
+                                <div key={`${p._source}-${p.id}`}
+                                  onMouseDown={e => { e.preventDefault(); pickProductForGrn(i, p); }}
+                                  className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center gap-2 border-b border-gray-50 last:border-0">
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="font-medium text-gray-800 truncate">{p.name}</span>
+                                    {p.code && <span className="text-gray-400 text-[10px]">{p.code}</span>}
+                                  </div>
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded shrink-0 font-semibold"
+                                    style={p._source === "inventory"
+                                      ? { background: "#d2f1fa", color: "#027fa5" }
+                                      : { background: "#fef3c7", color: "#92400e" }}>
+                                    {p._source === "inventory" ? "Inventory" : "Product"}
+                                  </span>
                                 </div>
                               ))}
                             </div>
                           ) : (
-                            <div className="absolute z-50 left-1 top-full mt-0.5 w-56 bg-white border border-gray-200 rounded shadow-lg px-3 py-2 text-xs text-gray-400">
-                              No raw material items found
+                            <div className="absolute z-50 left-1 top-full mt-0.5 w-64 bg-white border border-gray-200 rounded shadow-lg px-3 py-2 text-xs text-gray-400">
+                              No items found{q ? ` matching "${q}"` : ""}
                             </div>
                           );
                         })()}
