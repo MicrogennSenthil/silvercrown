@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Search, Edit2, Upload, Scan, X, ChevronDown, FileText, CheckCircle } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
@@ -777,8 +778,8 @@ export default function GoodsReceiptNote() {
         <ScanModal onClose={() => setShowScan(false)} onExtracted={applyScannedData}/>
       )}
 
-      {/* Item search dropdown — fixed position to escape overflow-x-auto clipping */}
-      {itemDropOpen !== null && dropPos && (() => {
+      {/* Item search dropdown — rendered via portal to escape all overflow clipping */}
+      {itemDropOpen !== null && dropPos && createPortal((() => {
         const i = itemDropOpen;
         const q = (itemSearch[i] ?? "").toLowerCase();
         const opts = rawMaterials.filter((p: any) =>
@@ -786,12 +787,12 @@ export default function GoodsReceiptNote() {
         ).slice(0, 50);
         return (
           <div
-            style={{ position:"fixed", top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
-            className="bg-white border border-gray-200 rounded shadow-lg max-h-52 overflow-y-auto text-xs"
+            style={{ position:"fixed", top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 99999 }}
+            className="bg-white border border-gray-200 rounded shadow-xl max-h-52 overflow-y-auto text-xs"
             onMouseDown={e => e.preventDefault()}
           >
             {opts.length === 0 ? (
-              <div className="px-3 py-2 text-gray-400">No items found{q ? ` matching "${q}"` : ""}</div>
+              <div className="px-3 py-2 text-gray-400">No items found{q ? ` matching "${q}"` : " — type to search"}</div>
             ) : opts.map((p: any) => (
               <div key={`${p._source}-${p.id}`}
                 onMouseDown={e => { e.preventDefault(); pickProductForGrn(i, p); setItemDropOpen(null); setDropPos(null); }}
@@ -810,7 +811,7 @@ export default function GoodsReceiptNote() {
             ))}
           </div>
         );
-      })()}
+      })(), document.body)}
     </div>
   );
 }
