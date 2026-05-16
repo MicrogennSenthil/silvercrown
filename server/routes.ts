@@ -2250,7 +2250,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             AND COALESCE(jwi.status,'') NOT IN ('Cancelled','Voided')
         ),
         voucher_txns AS (
-          -- ALL voucher entries against customer sub-ledgers:
+          -- Voucher entries against customer sub-ledgers EXCLUDING invoice postings
+          -- (invoices already captured in invoice_txns directly from job_work_invoices)
           --   Receipt vouchers  → CR (payment received, reduces receivable shown in Others)
           --   Payment vouchers  → DR (refund/advance paid out, shown in DR buckets)
           --   Manual journals   → DR or CR as entered
@@ -2266,9 +2267,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           JOIN customers c ON c.id = cs.customer_id
           JOIN voucher_det vd ON vd.sub_ledger_id = cs.sub_ledger_id
           JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+          -- Exclude invoice-originated DR entries (already in invoice_txns); keep only payment/journal vouchers
+          WHERE vm.source_type IS DISTINCT FROM 'job_work_invoice'
         ),
         opening_txns AS (
-          -- Opening balance bills under customer sub-ledgers (DR = opening receivable, CR = opening credit)
+          -- Opening balance bills under customer sub-ledgers
+          -- Exclude entries created by invoice posting (those are already in invoice_txns)
           SELECT
             cs.customer_id,
             c.name                                                    AS customer_name,
@@ -2280,6 +2284,10 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM customer_sl cs
           JOIN customers c ON c.id = cs.customer_id
           JOIN sub_ledger_bills slb ON slb.sub_ledger_id = cs.sub_ledger_id
+          -- Exclude bills created by invoice posting (ref_no = invoice voucher_no)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM job_work_invoices jwi WHERE jwi.voucher_no = slb.ref_no
+          )
         ),
         txns AS (
           SELECT * FROM invoice_txns
@@ -3544,6 +3552,129 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Job Work Invoice voucher posting helper ──────────────────────────────
+  // Called on CREATE and UPDATE (re-posts); caller is inside a DB transaction.
+  // On DELETE the caller must reverse the entries before deleting the invoice.
+  async function postInvoiceVoucher(client: any, invoiceId: string, invoiceRow: any) {
+    const SD_GL    = "29379a58-5e96-4c71-9074-8193877bcfb5"; // Sundry Debtors
+    const JWI_GL   = "jwi00001-0000-0000-0000-000000000001"; // Job Work Income
+    const CGST_OUT = "cgsto001-0000-0000-0000-000000000001"; // CGST Output
+    const SGST_OUT = "sgsto001-0000-0000-0000-000000000001"; // SGST Output
+    const IGST_OUT = "igsto001-0000-0000-0000-000000000001"; // IGST Output
+
+    // Ensure output GL accounts exist (idempotent)
+    await client.query(`
+      INSERT INTO general_ledgers (id, code, name, gl_type, is_active) VALUES
+        ($1,'JW-INCOME-001','Job Work Income','income',true),
+        ($2,'CGST-OUTPUT-001','CGST Output Account','tax',true),
+        ($3,'SGST-OUTPUT-001','SGST Output Account','tax',true),
+        ($4,'IGST-OUTPUT-001','IGST Output Account','tax',true)
+      ON CONFLICT (id) DO NOTHING
+    `, [JWI_GL, CGST_OUT, SGST_OUT, IGST_OUT]);
+
+    // Fetch items and charges (already committed to DB at this point)
+    const items   = (await client.query(`SELECT * FROM job_work_invoice_items   WHERE invoice_id=$1`, [invoiceId])).rows;
+    const charges = (await client.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1`, [invoiceId])).rows;
+
+    const taxableAmt   = items.reduce((s: number, it: any) => s + (+it.amount    || 0), 0);
+    const cgstAmt      = items.reduce((s: number, it: any) => s + (+it.cgst_amt  || 0), 0);
+    const sgstAmt      = items.reduce((s: number, it: any) => s + (+it.sgst_amt  || 0), 0);
+    const igstAmt      = items.reduce((s: number, it: any) => s + (+it.igst_amt  || 0), 0);
+    const chargesTotal = charges.reduce((s: number, ch: any) => s + (+ch.amount  || 0), 0);
+    const grandTotal   = taxableAmt + cgstAmt + sgstAmt + igstAmt + chargesTotal;
+    if (grandTotal <= 0) return;
+
+    const partyId   = invoiceRow.party_id;
+    const partyName = invoiceRow.party_name_db || invoiceRow.party_name_manual || "";
+
+    // Ensure customer sub_ledger exists and is linked
+    let customerSlId: string | null = null;
+    if (partyId) {
+      const custRes = await client.query(`SELECT sub_ledger_id, name FROM customers WHERE id=$1`, [partyId]);
+      customerSlId = custRes.rows[0]?.sub_ledger_id || null;
+      if (!customerSlId) {
+        const custName = custRes.rows[0]?.name || partyName;
+        const newSl = await client.query(`
+          INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
+          [`SL-${Date.now()}`, custName, SD_GL]);
+        customerSlId = newSl.rows[0].id;
+        await client.query(`UPDATE customers SET sub_ledger_id=$1 WHERE id=$2`, [customerSlId, partyId]);
+      }
+    }
+
+    // Remove any previous voucher posting for this invoice (re-post on edit)
+    await client.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN
+      (SELECT id FROM voucher_mas WHERE source_type='job_work_invoice' AND source_id=$1)`, [invoiceId]);
+    await client.query(`DELETE FROM voucher_mas WHERE source_type='job_work_invoice' AND source_id=$1`, [invoiceId]);
+    if (customerSlId) {
+      await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1 AND sub_ledger_id=$2`,
+        [invoiceRow.voucher_no, customerSlId]);
+    }
+
+    const fyRes = await client.query(`SELECT id, label FROM financial_years WHERE is_current=true LIMIT 1`);
+    const fy = fyRes.rows[0] || { id: null, label: "" };
+
+    const vmRes = await client.query(`
+      INSERT INTO voucher_mas
+        (voucher_no, voucher_type, voucher_date, ref_no, ref_date,
+         financial_year_id, financial_year, total_amount, taxable_amount, tax_amount,
+         narration, source_type, source_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'job_work_invoice',$12) RETURNING id
+    `, [
+      invoiceRow.voucher_no, "Job Work Invoice", invoiceRow.invoice_date,
+      invoiceRow.voucher_no, invoiceRow.invoice_date,
+      fy.id, fy.label, grandTotal, taxableAmt, cgstAmt + sgstAmt + igstAmt,
+      `Invoice ${invoiceRow.voucher_no} - ${partyName}`, invoiceId,
+    ]);
+    const vmId = vmRes.rows[0].id;
+
+    let seq = 1;
+    const det = async (gl: string, sl: string | null, drCr: string, amt: number, narr: string) => {
+      if (Math.abs(amt) < 0.001) return;
+      await client.query(`INSERT INTO voucher_det (voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)`, [vmId, seq++, gl, sl, drCr, Math.abs(amt), narr]);
+    };
+
+    const isInterState = invoiceRow.is_inter_state;
+
+    // DR: Sundry Debtors (full receivable = items + GST + charges)
+    await det(SD_GL, customerSlId, "DR", grandTotal, `Invoice to ${partyName}`);
+
+    // CR: Job Work Income (taxable amount)
+    await det(JWI_GL, null, "CR", taxableAmt, `Job Work Income - ${partyName}`);
+
+    // CR: Output GST
+    if (isInterState) {
+      await det(IGST_OUT, null, "CR", igstAmt, `Output IGST`);
+    } else {
+      await det(CGST_OUT, null, "CR", cgstAmt, `Output CGST`);
+      await det(SGST_OUT, null, "CR", sgstAmt, `Output SGST`);
+    }
+
+    // CR: Additional charges — each to its mapped sub_ledger GL, fallback to Job Work Income
+    for (const ch of charges) {
+      const chAmt = +ch.amount || 0;
+      if (chAmt <= 0) continue;
+      if (ch.subledger_id) {
+        const slGlRes = await client.query(`SELECT general_ledger_id FROM sub_ledgers WHERE id=$1`, [ch.subledger_id]);
+        const chGl = slGlRes.rows[0]?.general_ledger_id;
+        await det(chGl || JWI_GL, chGl ? ch.subledger_id : null, "CR", chAmt, ch.charge_name || "Charge");
+      } else {
+        await det(JWI_GL, null, "CR", chAmt, ch.charge_name || "Charge");
+      }
+    }
+
+    // Sub-ledger outstanding bill (DR = amount receivable from customer)
+    if (customerSlId) {
+      await client.query(`INSERT INTO sub_ledger_bills
+        (id, sub_ledger_id, ref_no, ref_date, voucher_no, voucher_date, amount, cr_dr)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,'DR')`,
+        [customerSlId, invoiceRow.voucher_no, invoiceRow.invoice_date,
+         invoiceRow.voucher_no, invoiceRow.invoice_date, grandTotal]);
+    }
+  }
+
   // GET /api/job-work-invoice — list all
   app.get("/api/job-work-invoice", requireAuth, async (req, res) => {
     try {
@@ -3634,6 +3765,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5)
         `, [invoiceId, cseq++, ch.charge_name || "", ch.subledger_id || null, parseFloat(ch.amount || 0)]);
       }
+      // Post to ledger: DR Sundry Debtors, CR Job Work Income + Output GST
+      await postInvoiceVoucher(client, invoiceId, hRes.rows[0]);
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
     } catch (e: any) {
@@ -3705,6 +3838,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         SELECT inv.*, COALESCE(c.name, inv.party_name_manual,'') as party_name_db
         FROM job_work_invoices inv LEFT JOIN customers c ON c.id=inv.party_id WHERE inv.id=$1
       `, [req.params.id]);
+      // Re-post to ledger (function reverses old entries first, then re-posts)
+      await postInvoiceVoucher(client, req.params.id, hRes.rows[0]);
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
     } catch (e: any) {
@@ -3719,7 +3854,23 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(`DELETE FROM job_work_invoice_items WHERE invoice_id=$1`, [req.params.id]);
+      // Reverse ledger entries before deleting the invoice
+      const invRow = (await client.query(
+        `SELECT jwi.*, COALESCE(c.sub_ledger_id,'') AS customer_sl_id
+         FROM job_work_invoices jwi
+         LEFT JOIN customers c ON c.id = jwi.party_id
+         WHERE jwi.id=$1`, [req.params.id]
+      )).rows[0];
+      if (invRow) {
+        await client.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN
+          (SELECT id FROM voucher_mas WHERE source_type='job_work_invoice' AND source_id=$1)`, [req.params.id]);
+        await client.query(`DELETE FROM voucher_mas WHERE source_type='job_work_invoice' AND source_id=$1`, [req.params.id]);
+        if (invRow.customer_sl_id) {
+          await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1 AND sub_ledger_id=$2`,
+            [invRow.voucher_no, invRow.customer_sl_id]);
+        }
+      }
+      await client.query(`DELETE FROM job_work_invoice_items   WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoice_charges WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoices WHERE id=$1`, [req.params.id]);
       await client.query("COMMIT");
