@@ -283,9 +283,9 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: processes = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
-  // Engineering screens: exclude Raw Material category items
+  // All products available for engineering screens
   const storeItems = (allProducts as any[]).filter(
-    (p: any) => p.category_name?.toLowerCase() !== "raw material"
+    (p: any) => p.isActive !== false
   );
 
   const [partyId, setPartyId] = useState(editData?.party_id || "");

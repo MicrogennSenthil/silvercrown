@@ -49,9 +49,9 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
   const settingsMap = (settingsList as any[]).reduce((m: any, s: any) => { m[s.key] = s.value; return m; }, {});
 
-  // Only non-Raw-Material products for engineering screens
+  // All products available for engineering screens
   const filteredProducts = (products as any[]).filter(
-    (p: any) => p.category_name?.toLowerCase() !== "raw material"
+    (p: any) => p.isActive !== false
   );
 
   // ── Header state ────────────────────────────────────────────────────────────
