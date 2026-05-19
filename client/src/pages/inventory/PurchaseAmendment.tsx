@@ -72,7 +72,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const qc = useQueryClient();
   const isEdit = !!editData?.id;
 
-  const { data: purchaseOrders = [] } = useQuery<any[]>({ queryKey: ["/api/purchase-orders"] });
+  const { data: purchaseOrders = [], isLoading: posLoading } = useQuery<any[]>({ queryKey: ["/api/purchase-orders"] });
   const { data: suppliers = [] }      = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
   const { data: products = [] }       = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: termTypes = [] }      = useQuery<any[]>({ queryKey: ["/api/term-types"] });
@@ -117,6 +117,17 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
         .then(r => r.json()).then(d => { if (d.voucher_no) setVoucherNo(d.voucher_no); });
     }
   }, []);
+
+  // Auto-find and set the source PO when editing an existing amendment
+  useEffect(() => {
+    if (isEdit && editData?.original_po_id && (purchaseOrders as any[]).length > 0 && !sourcePo) {
+      const found = (purchaseOrders as any[]).find((p: any) => p.id === editData.original_po_id);
+      if (found) {
+        setSourcePo(found);
+        setSourcePoSearch(found.voucher_no);
+      }
+    }
+  }, [purchaseOrders, isEdit]);
 
   useEffect(() => {
     function h(e: MouseEvent) { if (!containerRef.current?.contains(e.target as Node)) { setSourcePoOpen(false); setItemDropOpen(null); setSuppOpen(false); } }
@@ -309,21 +320,24 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                   data-testid="input-source-po"/>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
               </div>
-              {sourcePoOpen && filteredPOs.length > 0 && (
+              {sourcePoOpen && (
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-52 overflow-y-auto mt-0.5">
-                  {filteredPOs.slice(0, 10).map((po: any) => (
-                    <button key={po.id} onClick={() => loadSourcePo(po)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] border-b last:border-0"
-                      data-testid={`opt-po-${po.id}`}>
-                      <div className="font-semibold text-[#027fa5]">{po.voucher_no}</div>
-                      <div className="text-xs text-gray-500">{po.supplier_name_db || po.supplier_name_manual} · {fmt(po.po_date)}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {sourcePoOpen && filteredPOs.length === 0 && (
-                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 p-3 text-sm text-gray-400 mt-0.5">
-                  No purchase orders found
+                  {posLoading ? (
+                    <div className="px-3 py-3 text-sm text-gray-400">Loading purchase orders…</div>
+                  ) : filteredPOs.length > 0 ? (
+                    filteredPOs.slice(0, 15).map((po: any) => (
+                      <button key={po.id} onClick={() => loadSourcePo(po)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] border-b last:border-0"
+                        data-testid={`opt-po-${po.id}`}>
+                        <div className="font-semibold text-[#027fa5]">{po.voucher_no}</div>
+                        <div className="text-xs text-gray-500">{po.supplier_name_db || po.supplier_name_manual || "—"} · {fmt(po.po_date)}</div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-3 text-sm text-gray-400">
+                      {sourcePoSearch ? "No matching POs found" : "No purchase orders available"}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
