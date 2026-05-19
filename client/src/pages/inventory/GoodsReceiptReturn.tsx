@@ -62,7 +62,7 @@ export default function GoodsReceiptReturn() {
   const [err, setErr]       = useState("");
 
   const { data: grrs = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-returns"] });
-  const { data: warehouses = [] }      = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
+  const { data: warehouses = [] }      = useQuery<any[]>({ queryKey: ["/api/stores"] });
   const { data: grns = [] }            = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: allProducts = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
 

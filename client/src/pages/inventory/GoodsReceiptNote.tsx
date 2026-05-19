@@ -204,7 +204,7 @@ export default function GoodsReceiptNote() {
   const tableRef = useRef<HTMLDivElement>(null);
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
-  const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
+  const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/stores"] });
   const { data: allInvItems = [] } = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
 
