@@ -113,10 +113,28 @@ export default function StoreRequestNote() {
   const [itemQuery, setItemQuery]         = useState<Record<number, string>>({});
 
   const { data: srns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-request-notes"] });
-  const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
-  const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: stores = [] }          = useQuery<any[]>({ queryKey: ["/api/stores"] });
+  const { data: allInvItems = [] }     = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
+  const { data: allProducts = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
 
-  const products = (allProducts as any[]).filter((p: any) => p.is_active !== false);
+  // Merge store inventory items + engineering products — same approach as GRN
+  const products = [
+    ...(allInvItems as any[]).map((it: any) => ({
+      id: it.id,
+      code: it.code,
+      name: it.name,
+      uom: it.unit,
+      unit: it.unit,
+      purchase_price: it.purchasePrice ?? it.purchase_price ?? "0",
+      cost_price: it.purchasePrice ?? it.purchase_price ?? "0",
+      current_stock: it.currentStock ?? it.current_stock ?? 0,
+      isActive: it.isActive ?? it.is_active ?? true,
+      _source: "inventory",
+    })),
+    ...(allProducts as any[])
+      .filter((p: any) => p.isActive !== false)
+      .map((p: any) => ({ ...p, _source: "product" })),
+  ];
 
   const totalQty = form.items.reduce((s, it) => s + (+it.qty || 0), 0);
   const grandTotal = form.items.reduce((s, it) => s + (+it.amount || 0), 0);
@@ -338,7 +356,7 @@ export default function StoreRequestNote() {
               className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
               data-testid="select-store">
               <option value="">Select Store</option>
-              {(warehouses as any[]).map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {(stores as any[]).map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
           <div>
