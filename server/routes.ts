@@ -5246,14 +5246,14 @@ Return ONLY valid JSON (no markdown, no explanation):
       if (slRes.rows.length > 0) {
         supplierSlId = slRes.rows[0].id;
         // Backfill sl_id on the GRN record so future lookups use ID
-        await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]).catch(()=>{});
+        await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]);
       } else {
         const newSl = await client.query(`
           INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
           VALUES (gen_random_uuid()::text,$1,$2,$3,'BillToBill',true) RETURNING id`,
           [`SL-${Date.now()}`, suppName, SC_GL]);
         supplierSlId = newSl.rows[0].id;
-        await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]).catch(()=>{});
+        await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]);
       }
     }
 
@@ -5307,6 +5307,10 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Create GRN
   app.post("/api/goods-receipt-notes", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
+    // Run DDL migrations BEFORE acquiring a transaction client to avoid lock conflicts
+    await pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
+    await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_user_id varchar`).catch(()=>{});
+    await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_name text DEFAULT ''`).catch(()=>{});
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -5324,9 +5328,6 @@ Return ONLY valid JSON (no markdown, no explanation):
       const round_off      = +(b.round_off||0);
       const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + round_off);
 
-      await pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
-      await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_user_id varchar`).catch(()=>{});
-      await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_name text DEFAULT ''`).catch(()=>{});
       const hdrRes = await client.query(`
         INSERT INTO goods_receipt_notes
           (voucher_no, grn_date, store_id, store_name, supplier_id, supplier_name_manual, sl_id,
@@ -5364,7 +5365,15 @@ Return ONLY valid JSON (no markdown, no explanation):
         }
       }
 
-      await postGrnVoucher(client, hdr, { ...b, items, grand_total });
+      // Wrap GL voucher posting in a SAVEPOINT — failure here must never abort the GRN save
+      try {
+        await client.query("SAVEPOINT grn_voucher");
+        await postGrnVoucher(client, hdr, { ...b, items, grand_total });
+        await client.query("RELEASE SAVEPOINT grn_voucher");
+      } catch (ve: any) {
+        await client.query("ROLLBACK TO SAVEPOINT grn_voucher");
+        console.error("[GRN] Voucher posting failed (GRN saved):", ve.message);
+      }
       await client.query("COMMIT");
       res.json(hdr);
     } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
@@ -5429,7 +5438,15 @@ Return ONLY valid JSON (no markdown, no explanation):
         }
       }
 
-      await postGrnVoucher(client, hdr, { ...b, items, grand_total });
+      // Wrap GL voucher posting in a SAVEPOINT — failure must never abort the GRN update
+      try {
+        await client.query("SAVEPOINT grn_voucher");
+        await postGrnVoucher(client, hdr, { ...b, items, grand_total });
+        await client.query("RELEASE SAVEPOINT grn_voucher");
+      } catch (ve: any) {
+        await client.query("ROLLBACK TO SAVEPOINT grn_voucher");
+        console.error("[GRN PATCH] Voucher posting failed (GRN saved):", ve.message);
+      }
       await client.query("COMMIT");
       res.json(hdr);
     } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
