@@ -12,6 +12,7 @@ const p2 = (v: any) => parseFloat(v)||0;
 type GrnItem = {
   id?: string; sno: number;
   item_code: string; item_name: string; batch_no: string; expiry_date: string;
+  expiry_required: boolean;
   qty: number; unit: string; rate: number; taxable_amt: number;
   cgst_pct: number; cgst_amt: number; sgst_pct: number; sgst_amt: number;
   igst_pct: number; igst_amt: number; total: number;
@@ -27,7 +28,7 @@ type GrnForm = {
 };
 
 const blankItem = (): GrnItem => ({
-  sno:1, item_code:"", item_name:"", batch_no:"", expiry_date:"",
+  sno:1, item_code:"", item_name:"", batch_no:"", expiry_date:"", expiry_required: false,
   qty:0, unit:"Nos", rate:0, taxable_amt:0,
   cgst_pct:6, cgst_amt:0, sgst_pct:6, sgst_amt:0, igst_pct:0, igst_amt:0, total:0,
 });
@@ -221,12 +222,20 @@ export default function GoodsReceiptNote() {
       cgst_rate: String(parseFloat(it.taxRate ?? it.tax_rate ?? "0") / 2),
       sgst_rate: String(parseFloat(it.taxRate ?? it.tax_rate ?? "0") / 2),
       igst_rate: it.taxRate ?? it.tax_rate ?? "0",
+      expiryRequired: !!(it.expiryRequired ?? it.expiry_required),
       _source: "inventory",
     })),
     ...(allProducts as any[])
       .filter((p: any) => p.isActive !== false)
       .map((p: any) => ({ ...p, _source: "product" })),
   ];
+
+  // Helper: look up expiry_required for any item by item_code
+  function lookupExpiry(item_code: string): boolean {
+    if (!item_code) return false;
+    const found = rawMaterials.find((m: any) => m.code === item_code || m.item_code === item_code);
+    return !!(found?.expiryRequired ?? found?.expiry_required);
+  }
 
   // When tax type toggles, zero out the inactive tax on all rows and recalculate
   useEffect(() => {
@@ -297,6 +306,7 @@ export default function GoodsReceiptNote() {
           ...it, qty: p2(it.qty), rate: p2(it.rate), taxable_amt: p2(it.taxable_amt),
           cgst_pct: p2(it.cgst_pct), cgst_amt: p2(it.cgst_amt), sgst_pct: p2(it.sgst_pct),
           sgst_amt: p2(it.sgst_amt), igst_pct: p2(it.igst_pct), igst_amt: p2(it.igst_amt), total: p2(it.total),
+          expiry_required: lookupExpiry(it.item_code||""),
         })) }));
       });
   }
@@ -315,6 +325,7 @@ export default function GoodsReceiptNote() {
     const full = await fetch(`/api/purchase-orders/${po.id}`, { credentials:"include" }).then(r=>r.json());
     const items: GrnItem[] = (full.items||[]).map((it: any, i: number) => calcItem({
       sno: i+1, item_code: it.item_code||"", item_name: it.item_name||"", batch_no:"", expiry_date:"",
+      expiry_required: lookupExpiry(it.item_code||""),
       qty: p2(it.qty), unit: it.unit||"Nos", rate: p2(it.rate), taxable_amt:0,
       cgst_pct: p2(it.cgst_pct||it.cgst_pct), cgst_amt:0,
       sgst_pct: p2(it.sgst_pct), sgst_amt:0, igst_pct: p2(it.igst_pct||0), igst_amt:0, total:0,
@@ -369,12 +380,15 @@ export default function GoodsReceiptNote() {
     const cgst = grnInterState ? 0 : parseFloat(prod.cgst_rate) || 0;
     const sgst = grnInterState ? 0 : parseFloat(prod.sgst_rate) || 0;
     const igst = grnInterState ? parseFloat(prod.igst_rate) || 0 : 0;
+    const expiry_required = !!(prod.expiryRequired ?? prod.expiry_required);
     setForm(f => {
       const items = [...f.items];
       items[i] = calcItem({ ...items[i],
         item_code: prod.code || "", item_name: prod.name || "",
         unit: prod.uom || prod.unit || "Nos", rate,
         cgst_pct: cgst, sgst_pct: sgst, igst_pct: igst,
+        expiry_required,
+        expiry_date: expiry_required ? items[i].expiry_date : "",
       });
       return { ...f, items };
     });
@@ -672,8 +686,13 @@ export default function GoodsReceiptNote() {
                           className="border border-gray-200 rounded px-2 py-1.5 w-20 outline-none focus:border-[#027fa5] text-xs"/>
                       </td>
                       <td className="px-1 py-1">
-                        <input type="date" value={it.expiry_date} onChange={e => updItem(i,"expiry_date",e.target.value)}
-                          className="border border-gray-200 rounded px-2 py-1.5 w-28 outline-none focus:border-[#027fa5] text-xs"/>
+                        {it.expiry_required ? (
+                          <input type="date" value={it.expiry_date} onChange={e => updItem(i,"expiry_date",e.target.value)}
+                            className="border border-gray-200 rounded px-2 py-1.5 w-28 outline-none focus:border-[#027fa5] text-xs"
+                            data-testid={`input-expiry-${i}`}/>
+                        ) : (
+                          <span className="text-gray-300 text-xs px-2">N/A</span>
+                        )}
                       </td>
                       <td className="px-1 py-1">
                         <input type="number" value={it.qty||""} onChange={e => updItem(i,"qty",parseFloat(e.target.value)||0)}
