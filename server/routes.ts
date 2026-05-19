@@ -4826,7 +4826,15 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       }
       // Fallback: use purchase_approval_levels table if no authority records exist
       const r = await pool.query(`SELECT * FROM purchase_approval_levels WHERE is_active=true ORDER BY approval_level`);
-      res.json(r.rows);
+      if (r.rows.length > 0) return res.json(r.rows);
+      // No master settings configured — return a default single-level direct approval
+      return res.json([{
+        id: "default",
+        name: "Direct Approval",
+        approval_level: 1,
+        approvers: [],
+        is_active: true,
+      }]);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Check, X, ChevronDown, ChevronRight, CheckSquare, Eye, MessageSquare } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
@@ -153,6 +154,7 @@ function PoDetailDrawer({ po, levels, onClose }: { po: any; levels: any[]; onClo
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function PurchaseOrderApproval() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -186,32 +188,50 @@ export default function PurchaseOrderApproval() {
   const totalLevels = (levels as any[]).length || 1;
 
   const approveMut = useMutation({
-    mutationFn: ({ ids, comments }: { ids: string[]; comments: string }) =>
-      fetch("/api/purchase-order-approval/approve", {
+    mutationFn: async ({ ids, comments }: { ids: string[]; comments: string }) => {
+      const r = await fetch("/api/purchase-order-approval/approve", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ po_ids: ids, comments }),
-      }).then(r => r.json()),
-    onSuccess: () => {
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || "Approval failed");
+      return j;
+    },
+    onSuccess: (_, { ids }) => {
       qc.invalidateQueries({ queryKey: ["/api/purchase-order-approval"] });
       qc.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
       setSelected(new Set());
       setShowModal(null);
+      toast({ title: "Approved", description: `${ids.length} PO${ids.length > 1 ? "s" : ""} approved successfully.` });
+    },
+    onError: (err: any) => {
+      setShowModal(null);
+      toast({ title: "Approval Failed", description: err.message, variant: "destructive" });
     },
   });
 
   const rejectMut = useMutation({
-    mutationFn: ({ ids, comments }: { ids: string[]; comments: string }) =>
-      fetch("/api/purchase-order-approval/reject", {
+    mutationFn: async ({ ids, comments }: { ids: string[]; comments: string }) => {
+      const r = await fetch("/api/purchase-order-approval/reject", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ po_ids: ids, comments }),
-      }).then(r => r.json()),
-    onSuccess: () => {
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || "Rejection failed");
+      return j;
+    },
+    onSuccess: (_, { ids }) => {
       qc.invalidateQueries({ queryKey: ["/api/purchase-order-approval"] });
       qc.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
       setSelected(new Set());
       setShowModal(null);
+      toast({ title: "Rejected", description: `${ids.length} PO${ids.length > 1 ? "s" : ""} rejected.` });
+    },
+    onError: (err: any) => {
+      setShowModal(null);
+      toast({ title: "Rejection Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -260,7 +280,7 @@ export default function PurchaseOrderApproval() {
             <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
               <span>Approval Levels:</span>
               {(levels as any[]).map((lvl: any, i: number) => (
-                <div key={lvl.id} className="flex items-center gap-1">
+                <div key={lvl.id || i} className="flex items-center gap-1">
                   {i > 0 && <ChevronRight size={10} className="text-gray-400"/>}
                   <div className="flex flex-col items-start">
                     <span className="px-2 py-0.5 rounded font-semibold" style={{ background: SC.tonal, color: SC.primary }}>
@@ -271,12 +291,12 @@ export default function PurchaseOrderApproval() {
                         Approvers: {lvl.approvers.map((a: any) => a.username).join(", ")}
                       </span>
                     )}
+                    {(!lvl.approvers || lvl.approvers.length === 0) && (
+                      <span className="text-gray-400 px-2" style={{ fontSize: 10 }}>Any user can approve</span>
+                    )}
                   </div>
                 </div>
               ))}
-              {(levels as any[]).length === 0 && (
-                <span className="text-orange-500 font-medium">No approval levels configured — set up Approval Authority first</span>
-              )}
             </div>
           </div>
 
