@@ -637,7 +637,10 @@ export class DatabaseStorage implements IStorage {
     if (ex) throw new Error(`Term type "${t.name}" already exists`);
     const [r] = await db.insert(termTypes).values({ ...t, id: randomUUID() }).returning(); return r;
   }
-  async updateTermType(id: string, t: Partial<InsertTermType>) { const [r] = await db.update(termTypes).set(t).where(eq(termTypes.id, id)).returning(); return r; }
+  async updateTermType(id: string, t: Partial<InsertTermType>) {
+    const { id: _id, createdAt: _ca, ...rest } = t as any;
+    const [r] = await db.update(termTypes).set(rest).where(eq(termTypes.id, id)).returning(); return r;
+  }
   async deleteTermType(id: string) { await db.delete(termTypes).where(eq(termTypes.id, id)); }
 
   // Terms
@@ -650,7 +653,10 @@ export class DatabaseStorage implements IStorage {
     if (ex) throw new Error(`Term "${t.name}" already exists`);
     const [r] = await db.insert(terms).values({ ...t, id: randomUUID() }).returning(); return r;
   }
-  async updateTerm(id: string, t: Partial<InsertTerm>) { const [r] = await db.update(terms).set(t).where(eq(terms.id, id)).returning(); return r; }
+  async updateTerm(id: string, t: Partial<InsertTerm>) {
+    const { id: _id, createdAt: _ca, ...rest } = t as any;
+    const [r] = await db.update(terms).set(rest).where(eq(terms.id, id)).returning(); return r;
+  }
   async deleteTerm(id: string) { await db.delete(terms).where(eq(terms.id, id)); }
 
   // Departments

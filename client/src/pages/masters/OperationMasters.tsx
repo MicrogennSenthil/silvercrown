@@ -4,8 +4,10 @@ import { Plus, Trash2, Edit, X, Loader2, Search, Info, ChevronDown, PencilLine }
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa" };
 
-function apiReq(url: string, method: string, body?: any) {
-  return fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined, credentials: "include" }).then(r => r.json());
+async function apiReq(url: string, method: string, body?: any) {
+  const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined, credentials: "include" });
+  if (!r.ok) { const err = await r.json().catch(() => ({ message: "Request failed" })); throw new Error(err.message || "Request failed"); }
+  return r.json();
 }
 
 const StatusBadge = ({ v }: { v: boolean }) => (
@@ -951,7 +953,10 @@ function TermForm({ initial, termTypes, onClose }: any) {
   const [form, setForm] = useState({ code: "", name: "", termTypeId: "", days: "0", description: "", isActive: true, ...initial });
   const qc = useQueryClient();
   const save = useMutation({
-    mutationFn: (data: any) => apiReq(initial?.id ? `/api/terms/${initial.id}` : "/api/terms", initial?.id ? "PATCH" : "POST", { ...data, days: Number(data.days) }),
+    mutationFn: (data: any) => {
+      const { id: _id, createdAt: _ca, updatedAt: _ua, ...payload } = data;
+      return apiReq(initial?.id ? `/api/terms/${initial.id}` : "/api/terms", initial?.id ? "PATCH" : "POST", { ...payload, days: Number(payload.days) });
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/terms"] }); onClose(); }
   });
   return (
@@ -996,6 +1001,9 @@ function TermForm({ initial, termTypes, onClose }: any) {
             <span className="text-sm text-gray-600">Active</span>
           </div>
         </div>
+        {save.isError && (
+          <p className="px-6 pb-3 text-red-500 text-xs">{(save.error as Error).message}</p>
+        )}
         <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
           <button onClick={onClose} className="px-5 py-2 rounded border text-sm" style={{ borderColor: "#00000030" }}>Cancel</button>
           <button onClick={() => save.mutate(form)} disabled={save.isPending}

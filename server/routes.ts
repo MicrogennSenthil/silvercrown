@@ -1476,7 +1476,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/term-types", requireAuth, async (req, res) => {
     try { res.json(await storage.createTermType(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/term-types/:id", requireAuth, async (req, res) => { res.json(await storage.updateTermType(req.params.id, req.body)); });
+  app.patch("/api/term-types/:id", requireAuth, async (req, res) => {
+    try { res.json(await storage.updateTermType(req.params.id, req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
   app.delete("/api/term-types/:id", requireAuth, async (req, res) => { await storage.deleteTermType(req.params.id); res.json({ ok: true }); });
 
   // Terms
@@ -1486,7 +1488,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/terms", requireAuth, async (req, res) => {
     try { res.json(await storage.createTerm(req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
-  app.patch("/api/terms/:id", requireAuth, async (req, res) => { res.json(await storage.updateTerm(req.params.id, req.body)); });
+  app.patch("/api/terms/:id", requireAuth, async (req, res) => {
+    try { res.json(await storage.updateTerm(req.params.id, req.body)); } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
   app.delete("/api/terms/:id", requireAuth, async (req, res) => { await storage.deleteTerm(req.params.id); res.json({ ok: true }); });
 
   // Departments

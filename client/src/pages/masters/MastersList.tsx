@@ -12,7 +12,9 @@ function GenericForm({ title, fields, initial, apiBase, queryKey, onClose }: any
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
       const url = initial?.id ? `${apiBase}/${initial.id}` : apiBase;
-      const res = await fetch(url, { method: initial?.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" });
+      // Strip server-managed fields before sending to PATCH/POST
+      const { id: _id, createdAt: _ca, updatedAt: _ua, ...payload } = data;
+      const res = await fetch(url, { method: initial?.id ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), credentials: "include" });
       if (!res.ok) throw new Error((await res.json()).message);
       return res.json();
     },
@@ -45,6 +47,9 @@ function GenericForm({ title, fields, initial, apiBase, queryKey, onClose }: any
             </div>
           ))}
         </div>
+        {saveMut.isError && (
+          <p className="px-6 pb-3 text-red-500 text-xs">{(saveMut.error as Error).message}</p>
+        )}
         <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-xl">
           <button onClick={onClose} className="px-5 py-2 rounded border text-sm" style={{ borderColor: "#00000030" }}>Cancel</button>
           <button onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending}
