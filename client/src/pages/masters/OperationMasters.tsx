@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Edit, X, Loader2, Search, Info, ChevronDown, PencilLine } from "lucide-react";
 
@@ -43,18 +43,29 @@ function MSelectWithAdd({ label, value, onSelect, options = [], onQuickAdd, erro
   const [search, setSearch] = useState("");
   const filtered = options.filter((s: string) => !search || s.toLowerCase().includes(search.toLowerCase()));
   const tid = label.toLowerCase().replace(/\s+/g, "-");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  function handleContainerBlur(e: React.FocusEvent<HTMLDivElement>) {
+    if (!containerRef.current?.contains(e.relatedTarget as Node)) {
+      setOpen(false);
+      setSearch("");
+    }
+  }
 
   return (
     <div className="flex items-center gap-1.5 flex-1">
       {/* Dropdown trigger + list */}
-      <div className="relative flex-1">
+      <div
+        ref={containerRef}
+        className="relative flex-1"
+        onBlur={handleContainerBlur}
+      >
         <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>
           {label}{error && " *"}
         </label>
         {/* Trigger button */}
         <button type="button"
           onClick={() => { setOpen(o => !o); setSearch(""); }}
-          onBlur={() => setTimeout(() => { setOpen(false); setSearch(""); }, 180)}
           className={`w-full border rounded px-3 pt-3.5 pb-2 text-sm text-left flex items-center justify-between focus:outline-none bg-white
             ${error ? "border-red-400" : open ? "border-[#027fa5]" : "border-gray-300 hover:border-[#027fa5]"}`}
           data-testid={`select-${tid}`}>
@@ -88,7 +99,7 @@ function MSelectWithAdd({ label, value, onSelect, options = [], onQuickAdd, erro
                 <p className="px-3 py-2.5 text-xs text-gray-400 text-center">No options found</p>
               ) : filtered.map((s: string, i: number) => (
                 <button key={i} type="button"
-                  onMouseDown={() => { onSelect(s); setOpen(false); setSearch(""); }}
+                  onMouseDown={e => { e.preventDefault(); onSelect(s); setOpen(false); setSearch(""); }}
                   className={`w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] flex items-center gap-2
                     ${value === s ? "bg-[#e8f6fb] font-semibold text-[#027fa5]" : "text-gray-700"}`}>
                   {value === s && <span className="w-1.5 h-1.5 rounded-full bg-[#027fa5] flex-shrink-0" />}
@@ -99,7 +110,8 @@ function MSelectWithAdd({ label, value, onSelect, options = [], onQuickAdd, erro
 
             {/* Quick-add from dropdown footer */}
             <div className="border-t border-gray-100 p-2">
-              <button type="button" onMouseDown={onQuickAdd}
+              <button type="button"
+                onMouseDown={e => { e.preventDefault(); onQuickAdd(); }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 rounded text-xs font-semibold text-[#d74700] hover:bg-orange-50"
                 data-testid={`button-quick-add-${tid}`}>
                 <Plus size={13} /> Add new {label.toLowerCase()}
