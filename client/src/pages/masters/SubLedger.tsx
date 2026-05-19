@@ -66,7 +66,7 @@ function LedgerForm({
   const [glId, setGlId] = useState(item?.generalLedgerId || initialGlId || "");
   const [catId, setCatId] = useState(item?.categoryId || initialCatId || "");
   const [levelType, setLevelType] = useState(item?.levelType || "Same");
-  const [paymentType, setPaymentType] = useState(item?.paymentType || "OnAccount");
+  const [paymentType, setPaymentType] = useState(item?.paymentType || "BillToBill");
   const [obEntry, setObEntry] = useState<boolean>(item?.openingBalanceEntry ?? false);
   const [obAmount, setObAmount] = useState(item?.openingBalance || "0");
   const [obType, setObType] = useState(item?.openingBalanceType || "Credit");

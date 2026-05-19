@@ -68,7 +68,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Create new sub-ledger
     const res = await pool.query(
       `INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
-       VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
+       VALUES (gen_random_uuid()::text,$1,$2,$3,'BillToBill',true) RETURNING id`,
       [`SL-${Date.now()}`, name, glId]);
     return res.rows[0].id;
   }
@@ -4083,7 +4083,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         const custName = custRes.rows[0]?.name || partyName;
         const newSl = await client.query(`
           INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
+          VALUES (gen_random_uuid()::text,$1,$2,$3,'BillToBill',true) RETURNING id`,
           [`SL-${Date.now()}`, custName, SD_GL]);
         customerSlId = newSl.rows[0].id;
         await client.query(`UPDATE customers SET sub_ledger_id=$1 WHERE id=$2`, [customerSlId, partyId]);
@@ -5218,7 +5218,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       } else {
         const newSl = await client.query(`
           INSERT INTO sub_ledgers (id, code, name, general_ledger_id, payment_type, is_active)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,'Credit',true) RETURNING id`,
+          VALUES (gen_random_uuid()::text,$1,$2,$3,'BillToBill',true) RETURNING id`,
           [`SL-${Date.now()}`, suppName, SC_GL]);
         supplierSlId = newSl.rows[0].id;
         await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]).catch(()=>{});

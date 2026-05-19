@@ -605,7 +605,7 @@ export const subLedgers = pgTable("sub_ledgers", {
   generalLedgerId: varchar("general_ledger_id").references(() => generalLedgers.id),
   categoryId: varchar("category_id").references(() => ledgerCategories.id),
   levelType: text("level_type").notNull().default("Same"),
-  paymentType: text("payment_type").notNull().default("OnAccount"),
+  paymentType: text("payment_type").notNull().default("BillToBill"),
   openingBalanceEntry: boolean("opening_balance_entry").default(false),
   openingBalance: decimal("opening_balance", { precision: 15, scale: 2 }).notNull().default("0"),
   openingBalanceType: text("opening_balance_type").notNull().default("Credit"),
