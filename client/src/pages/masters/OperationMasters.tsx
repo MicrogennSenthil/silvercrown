@@ -168,8 +168,6 @@ function MachineModal({ initial, onClose }: any) {
   const [errs, setErrs]   = useState<Record<string, string>>({});
   const [addingGroup, setAddingGroup]       = useState(false);
   const [addingSubGroup, setAddingSubGroup] = useState(false);
-  const [extraGroups, setExtraGroups]       = useState<string[]>([]);
-  const [extraSubGroups, setExtraSubGroups] = useState<string[]>([]);
   const qc = useQueryClient();
 
   const { data: categories = [] }   = useQuery<any[]>({ queryKey: ["/api/categories"] });
@@ -186,8 +184,42 @@ function MachineModal({ initial, onClose }: any) {
     .map((sc: any) => sc.name)
     .filter(Boolean) as string[];
 
-  const allGroups    = [...new Set([...baseGroups,    ...extraGroups])];
-  const allSubGroups = [...new Set([...baseSubGroups, ...extraSubGroups])];
+  const addCategoryMut = useMutation({
+    mutationFn: async (name: string) => {
+      const code = name.toUpperCase().replace(/\s+/g, "_").slice(0, 20) + "_" + Date.now().toString().slice(-4);
+      const res = await fetch("/api/categories", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name, isActive: true }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json();
+    },
+    onSuccess: async (created: any) => {
+      await qc.invalidateQueries({ queryKey: ["/api/categories"] });
+      setField("machineGroup", created.name);
+      setField("subGroup", "");
+      setAddingGroup(false);
+    },
+  });
+
+  const addSubCategoryMut = useMutation({
+    mutationFn: async (name: string) => {
+      const code = name.toUpperCase().replace(/\s+/g, "_").slice(0, 20) + "_" + Date.now().toString().slice(-4);
+      const res = await fetch("/api/sub-categories", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name, isActive: true, categoryId: selectedCat?.id || null }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed"); }
+      return res.json();
+    },
+    onSuccess: async (created: any) => {
+      await qc.invalidateQueries({ queryKey: ["/api/sub-categories"] });
+      setField("subGroup", created.name);
+      setAddingSubGroup(false);
+    },
+  });
 
   const setField = (key: string, val: string) => {
     setErrs(p => ({ ...p, [key]: "" }));
@@ -237,30 +269,36 @@ function MachineModal({ initial, onClose }: any) {
               <MSelectWithAdd
                 label="Master Category"
                 value={form.machineGroup}
-                options={allGroups}
+                options={baseGroups}
                 onSelect={(v: string) => { setField("machineGroup", v); setField("subGroup", ""); setAddingGroup(false); }}
                 onQuickAdd={() => { setAddingGroup(true); setAddingSubGroup(false); }}
                 error={!!errs.machineGroup}
               />
               {addingGroup && (
                 <QuickAddInline label="Master Category"
-                  onAdd={(v: string) => { setExtraGroups(p => [...p, v]); setField("machineGroup", v); setAddingGroup(false); }}
+                  onAdd={(v: string) => addCategoryMut.mutate(v)}
                   onCancel={() => setAddingGroup(false)} />
+              )}
+              {addCategoryMut.isError && (
+                <p className="text-xs text-red-500">{(addCategoryMut.error as Error).message}</p>
               )}
             </div>
             <div className="flex-1 space-y-2">
               <MSelectWithAdd
                 label="Sub Category"
                 value={form.subGroup}
-                options={allSubGroups}
+                options={baseSubGroups}
                 onSelect={(v: string) => { setField("subGroup", v); setAddingSubGroup(false); }}
                 onQuickAdd={() => { setAddingSubGroup(true); setAddingGroup(false); }}
                 error={!!errs.subGroup}
               />
               {addingSubGroup && (
                 <QuickAddInline label="Sub Category"
-                  onAdd={(v: string) => { setExtraSubGroups(p => [...p, v]); setField("subGroup", v); setAddingSubGroup(false); }}
+                  onAdd={(v: string) => addSubCategoryMut.mutate(v)}
                   onCancel={() => setAddingSubGroup(false)} />
+              )}
+              {addSubCategoryMut.isError && (
+                <p className="text-xs text-red-500">{(addSubCategoryMut.error as Error).message}</p>
               )}
             </div>
           </div>
