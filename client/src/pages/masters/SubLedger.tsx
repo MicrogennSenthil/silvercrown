@@ -267,7 +267,7 @@ function LedgerForm({
                 <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Opening Bal</label>
                 <input
                   type="number" value={obAmount}
-                  onChange={e => setObAmount(e.target.value)}
+                  onChange={e => { setObAmount(e.target.value); setCbAmount(e.target.value); }}
                   disabled={!obEntry}
                   readOnly={obEntry && paymentType === "BillToBill"}
                   className={`w-28 border rounded-l px-2 h-[34px] text-sm outline-none text-right transition-colors
