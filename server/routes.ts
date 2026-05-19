@@ -6243,9 +6243,9 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT s.*, w.name AS store_name_db
+        SELECT s.*, st.name AS store_name_db
         FROM store_openings s
-        LEFT JOIN warehouses w ON w.id = s.store_id
+        LEFT JOIN stores st ON st.id = s.store_id
         ORDER BY s.created_at DESC
       `);
       res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db || "" })));
@@ -6256,7 +6256,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       const { pool } = await import("./db");
       const [hRes, iRes] = await Promise.all([
-        pool.query(`SELECT s.*, w.name AS store_name_db FROM store_openings s LEFT JOIN warehouses w ON w.id=s.store_id WHERE s.id=$1`, [req.params.id]),
+        pool.query(`SELECT s.*, st.name AS store_name_db FROM store_openings s LEFT JOIN stores st ON st.id=s.store_id WHERE s.id=$1`, [req.params.id]),
         pool.query(`SELECT * FROM store_opening_items WHERE sop_id=$1 ORDER BY sno`, [req.params.id]),
       ]);
       if (!hRes.rows[0]) return res.status(404).json({ message: "Not found" });

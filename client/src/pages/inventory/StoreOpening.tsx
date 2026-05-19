@@ -1,8 +1,65 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Search, Edit2, FileText, X, Upload, Download, FileSpreadsheet, CheckCircle, Clock } from "lucide-react";
 import * as XLSX from "xlsx";
 import DatePicker from "@/components/DatePicker";
+
+// ── Fixed-position item search dropdown (escapes overflow:hidden containers) ──
+interface ItemDropdownProps {
+  open: boolean;
+  anchorRect: DOMRect | null;
+  products: any[];
+  query: string;
+  onPick: (prod: any) => void;
+  onClose: () => void;
+}
+function ItemDropdown({ open, anchorRect, products, query, onPick, onClose }: ItemDropdownProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const q = query.toUpperCase();
+  const opts = products.filter((p: any) =>
+    !q || p.name?.toUpperCase().includes(q) || p.code?.toUpperCase().includes(q)
+  );
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open, onClose]);
+  if (!open || !anchorRect) return null;
+  const style: React.CSSProperties = {
+    position: "fixed",
+    top: anchorRect.bottom + 2,
+    left: anchorRect.left,
+    width: Math.max(anchorRect.width, 280),
+    zIndex: 9999,
+    maxHeight: 220,
+    overflowY: "auto",
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 8,
+    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+    fontSize: 12,
+  };
+  return (
+    <div ref={ref} style={style}>
+      {opts.length === 0 ? (
+        <div className="px-3 py-3 text-gray-400">No items found</div>
+      ) : opts.map((p: any) => (
+        <div key={p.id || p.code}
+          onMouseDown={(e) => { e.preventDefault(); onPick(p); }}
+          className="px-3 py-2 hover:bg-[#e8f6fb] cursor-pointer flex justify-between items-center border-b border-gray-50 last:border-b-0">
+          <div>
+            <div className="font-medium text-gray-800">{p.name}</div>
+            <div className="text-gray-400 text-[10px]">Stock: {parseFloat(p.current_stock)||0} · {p.uom||p.unit||"Nos"}</div>
+          </div>
+          <span className="text-gray-400 text-[10px] ml-2 shrink-0">{p.code}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const SC = { primary: "#027fa5", orange: "#d74700" };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -116,11 +173,38 @@ export default function StoreOpening() {
   const [bulkImporting, setBulkImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Dropdown state — fixed-position to escape overflow:hidden containers
+  const [openDropIdx, setOpenDropIdx] = useState<number | null>(null);
+  const [dropAnchor, setDropAnchor]   = useState<DOMRect | null>(null);
+  const [itemQuery, setItemQuery]     = useState<Record<number, string>>({});
+  const closeDropdown = useCallback(() => { setOpenDropIdx(null); setDropAnchor(null); }, []);
+
   const { data: sops = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-openings"] });
-  const { data: warehouses = [] }      = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
+  const { data: stores = [] }          = useQuery<any[]>({ queryKey: ["/api/stores"] });
+  const { data: allInvItems = [] }     = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: financialYears = [] }  = useQuery<any[]>({ queryKey: ["/api/financial-years"] });
   const currentFY = (financialYears as any[]).find((y: any) => y.is_current);
+
+  // Merged product list for dropdown — inventory items first, then engineering products
+  const products = [
+    ...(allInvItems as any[]).map((it: any) => ({
+      id: it.id,
+      code: it.code,
+      name: it.name,
+      uom: it.unit,
+      unit: it.unit,
+      purchase_price: it.purchasePrice ?? it.purchase_price ?? "0",
+      selling_price: it.sellingPrice ?? it.selling_price ?? "0",
+      current_stock: it.currentStock ?? it.current_stock ?? 0,
+      _source: "inventory",
+    })),
+    ...(allProducts as any[])
+      .filter((p: any) => p.isActive !== false)
+      .map((p: any) => ({ ...p, _source: "product" })),
+  ];
+
+  const prodMap = Object.fromEntries(products.map((p: any) => [p.code?.toLowerCase(), p]));
 
   const totalQty    = form.items.reduce((s, it) => s + p2(it.opening_qty), 0);
   const totalAmount = form.items.reduce((s, it) => s + p2(it.amount), 0);
@@ -129,8 +213,6 @@ export default function StoreOpening() {
     if (!search) return true;
     return [s.voucher_no, s.store_name, s.status, s.financial_year].join(" ").toLowerCase().includes(search.toLowerCase());
   });
-
-  const prodMap = Object.fromEntries((allProducts as any[]).map((p: any) => [p.code?.toLowerCase(), p]));
 
   function openNew() {
     const fyLabel = currentFY?.label || "";
@@ -172,6 +254,29 @@ export default function StoreOpening() {
       items[i] = calcItem({ ...items[i], [key]: val });
       return { ...f, items };
     });
+  }
+
+  function pickProduct(i: number, prod: any) {
+    const rate = parseFloat(prod.purchase_price) || parseFloat(prod.selling_price) || 0;
+    setForm(f => {
+      const items = [...f.items];
+      items[i] = calcItem({
+        ...items[i],
+        item_code: prod.code || "",
+        item_name: prod.name || "",
+        uom: prod.uom || prod.unit || "Nos",
+        rate,
+      });
+      return { ...f, items };
+    });
+    setItemQuery(p => ({ ...p, [i]: prod.name }));
+    closeDropdown();
+  }
+
+  function openInputDropdown(e: React.FocusEvent<HTMLInputElement>, i: number, currentName: string) {
+    setOpenDropIdx(i);
+    setDropAnchor(e.currentTarget.getBoundingClientRect());
+    setItemQuery(p => ({ ...p, [i]: currentName }));
   }
 
   function addItem() {
@@ -468,6 +573,15 @@ export default function StoreOpening() {
   // ── Form ───────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 space-y-4">
+      {/* Fixed item dropdown — renders above all overflow containers */}
+      <ItemDropdown
+        open={openDropIdx !== null}
+        anchorRect={dropAnchor}
+        products={products}
+        query={itemQuery[openDropIdx ?? -1] ?? ""}
+        onPick={(prod) => pickProduct(openDropIdx!, prod)}
+        onClose={closeDropdown}
+      />
       {/* Top bar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -544,7 +658,7 @@ export default function StoreOpening() {
               className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
               data-testid="select-store">
               <option value="">Select Store</option>
-              {(warehouses as any[]).map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
+              {(stores as any[]).map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
           <div>
@@ -603,23 +717,34 @@ export default function StoreOpening() {
                   <tr key={i} className={`border-b hover:bg-[#f0f9ff] ${isBatchContinue ? "bg-blue-50/30" : ""}`}>
                     <td className="px-3 py-1.5 text-gray-500 text-center w-8">{it.sno}</td>
 
-                    {/* Item Code */}
+                    {/* Item Code — read-only, auto-filled on pick */}
                     <td className="px-1 py-1">
-                      <input value={it.item_code}
-                        onChange={e => setForm(f => { const items=[...f.items]; items[i]={...items[i], item_code: e.target.value}; return {...f,items}; })}
-                        onBlur={e => updItem(i, "item_code", e.target.value)}
-                        className={`border rounded px-2 py-1.5 w-24 outline-none focus:border-[#027fa5] text-xs uppercase
-                          ${isBatchContinue ? "border-blue-200 bg-blue-50/50 text-gray-400" : "border-gray-300"}`}
+                      <input readOnly value={it.item_code}
+                        className={`border rounded px-2 py-1.5 w-24 text-xs uppercase bg-gray-50
+                          ${isBatchContinue ? "border-blue-200 text-gray-400" : "border-gray-200 text-gray-600"}`}
                         placeholder="Code" data-testid={`input-code-${i}`}/>
                     </td>
 
-                    {/* Item Name */}
+                    {/* Item Name — searchable, opens fixed-position dropdown */}
                     <td className="px-1 py-1">
-                      <input value={it.item_name}
-                        onChange={e => setForm(f => { const items=[...f.items]; items[i]={...items[i], item_name: e.target.value}; return {...f,items}; })}
-                        className={`border rounded px-2 py-1.5 w-40 outline-none focus:border-[#027fa5] text-xs
-                          ${isBatchContinue ? "border-blue-200 bg-blue-50/50 text-gray-400" : "border-gray-300"}`}
-                        placeholder="Item Name" data-testid={`input-name-${i}`}/>
+                      <div className="relative w-44">
+                        <input
+                          value={openDropIdx === i ? (itemQuery[i] ?? it.item_name) : it.item_name}
+                          onFocus={(e) => openInputDropdown(e, i, it.item_name)}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase();
+                            setItemQuery(p => ({ ...p, [i]: val }));
+                            if (openDropIdx !== i) {
+                              setOpenDropIdx(i);
+                              setDropAnchor(e.currentTarget.getBoundingClientRect());
+                            }
+                          }}
+                          className={`w-full border rounded px-2 py-1.5 pr-6 outline-none focus:border-[#027fa5] text-xs uppercase
+                            ${isBatchContinue ? "border-blue-200 bg-blue-50/50 text-gray-400" : "border-gray-300"}`}
+                          placeholder="SEARCH ITEM…"
+                          data-testid={`input-name-${i}`}/>
+                        <Search size={10} className="absolute right-1.5 top-2.5 text-gray-400 pointer-events-none"/>
+                      </div>
                     </td>
 
                     {/* UOM */}
