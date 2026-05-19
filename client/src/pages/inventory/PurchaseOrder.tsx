@@ -71,6 +71,7 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const { data: allTerms = [] }     = useQuery<any[]>({ queryKey: ["/api/terms"] });
   const { data: expenseSleds = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
   const { data: taxRates = [] }     = useQuery<any[]>({ queryKey: ["/api/tax-rates"] });
+  const { data: users = [] }        = useQuery<any[]>({ queryKey: ["/api/users"] });
 
   const [voucherNo,  setVoucherNo]  = useState(editData?.voucher_no || "");
   const [poDate,     setPoDate]     = useState(editData?.po_date?.split("T")[0] || today());
@@ -88,8 +89,11 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const [ourRef,     setOurRef]     = useState(editData?.our_ref_no || "");
   const [yourRef,    setYourRef]    = useState(editData?.your_ref_no || "");
   const [delivLoc,   setDelivLoc]   = useState(editData?.delivery_location || "");
-  const [remark,     setRemark]     = useState(editData?.remark || "");
-  const [tab,        setTab]        = useState<"items" | "terms">("items");
+  const [remark,       setRemark]       = useState(editData?.remark || "");
+  const [approverId,   setApproverId]   = useState(editData?.approver_user_id || "");
+  const [approverName, setApproverName] = useState(editData?.approver_name || "");
+  const [approverOpen, setApproverOpen] = useState(false);
+  const [tab,          setTab]          = useState<"items" | "terms">("items");
   const { toast } = useToast();
 
   const [items, setItems] = useState<PoItem[]>(
@@ -226,6 +230,8 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
         purchase_type: purchaseType,
         our_ref_no: ourRef, your_ref_no: yourRef, delivery_location: delivLoc,
         remark, status: "Draft",
+        approver_user_id: approverId || null,
+        approver_name: approverName || "",
         items: items.map(r => ({
           item_id: r.item_id||null, item_code: r.item_code, item_name: r.item_name,
           qty: parseFloat(r.qty)||0, unit: r.unit, rate: parseFloat(r.rate)||0,
@@ -317,7 +323,7 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             </div>
           </div>
 
-          {/* Row 2 — Schedule Date | Priority | Cash/Credit | Tabs */}
+          {/* Row 2 — Schedule Date | Priority | Cash/Credit | Approver | Tabs */}
           <div className="flex gap-3 items-center flex-wrap">
             <div className="w-44">
               <DatePicker label="Schedule Date" value={schedDate} onChange={setSchedDate}/>
@@ -353,6 +359,41 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                   <span className="text-sm font-medium text-gray-700 mr-2">{opt.label}</span>
                 </label>
               ))}
+            </div>
+            {/* Approver */}
+            <div className="relative w-48">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Approver</label>
+              <div className="relative">
+                <input
+                  value={approverName}
+                  onChange={e => { setApproverName(e.target.value); setApproverId(""); setApproverOpen(true); }}
+                  onFocus={() => setApproverOpen(true)}
+                  onBlur={() => setTimeout(() => setApproverOpen(false), 150)}
+                  placeholder="Select user…"
+                  className="w-full border border-gray-300 rounded px-3 py-2.5 pr-7 text-sm outline-none focus:border-[#027fa5]"
+                  data-testid="input-approver"/>
+                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+              </div>
+              {approverOpen && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-40 overflow-y-auto mt-0.5">
+                  <button onMouseDown={e => e.preventDefault()}
+                    onClick={() => { setApproverId(""); setApproverName(""); setApproverOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 border-b">
+                    — No specific approver —
+                  </button>
+                  {(users as any[])
+                    .filter((u: any) => !approverName || (u.username||u.name||"").toLowerCase().includes(approverName.toLowerCase()))
+                    .slice(0, 20)
+                    .map((u: any) => (
+                      <button key={u.id} onMouseDown={e => e.preventDefault()}
+                        onClick={() => { setApproverId(u.id); setApproverName(u.username||u.name||""); setApproverOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa]" data-testid={`opt-approver-${u.id}`}>
+                        <span className="font-medium text-gray-800">{u.username||u.name}</span>
+                        {u.role && <span className="ml-2 text-xs text-gray-400">({u.role})</span>}
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
             <div className="flex gap-1 ml-auto">
               {tabBtn("items","Items Details")}

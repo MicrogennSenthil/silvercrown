@@ -4703,14 +4703,15 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         INSERT INTO purchase_orders
           (voucher_no, po_date, supplier_id, supplier_name_manual, po_type,
            schedule_date, priority, payment_mode, purchase_type, our_ref_no, your_ref_no,
-           delivery_location, remark, status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *
+           delivery_location, remark, status, approver_user_id, approver_name)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *
       `, [voucher_no, b.po_date||new Date().toISOString().split("T")[0],
           validSupplierId, b.supplier_name_manual||"", b.po_type||"Purchase Order",
           b.schedule_date||null, b.priority||"Medium", b.payment_mode||"Cash",
           b.purchase_type||"within_state",
           b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
-          b.remark||"", b.status||"Draft"]);
+          b.remark||"", b.status||"Draft",
+          b.approver_user_id||null, b.approver_name||""]);
       const hdr = hRes.rows[0];
       for (let i=0; i<(b.items||[]).length; i++) {
         const it = b.items[i];
@@ -4751,13 +4752,15 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         UPDATE purchase_orders SET
           po_date=$1, supplier_id=$2, supplier_name_manual=$3, po_type=$4,
           schedule_date=$5, priority=$6, payment_mode=$7, purchase_type=$8,
-          our_ref_no=$9, your_ref_no=$10, delivery_location=$11, remark=$12, status=$13
+          our_ref_no=$9, your_ref_no=$10, delivery_location=$11, remark=$12, status=$13,
+          approver_user_id=$15, approver_name=$16
         WHERE id=$14 RETURNING *
       `, [b.po_date, validSupplierId, b.supplier_name_manual||"", b.po_type||"Purchase Order",
           b.schedule_date||null, b.priority||"Medium", b.payment_mode||"Cash",
           b.purchase_type||"within_state",
           b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"",
-          b.remark||"", b.status||"Draft", req.params.id]);
+          b.remark||"", b.status||"Draft", req.params.id,
+          b.approver_user_id||null, b.approver_name||""]);
       await client.query(`DELETE FROM purchase_order_items WHERE po_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM purchase_order_terms WHERE po_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM purchase_order_charges WHERE po_id=$1`, [req.params.id]);
@@ -4901,6 +4904,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         supplier_name: r.supplier_name_db || r.supplier_name_manual || "",
         bill_value: parseFloat(r.bill_value)||0,
         decisions: r.decisions || [],
+        approver_user_id: r.approver_user_id || null,
+        approver_name: r.approver_name || "",
       })));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4945,6 +4950,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const results: any[] = [];
 
       for (const po_id of po_ids) {
+        // Get PO header (for per-PO approver check)
+        const poRes = await client.query(
+          `SELECT approver_user_id, approver_name FROM purchase_orders WHERE id=$1`, [po_id]
+        );
+        const poRow = poRes.rows[0] || {};
+
         // Get existing decisions for this PO
         const decisionsRes = await client.query(
           `SELECT * FROM po_approval_decisions WHERE po_id=$1 ORDER BY approval_level`,
@@ -4960,18 +4971,31 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         }
         const levelConfig = levels.find((l: any) => l.approval_level === nextLevel) || levels[0];
 
-        // Check if current user is authorized to approve at this level
-        const authorizedApprovers: any[] = levelConfig?.approvers || [];
-        if (authorizedApprovers.length > 0) {
-          const currentUsername = (user?.username || user?.name || "").toLowerCase();
-          const isAuthorized = authorizedApprovers.some(
-            (a: any) => (a.username || "").toLowerCase() === currentUsername
-          );
-          if (!isAuthorized) {
+        // Check authorization: PO-level approver takes priority over master-level approvers
+        const currentUserId   = user?.id || "";
+        const currentUsername = (user?.username || user?.name || "").toLowerCase();
+
+        if (poRow.approver_user_id) {
+          // PO has a specific approver assigned — only that user can approve
+          if (String(poRow.approver_user_id) !== String(currentUserId)) {
             throw new Error(
-              `You (${user?.username || user?.name}) are not authorized to approve at ${levelConfig?.name || `Level ${nextLevel}`}. ` +
-              `Authorized approvers: ${authorizedApprovers.map((a: any) => a.username).join(", ")}`
+              `This PO is assigned to ${poRow.approver_name || "a specific user"} for approval. ` +
+              `You (${user?.username || user?.name}) are not the assigned approver.`
             );
+          }
+        } else {
+          // Fall back to master-level approvers list
+          const authorizedApprovers: any[] = levelConfig?.approvers || [];
+          if (authorizedApprovers.length > 0) {
+            const isAuthorized = authorizedApprovers.some(
+              (a: any) => (a.username || "").toLowerCase() === currentUsername
+            );
+            if (!isAuthorized) {
+              throw new Error(
+                `You (${user?.username || user?.name}) are not authorized to approve at ${levelConfig?.name || `Level ${nextLevel}`}. ` +
+                `Authorized approvers: ${authorizedApprovers.map((a: any) => a.username).join(", ")}`
+              );
+            }
           }
         }
 
@@ -5301,6 +5325,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + round_off);
 
       await pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
+      await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_user_id varchar`).catch(()=>{});
+      await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_name text DEFAULT ''`).catch(()=>{});
       const hdrRes = await client.query(`
         INSERT INTO goods_receipt_notes
           (voucher_no, grn_date, store_id, store_name, supplier_id, supplier_name_manual, sl_id,

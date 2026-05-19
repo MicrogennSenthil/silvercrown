@@ -344,7 +344,7 @@ export default function PurchaseOrderApproval() {
                     className="accent-[#027fa5]"
                     data-testid="chk-all"/>
                 </th>
-                {["PO No","PO Date","Supplier Name","Bill Value ₹","Payment","Priority","Approval Progress","Status","Actions"].map(h => (
+                {["PO No","PO Date","Supplier Name","Bill Value ₹","Payment","Priority","Assigned Approver","Approval Progress","Status","Actions"].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-700">{h}</th>
                 ))}
               </tr>
@@ -382,6 +382,11 @@ export default function PurchaseOrderApproval() {
                     <span className={`px-2 py-0.5 rounded text-xs font-semibold ${po.priority==="High"?"bg-red-100 text-red-700":po.priority==="Medium"?"bg-yellow-100 text-yellow-700":"bg-blue-100 text-blue-700"}`}>
                       {po.priority}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {po.approver_name
+                      ? <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">{po.approver_name}</span>
+                      : <span className="text-xs text-gray-400">Any user</span>}
                   </td>
                   <td className="px-4 py-3">
                     <ApprovalLevelPips decisions={po.decisions||[]} totalLevels={totalLevels}/>
