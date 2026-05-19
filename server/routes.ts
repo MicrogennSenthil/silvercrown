@@ -5309,12 +5309,48 @@ Return ONLY valid JSON (no markdown, no explanation):
   }
 
   // Create GRN
+  // Helper: upsert batch-level stock (delta = +1 for GRN receipt, -1 for reversal)
+  async function upsertBatchStock(client: any, items: any[], delta: number) {
+    for (const it of items) {
+      if (!it.item_code || !(+(it.qty || 0) > 0)) continue;
+      const expiryKey = it.expiry_date ? String(it.expiry_date).slice(0, 10) : "";
+      await client.query(`
+        INSERT INTO item_batch_stock
+          (item_code, batch_no, expiry_date_key, item_name, expiry_date, closing_qty, unit, rate)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (item_code, batch_no, expiry_date_key)
+        DO UPDATE SET
+          closing_qty = GREATEST(0, item_batch_stock.closing_qty + EXCLUDED.closing_qty),
+          expiry_date = COALESCE(EXCLUDED.expiry_date, item_batch_stock.expiry_date),
+          item_name   = COALESCE(NULLIF(EXCLUDED.item_name,''), item_batch_stock.item_name),
+          unit        = COALESCE(NULLIF(EXCLUDED.unit,''), item_batch_stock.unit),
+          rate        = CASE WHEN EXCLUDED.rate > 0 THEN EXCLUDED.rate ELSE item_batch_stock.rate END,
+          updated_at  = NOW()
+      `, [it.item_code, it.batch_no || "", expiryKey, it.item_name || "",
+          it.expiry_date || null, delta * +(it.qty || 0), it.unit || "", +(it.rate || 0)]);
+    }
+  }
+
   app.post("/api/goods-receipt-notes", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
     // Run DDL migrations BEFORE acquiring a transaction client to avoid lock conflicts
     await pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
     await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_user_id varchar`).catch(()=>{});
     await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_name text DEFAULT ''`).catch(()=>{});
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS item_batch_stock (
+        item_code       TEXT NOT NULL,
+        batch_no        TEXT NOT NULL DEFAULT '',
+        expiry_date_key TEXT NOT NULL DEFAULT '',
+        item_name       TEXT DEFAULT '',
+        expiry_date     DATE,
+        closing_qty     NUMERIC(15,3) NOT NULL DEFAULT 0,
+        unit            TEXT DEFAULT '',
+        rate            NUMERIC(15,2) DEFAULT 0,
+        updated_at      TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (item_code, batch_no, expiry_date_key)
+      )
+    `).catch(()=>{});
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -5360,12 +5396,13 @@ Return ONLY valid JSON (no markdown, no explanation):
             it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
-        // Add received qty to live stock on GRN inward
+        // Update live stock + batch-level stock on GRN receipt
         if (it.item_code && +it.qty > 0) {
           await client.query(
             `UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`,
             [+it.qty, it.item_code]
           );
+          await upsertBatchStock(client, [it], +1);
         }
       }
 
@@ -5416,13 +5453,17 @@ Return ONLY valid JSON (no markdown, no explanation):
       if (!hdrRes.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "GRN not found" }); }
       const hdr = hdrRes.rows[0];
 
-      // Reverse old stock before updating items
-      const oldGrnItems = await client.query(`SELECT item_code, qty FROM goods_receipt_note_items WHERE grn_id=$1`, [hdr.id]);
+      // Reverse old stock + batch stock before updating items
+      const oldGrnItems = await client.query(
+        `SELECT item_code, item_name, batch_no, expiry_date, qty, unit, rate FROM goods_receipt_note_items WHERE grn_id=$1`,
+        [hdr.id]
+      );
       for (const oi of oldGrnItems.rows) {
         if (oi.item_code && +oi.qty > 0) {
           await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+oi.qty, oi.item_code]);
         }
       }
+      await upsertBatchStock(client, oldGrnItems.rows, -1);
 
       await client.query(`DELETE FROM goods_receipt_note_items WHERE grn_id=$1`, [hdr.id]);
       for (let i = 0; i < items.length; i++) {
@@ -5436,9 +5477,10 @@ Return ONLY valid JSON (no markdown, no explanation):
             it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
-        // Re-apply updated qty to live stock
+        // Re-apply updated qty to live stock + batch stock
         if (it.item_code && +it.qty > 0) {
           await client.query(`UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`, [+it.qty, it.item_code]);
+          await upsertBatchStock(client, [it], +1);
         }
       }
 
@@ -5459,17 +5501,32 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   // Delete GRN
   app.delete("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
     try {
-      const { pool } = await import("./db");
-      const hRes = await pool.query(`SELECT voucher_no FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
-      if (!hRes.rows[0]) return res.status(404).json({ message: "GRN not found" });
+      await client.query("BEGIN");
+      const hRes = await client.query(`SELECT voucher_no FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
+      if (!hRes.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "GRN not found" }); }
       const vno = hRes.rows[0].voucher_no;
-      await pool.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN (SELECT id FROM voucher_mas WHERE source_type='grn' AND source_id=$1)`, [req.params.id]);
-      await pool.query(`DELETE FROM voucher_mas WHERE source_type='grn' AND source_id=$1`, [req.params.id]);
-      await pool.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1`, [vno]);
-      await pool.query(`DELETE FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
+      // Reverse stock + batch stock before deleting
+      const itemsRes = await client.query(
+        `SELECT item_code, item_name, batch_no, expiry_date, qty, unit, rate FROM goods_receipt_note_items WHERE grn_id=$1`,
+        [req.params.id]
+      );
+      for (const oi of itemsRes.rows) {
+        if (oi.item_code && +oi.qty > 0) {
+          await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+oi.qty, oi.item_code]);
+        }
+      }
+      await upsertBatchStock(client, itemsRes.rows, -1);
+      await client.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN (SELECT id FROM voucher_mas WHERE source_type='grn' AND source_id=$1)`, [req.params.id]);
+      await client.query(`DELETE FROM voucher_mas WHERE source_type='grn' AND source_id=$1`, [req.params.id]);
+      await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1`, [vno]);
+      await client.query(`DELETE FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
+      await client.query("COMMIT");
       res.json({ ok: true });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(500).json({ message: e.message }); }
+    finally { client.release(); }
   });
 
   // ── Purchase Order Amendments ────────────────────────────────────────────────
@@ -5817,10 +5874,24 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Helper: adjust current_stock on products by delta (negative = reduce)
+  // Helper: adjust current_stock on products by delta (negative = reduce), with validation
   async function adjustSiiStock(client: any, items: any[], delta: number) {
     for (const it of items) {
       if (it.item_code && +(it.issued_qty || 0) !== 0) {
+        // Validate sufficient stock when reducing
+        if (delta < 0) {
+          const sr = await client.query(
+            `SELECT COALESCE(current_stock,0) AS cs FROM products WHERE code=$1`,
+            [it.item_code]
+          );
+          const available = sr.rows[0] ? +(sr.rows[0].cs) : 0;
+          const needed    = +(it.issued_qty || 0);
+          if (available < needed) {
+            throw new Error(
+              `Insufficient stock for "${it.item_name || it.item_code}": available ${available}, required ${needed}`
+            );
+          }
+        }
         await client.query(
           `UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) + $1) WHERE code = $2`,
           [delta * +(it.issued_qty || 0), it.item_code]
