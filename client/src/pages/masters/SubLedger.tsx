@@ -94,13 +94,18 @@ function LedgerForm({
     if (gl?.categoryId) setCatId(gl.categoryId);
   }, [glId, generalLedgersList]);
 
-  // When bills change and obEntry is on, sum amounts → opening/closing balance
+  // When bills change and obEntry is on + BillToBill, sum amounts → opening/closing balance
   useEffect(() => {
-    if (!obEntry) return;
+    if (!obEntry || paymentType !== "BillToBill") return;
     const total = bills.reduce((acc, b) => acc + (parseFloat(b.amount) || 0), 0);
     setObAmount(total.toFixed(2));
     setCbAmount(total.toFixed(2));
-  }, [bills, obEntry]);
+  }, [bills, obEntry, paymentType]);
+
+  // Clear bills when switching to OnAccount
+  useEffect(() => {
+    if (paymentType === "OnAccount") setBills([]);
+  }, [paymentType]);
 
   const catName = categoriesList.find((c: any) => c.id === catId)?.name || "";
 
@@ -262,14 +267,18 @@ function LedgerForm({
                 <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Opening Bal</label>
                 <input
                   type="number" value={obAmount}
-                  onChange={e => { if (!obEntry) setObAmount(e.target.value); }}
-                  readOnly={obEntry}
-                  className="w-28 border border-gray-300 rounded-l px-2 h-[34px] text-sm outline-none focus:border-[#027fa5] text-right"
+                  onChange={e => setObAmount(e.target.value)}
+                  disabled={!obEntry}
+                  readOnly={obEntry && paymentType === "BillToBill"}
+                  className={`w-28 border rounded-l px-2 h-[34px] text-sm outline-none text-right transition-colors
+                    ${!obEntry ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed" : "border-gray-300 focus:border-[#027fa5]"}`}
                   placeholder="0000.00"
                   data-testid="input-opening-balance"
                 />
               </div>
-              <CrDrToggle value={obType} onChange={setObType} />
+              <div className={!obEntry ? "opacity-40 pointer-events-none" : ""}>
+                <CrDrToggle value={obType} onChange={setObType} />
+              </div>
             </div>
 
             {/* Closing Bal */}
@@ -278,19 +287,23 @@ function LedgerForm({
                 <label className="absolute -top-2 left-2 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Closing Bal</label>
                 <input
                   type="number" value={cbAmount}
-                  onChange={e => { if (!obEntry) setCbAmount(e.target.value); }}
-                  readOnly={obEntry}
-                  className="w-28 border border-gray-300 rounded-l px-2 h-[34px] text-sm outline-none focus:border-[#027fa5] text-right"
+                  onChange={e => setCbAmount(e.target.value)}
+                  disabled={!obEntry}
+                  readOnly={obEntry && paymentType === "BillToBill"}
+                  className={`w-28 border rounded-l px-2 h-[34px] text-sm outline-none text-right transition-colors
+                    ${!obEntry ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed" : "border-gray-300 focus:border-[#027fa5]"}`}
                   placeholder="0000.00"
                   data-testid="input-closing-balance"
                 />
               </div>
-              <CrDrToggle value={cbType} onChange={setCbType} />
+              <div className={!obEntry ? "opacity-40 pointer-events-none" : ""}>
+                <CrDrToggle value={cbType} onChange={setCbType} />
+              </div>
             </div>
           </div>
 
-          {/* Bill Detail Grid (shown only when obEntry is ON) */}
-          {obEntry && (
+          {/* Bill Detail Grid (shown only when obEntry is ON AND Bill-to-Bill) */}
+          {obEntry && paymentType === "BillToBill" && (
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
