@@ -323,6 +323,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   const [quickItem, setQuickItem] = useState<{ idx: number; name: string } | null>(null);
   const { toast } = useToast();
   const [aiSuccess, setAiSuccess] = useState(false);
+  const [highlightMissing, setHighlightMissing] = useState(false);
 
   // Item search state per row
   const [itemSearch, setItemSearch] = useState<Record<string, string>>({});
@@ -332,10 +333,33 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
   function updateRow(key: string, field: keyof ItemRow, val: string) {
     setItems(prev => prev.map(r => r._key === key ? { ...r, [field]: val } : r));
+    if (field === "process_id" && val) setHighlightMissing(false);
   }
-  function addRow() { setItems(prev => [...prev, newRow()]); }
-  function removeRow(key: string) { setItems(prev => prev.filter(r => r._key !== key)); }
-  function removeAll() { setItems([newRow()]); }
+  function addRow() {
+    const hasBlankProcess = items.some(r => !r.process_id);
+    if (hasBlankProcess) {
+      setHighlightMissing(true);
+      toast({ title: "Process required", description: "Please select a Process for every row before adding a new one.", variant: "destructive" });
+      return;
+    }
+    setItems(prev => [...prev, newRow()]);
+  }
+  function removeRow(key: string) {
+    setItems(prev => prev.filter(r => r._key !== key));
+    setHighlightMissing(false);
+  }
+  function removeAll() { setItems([newRow()]); setHighlightMissing(false); }
+
+  function handleSave() {
+    const activeItems = items.filter(r => r.item_name || r.qty);
+    const hasBlankProcess = activeItems.some(r => !r.process_id);
+    if (hasBlankProcess) {
+      setHighlightMissing(true);
+      toast({ title: "Process required", description: "Please select a Process for all rows before saving.", variant: "destructive" });
+      return;
+    }
+    saveMut.mutate();
+  }
 
   function selectItem(rowKey: string, item: any) {
     const existing = items.find(r => r._key !== rowKey && r.item_id === item.id);
@@ -632,7 +656,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                             updateRow(row._key, "process_id", e.target.value);
                             updateRow(row._key, "process", sel?.name || "");
                           }}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] bg-white"
+                          className={`w-full border rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] bg-white ${highlightMissing && !row.process_id ? "border-red-400 bg-red-50" : "border-gray-200"}`}
                           data-testid={`select-process-${i}`}
                         >
                           <option value="">— Select —</option>
@@ -640,6 +664,9 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                             <option key={p.id} value={p.id}>{p.name}</option>
                           ))}
                         </select>
+                        {highlightMissing && !row.process_id && (
+                          <p className="text-red-500 text-[10px] mt-0.5 leading-none">Required</p>
+                        )}
                       </td>
                       <td className="px-2 py-1.5">
                         <input value={row.hsn} onChange={e => updateRow(row._key, "hsn", e.target.value)}
@@ -702,7 +729,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
             className="px-8 py-2 rounded border text-sm font-semibold text-gray-700 hover:bg-gray-50"
             style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
           <button
-            onClick={() => saveMut.mutate()}
+            onClick={handleSave}
             disabled={saveMut.isPending}
             className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: SC.orange }} data-testid="btn-save">
