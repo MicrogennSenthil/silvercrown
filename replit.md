@@ -108,10 +108,15 @@ client/public/
 - `uploads/` directory is auto-created on startup for Gemini invoice processing
 
 ## Deployment Workflow
-- **After every task**: Push Replit → GitHub using the `GITHUB_PAT` secret with:
-  `git push "https://MicrogennSenthil:${GITHUB_PAT}@github.com/MicrogennSenthil/silvercrown.git" main`
-- **GitHub → VPS**: Pull on VPS after every push (VPS root credentials to be provided by user)
-- This replaces the Replit "Publish" button as the production deployment method.
+- **One-command deploy** from Replit Shell: `bash deploy-vps.sh`
+  - Pushes to GitHub, SSHes to VPS, clean-rebuilds, restarts PM2
+- **VPS details**:
+  - Host: `root@72.61.231.157`
+  - App directory: `/var/www/silvercrown-element` ← ONLY correct directory
+  - SSH key: `~/.ssh/sc_deploy_silvercrown` (stored in Replit)
+  - PM2 process: `silvercrown-element` (cluster, IDs 15 & 16)
+- **Production URL**: https://silver.microgenn.com
+- **GitHub repo**: https://github.com/MicrogennSenthil/silvercrown
 
 ## User Preferences
 - **ID/type-based filtering always**: Never use name-based string matching (ILIKE, `.includes()`, `.toLowerCase()`) to identify GL accounts or sub-ledger categories. Always use the `gl_type` column on `general_ledgers` (values: `bank`, `cash`, `sundry_debtor`, `sundry_creditor`, `purchase`, `expense`, `tax`, `roundoff`, `liability`, `other`). Apply this to all SQL WHERE clauses, frontend filter functions, and any logic that distinguishes account types. When creating new GLs or features that need account-type awareness, wire through `gl_type` from day one.
