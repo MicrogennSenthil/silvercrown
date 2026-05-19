@@ -10,7 +10,7 @@ echo "   GitHub updated."
 
 KEY_FILE="$HOME/.ssh/sc_deploy_silvercrown"
 VPS_HOST="root@72.61.231.157"
-APP_DIR="/var/www/silvercrown"
+APP_DIR="/var/www/silvercrown-element"
 
 echo "2. Connecting to VPS and deploying..."
 ssh -i "$KEY_FILE" \
