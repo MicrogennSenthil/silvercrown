@@ -1126,14 +1126,14 @@ function ItemGroupModal({ item, onClose }: { item?: any; onClose: () => void }) 
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
         <div className="px-6 py-5 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-800">Item Group</h2>
+          <h2 className="text-base font-bold text-gray-800">Master Category</h2>
         </div>
         <div className="px-6 py-8">
           <div className="relative">
-            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Item group</label>
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Master Category</label>
             <input
               value={name} onChange={e => setName(e.target.value)}
-              placeholder="Type Store Item Group..."
+              placeholder="Type Master Category..."
               onKeyDown={e => e.key === "Enter" && name.trim() && saveMut.mutate()}
               className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5]"
               data-testid="input-item-group-name" autoFocus
@@ -1171,12 +1171,12 @@ export function StoreItemGroups() {
         <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
           {/* Header */}
           <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
-            <span className="font-semibold text-gray-800 text-base whitespace-nowrap">Item Group</span>
+            <span className="font-semibold text-gray-800 text-base whitespace-nowrap">Master Category</span>
             <div className="relative flex-1">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search Company Item Group...."
+                placeholder="Search Master Category...."
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
                 data-testid="input-search"
               />
@@ -1188,7 +1188,7 @@ export function StoreItemGroups() {
             <thead>
               <tr style={{ background: "#d2f1fa" }}>
                 <th className="text-left px-5 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
-                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Item Group</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Master Category</th>
                 <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Status</th>
                 <th className="w-10"></th>
               </tr>
@@ -1261,22 +1261,22 @@ function ItemSubGroupModal({ item, groups, onClose }: { item?: any; groups: any[
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl">
         <div className="px-6 py-5 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-800">Item Sub Group</h2>
+          <h2 className="text-base font-bold text-gray-800">Sub Category</h2>
         </div>
         <div className="px-6 py-6 space-y-5">
-          {/* Item Sub Group Name */}
+          {/* Sub Category Name */}
           <div className="relative">
-            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Item Sub Group Name</label>
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Sub Category Name</label>
             <input
               value={name} onChange={e => setName(e.target.value)}
-              placeholder="Enter Item Sub Group"
+              placeholder="Enter Sub Category"
               className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-[#027fa5]"
               data-testid="input-sub-group-name" autoFocus
             />
           </div>
-          {/* Group Dropdown */}
+          {/* Master Category Dropdown */}
           <div className="relative">
-            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Group</label>
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Master Category</label>
             <select
               value={groupId} onChange={e => setGroupId(e.target.value)}
               className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 bg-white focus:outline-none focus:border-[#027fa5] appearance-none"
@@ -1326,12 +1326,12 @@ export function StoreItemSubGroups() {
         <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
           {/* Header */}
           <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
-            <span className="font-semibold text-gray-800 text-base whitespace-nowrap">Item Sub Group</span>
+            <span className="font-semibold text-gray-800 text-base whitespace-nowrap">Sub Category</span>
             <div className="relative flex-1">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search Item group and sub group...."
+                placeholder="Search Master Category and Sub Category...."
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
                 data-testid="input-search"
               />
@@ -1343,8 +1343,8 @@ export function StoreItemSubGroups() {
             <thead>
               <tr style={{ background: "#d2f1fa" }}>
                 <th className="text-left px-5 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
-                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Item Sub Group</th>
-                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Item Group</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Sub Category</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Master Category</th>
                 <th className="w-10"></th>
               </tr>
             </thead>

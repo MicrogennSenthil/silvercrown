@@ -208,11 +208,11 @@ function MachineModal({ initial, onClose }: any) {
             <MFField label="Machine Name" value={form.name}      onChange={f("name")}      placeholder="Enter Machine Name Here..." />
           </div>
 
-          {/* Row 2: Group + Sub Group with quick-add */}
+          {/* Row 2: Master Category + Sub Category with quick-add */}
           <div className="flex gap-4">
             <div className="flex-1 space-y-2">
               <MSelectWithAdd
-                label="Group"
+                label="Master Category"
                 value={form.machineGroup}
                 options={allGroups}
                 onSelect={(v: string) => { setField("machineGroup", v); setAddingGroup(false); }}
@@ -220,14 +220,14 @@ function MachineModal({ initial, onClose }: any) {
                 error={!!errs.machineGroup}
               />
               {addingGroup && (
-                <QuickAddInline label="Group"
+                <QuickAddInline label="Master Category"
                   onAdd={(v: string) => { setExtraGroups(p => [...p, v]); setField("machineGroup", v); setAddingGroup(false); }}
                   onCancel={() => setAddingGroup(false)} />
               )}
             </div>
             <div className="flex-1 space-y-2">
               <MSelectWithAdd
-                label="Sub Group"
+                label="Sub Category"
                 value={form.subGroup}
                 options={allSubGroups}
                 onSelect={(v: string) => { setField("subGroup", v); setAddingSubGroup(false); }}
@@ -235,7 +235,7 @@ function MachineModal({ initial, onClose }: any) {
                 error={!!errs.subGroup}
               />
               {addingSubGroup && (
-                <QuickAddInline label="Sub Group"
+                <QuickAddInline label="Sub Category"
                   onAdd={(v: string) => { setExtraSubGroups(p => [...p, v]); setField("subGroup", v); setAddingSubGroup(false); }}
                   onCancel={() => setAddingSubGroup(false)} />
               )}
@@ -286,7 +286,7 @@ export function MachineMaster() {
     !search || [r.machineId, r.code, r.name, r.machineGroup, r.calibrationDate].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))
   );
 
-  const COLS = ["S.no", "Machine Id", "Machine Name", "Group", "Sub Group", "Due Time", "Calibration Date", "Company", ""];
+  const COLS = ["S.no", "Machine Id", "Machine Name", "Master Category", "Sub Category", "Due Time", "Calibration Date", "Company", ""];
 
   return (
     <div className="flex flex-col h-full">
@@ -297,7 +297,7 @@ export function MachineMaster() {
           <div className="relative flex-1">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search Machine Name, ID, Group, Calibration........."
+              placeholder="Search Machine Name, ID, Master Category, Calibration........."
               className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
               data-testid="input-search" />
           </div>
@@ -498,14 +498,14 @@ function PurchaseStoreItemForm({ initial, onClose }: any) {
             </div>
           </div>
 
-          {/* Row 2: Group + Sub Group */}
+          {/* Row 2: Master Category + Sub Category */}
           <div className="flex gap-3">
-            <FSelectPlus label="Group" value={form.itemGroupId}
+            <FSelectPlus label="Master Category" value={form.itemGroupId}
               onChange={(e: any) => setForm((p: any) => ({ ...p, itemGroupId: e.target.value, itemSubGroupId: "" }))}>
               <option value="">Select</option>
               {groups.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </FSelectPlus>
-            <FSelectPlus label="Sub Group" value={form.itemSubGroupId} onChange={f("itemSubGroupId")}>
+            <FSelectPlus label="Sub Category" value={form.itemSubGroupId} onChange={f("itemSubGroupId")}>
               <option value="">Select</option>
               {filteredSubs.map((sg: any) => <option key={sg.id} value={sg.id}>{sg.name}</option>)}
             </FSelectPlus>
