@@ -480,11 +480,11 @@ function PurchaseStoreItemForm({ initial, onClose }: any) {
   const [form, setForm] = useState<any>({ ...EMPTY, ...initial });
   const qc = useQueryClient();
 
-  const { data: uoms = [] }      = useQuery<any[]>({ queryKey: ["/api/uom"] });
-  const { data: groups = [] }    = useQuery<any[]>({ queryKey: ["/api/store-item-groups"] });
-  const { data: subGroups = [] } = useQuery<any[]>({ queryKey: ["/api/store-item-sub-groups"] });
+  const { data: uoms = [] }       = useQuery<any[]>({ queryKey: ["/api/uom"] });
+  const { data: groups = [] }     = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const { data: subGroups = [] }  = useQuery<any[]>({ queryKey: ["/api/sub-categories"] });
 
-  const filteredSubs = subGroups.filter((sg: any) => !form.itemGroupId || sg.groupId === form.itemGroupId);
+  const filteredSubs = subGroups.filter((sg: any) => !form.itemGroupId || sg.categoryId === form.itemGroupId);
 
   const f = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.value }));
   const fChk = (key: string) => (e: any) => setForm((p: any) => ({ ...p, [key]: e.target.checked }));

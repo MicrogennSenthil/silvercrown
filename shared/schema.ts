@@ -499,7 +499,7 @@ export const purchaseStoreItems = pgTable("purchase_store_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
-  itemGroupId: varchar("item_group_id").references(() => storeItemGroups.id),
+  itemGroupId: varchar("item_group_id"),
   itemSubGroupId: varchar("item_sub_group_id").default(""),
   uom: text("uom").default(""),
   batchNo: text("batch_no").default(""),
