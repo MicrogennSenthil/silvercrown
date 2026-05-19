@@ -160,9 +160,20 @@ function MachineModal({ initial, onClose }: any) {
   const [extraSubGroups, setExtraSubGroups] = useState<string[]>([]);
   const qc = useQueryClient();
 
-  const { data: allMachines = [] } = useQuery<any[]>({ queryKey: ["/api/machines"] });
-  const baseGroups    = [...new Set((allMachines as any[]).map((m: any) => m.machineGroup).filter(Boolean))] as string[];
-  const baseSubGroups = [...new Set((allMachines as any[]).map((m: any) => m.subGroup).filter(Boolean))] as string[];
+  const { data: categories = [] }   = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const { data: subCategories = [] } = useQuery<any[]>({ queryKey: ["/api/sub-categories"] });
+
+  const baseGroups = (categories as any[])
+    .filter((c: any) => c.isActive !== false)
+    .map((c: any) => c.name)
+    .filter(Boolean) as string[];
+
+  const selectedCat = (categories as any[]).find((c: any) => c.name === form.machineGroup);
+  const baseSubGroups = (subCategories as any[])
+    .filter((sc: any) => sc.isActive !== false && (!selectedCat || sc.categoryId === selectedCat.id))
+    .map((sc: any) => sc.name)
+    .filter(Boolean) as string[];
+
   const allGroups    = [...new Set([...baseGroups,    ...extraGroups])];
   const allSubGroups = [...new Set([...baseSubGroups, ...extraSubGroups])];
 
@@ -215,7 +226,7 @@ function MachineModal({ initial, onClose }: any) {
                 label="Master Category"
                 value={form.machineGroup}
                 options={allGroups}
-                onSelect={(v: string) => { setField("machineGroup", v); setAddingGroup(false); }}
+                onSelect={(v: string) => { setField("machineGroup", v); setField("subGroup", ""); setAddingGroup(false); }}
                 onQuickAdd={() => { setAddingGroup(true); setAddingSubGroup(false); }}
                 error={!!errs.machineGroup}
               />
