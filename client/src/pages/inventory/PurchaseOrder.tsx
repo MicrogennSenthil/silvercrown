@@ -143,16 +143,26 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
     const inter = purchaseType === "inter_state";
     setItems(prev => prev.map(r => {
       if (r._key !== key) return r;
-      const taxCode = prod.cgst_rate && prod.sgst_rate
-        ? Object.entries(TAX_CODES).find(([, v]) => Math.abs(v.cgst - parseFloat(prod.cgst_rate)) < 0.1)?.[0] || ""
+      // Drizzle ORM returns camelCase; handle both camelCase and snake_case for safety
+      const cgst = parseFloat(prod.cgstRate ?? prod.cgst_rate ?? 0);
+      const sgst = parseFloat(prod.sgstRate ?? prod.sgst_rate ?? 0);
+      const igst = parseFloat(prod.igstRate ?? prod.igst_rate ?? 0);
+      // If individual rates are 0 but taxRate exists, split it evenly as CGST+SGST
+      const totalRate = parseFloat(prod.taxRate ?? prod.tax_rate ?? 0);
+      const cgstFinal = cgst || (totalRate / 2);
+      const sgstFinal = sgst || (totalRate / 2);
+      const igstFinal = igst || totalRate;
+      const taxCode = cgstFinal
+        ? Object.entries(TAX_CODES).find(([, v]) => Math.abs(v.cgst - cgstFinal) < 0.1)?.[0] || ""
         : "";
-      // Use parseFloat so "0.00" becomes 0 (falsy) and we fall through to next option
-      const rate = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
+      const rate = parseFloat(prod.purchasePrice ?? prod.purchase_price ?? 0)
+                || parseFloat(prod.costPrice    ?? prod.cost_price    ?? 0)
+                || parseFloat(prod.rate         ?? 0);
       const updated: PoItem = {
         ...r, item_id: prod.id, item_code: prod.code||"", item_name: prod.name,
         unit: prod.uom||prod.unit||"", rate: String(rate),
-        tax_code: taxCode, cgst_pct: String(prod.cgst_rate||"0"),
-        sgst_pct: String(prod.sgst_rate||"0"), igst_pct: String(prod.igst_rate||"0"),
+        tax_code: taxCode,
+        cgst_pct: String(cgstFinal), sgst_pct: String(sgstFinal), igst_pct: String(igstFinal),
       };
       return recalcItem(updated, inter);
     }));
