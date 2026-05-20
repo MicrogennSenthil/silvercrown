@@ -5302,18 +5302,30 @@ Return ONLY valid JSON (no markdown, no explanation):
     if (igstAmt > 0) await det(IGST_GL, null, "DR", igstAmt, `IGST Input Credit`);
     if (roundOff !== 0) await det(ROUND_GL, null, roundOff > 0 ? "DR" : "CR", Math.abs(roundOff), `Round Off`);
 
-    // CR line (cash or party)
-    if (isCash) {
-      await det(CASH_GL, null, "CR", grandTotal, `Cash Payment to ${suppName}`);
-    } else {
-      await det(SC_GL, supplierSlId, "CR", grandTotal, `Payable to ${suppName}`);
-      // Outstanding bill
-      if (supplierSlId) {
+    // CR line — always route through supplier SL (Tally-style) so every purchase
+    // appears in the supplier's ledger.  For Cash purchases the payable is created
+    // and immediately settled; for Credit purchases it stays open.
+    if (supplierSlId) {
+      // Step 1: purchase creates payable to supplier
+      await det(SC_GL, supplierSlId, "CR", grandTotal, `Purchases from ${suppName}`);
+      if (isCash) {
+        // Step 2 (Cash only): immediately settle — DR supplier SL, CR Cash
+        await det(SC_GL, supplierSlId, "DR", grandTotal, `Cash payment to ${suppName}`);
+        await det(CASH_GL, null, "CR", grandTotal, `Cash Payment to ${suppName}`);
+      } else {
+        // Credit: leave payable open and record outstanding bill
         await client.query(`INSERT INTO sub_ledger_bills
           (id, sub_ledger_id, ref_no, ref_date, voucher_no, voucher_date, amount, cr_dr)
           VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,'CR')`,
           [supplierSlId, b.bill_no||hdr.voucher_no, b.bill_date||hdr.grn_date,
            hdr.voucher_no, hdr.grn_date, grandTotal]);
+      }
+    } else {
+      // No supplier sub-ledger — fall back to direct GL posting
+      if (isCash) {
+        await det(CASH_GL, null, "CR", grandTotal, `Cash Payment to ${suppName||"Supplier"}`);
+      } else {
+        await det(SC_GL, null, "CR", grandTotal, `Payable to ${suppName||"Supplier"}`);
       }
     }
   }
@@ -5397,18 +5409,29 @@ Return ONLY valid JSON (no markdown, no explanation):
         VALUES($1,$2,$3,$4,$5,$6,$7)`, [vmId, seq++, gl, sl, drCr, Math.abs(amt), narr]);
     };
 
-    // DR side: reduce supplier liability (Credit) or receive cash back (Cash)
-    if (isCash) {
-      await det(CASH_GL, null, "DR", grandTotal, `Cash refund on return to ${suppName}`);
-    } else {
-      await det(SC_GL, supplierSlId, "DR", grandTotal, `Purchase return - reduces payable to ${suppName}`);
-    }
-
     // CR side: reverse purchases + taxes
     await det(PURCHASES_GL, null, "CR", taxableAmt, `Purchase return - goods value`);
     if (cgstAmt > 0) await det(CGST_GL, null, "CR", cgstAmt, `CGST reversed on return`);
     if (sgstAmt > 0) await det(SGST_GL, null, "CR", sgstAmt, `SGST reversed on return`);
     if (igstAmt > 0) await det(IGST_GL, null, "CR", igstAmt, `IGST reversed on return`);
+
+    // DR side — always route through supplier SL (mirrors postGrnVoucher Tally-style)
+    if (supplierSlId) {
+      // Step 1: reduce payable (DR supplier SL)
+      await det(SC_GL, supplierSlId, "DR", grandTotal, `Purchase return to ${suppName}`);
+      if (isCash) {
+        // Step 2 (Cash origin): supplier reimburses cash — CR supplier SL, DR Cash
+        await det(SC_GL, supplierSlId, "CR", grandTotal, `Cash refund from ${suppName}`);
+        await det(CASH_GL, null, "DR", grandTotal, `Cash received on return from ${suppName}`);
+      }
+    } else {
+      // No supplier sub-ledger — fall back to direct GL posting
+      if (isCash) {
+        await det(CASH_GL, null, "DR", grandTotal, `Cash refund on return from ${suppName||"Supplier"}`);
+      } else {
+        await det(SC_GL, null, "DR", grandTotal, `Purchase return - reduces payable to ${suppName||"Supplier"}`);
+      }
+    }
   }
 
   // Create GRN
