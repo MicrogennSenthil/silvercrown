@@ -5240,16 +5240,26 @@ Return ONLY valid JSON (no markdown, no explanation):
     await client.query(`DELETE FROM voucher_mas WHERE source_type='grn' AND source_id=$1`, [hdr.id]);
     await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1`, [hdr.voucher_no]);
 
-    // Find supplier sub_ledger — use sl_id stored on GRN (ID-first, name only as last resort)
+    // Find supplier sub_ledger — priority: sl_id on GRN → supplier_id FK → name fallback
     let supplierSlId: string | null = hdr.sl_id || null;
+
+    // 1. Resolve from suppliers table via supplier_id (works for both Cash and Credit)
+    if (!supplierSlId && hdr.supplier_id) {
+      const suppRow = await client.query(
+        `SELECT sub_ledger_id FROM suppliers WHERE id=$1 LIMIT 1`, [hdr.supplier_id]);
+      if (suppRow.rows[0]?.sub_ledger_id) {
+        supplierSlId = suppRow.rows[0].sub_ledger_id;
+        await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]);
+      }
+    }
+
+    // 2. Legacy Credit GRN without supplier_id: find/create sub-ledger by name
     if (!supplierSlId && suppName && (b.payment_mode||"Cash") === "Credit") {
-      // Legacy GRN without sl_id: find by name within Sundry Creditors GL
       const slRes = await client.query(
         `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND LOWER(name)=LOWER($2) LIMIT 1`,
         [SC_GL, suppName]);
       if (slRes.rows.length > 0) {
         supplierSlId = slRes.rows[0].id;
-        // Backfill sl_id on the GRN record so future lookups use ID
         await client.query(`UPDATE goods_receipt_notes SET sl_id=$1 WHERE id=$2`, [supplierSlId, hdr.id]);
       } else {
         const newSl = await client.query(`
