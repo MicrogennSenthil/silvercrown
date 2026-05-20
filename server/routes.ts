@@ -5337,6 +5337,8 @@ Return ONLY valid JSON (no markdown, no explanation):
     await pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
     await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_user_id varchar`).catch(()=>{});
     await pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_name text DEFAULT ''`).catch(()=>{});
+    // Drop stale FK that references warehouses — store_id is stored as a soft reference only
+    await pool.query(`ALTER TABLE goods_receipt_notes DROP CONSTRAINT IF EXISTS goods_receipt_notes_store_id_fkey`).catch(()=>{});
     await pool.query(`
       CREATE TABLE IF NOT EXISTS item_batch_stock (
         item_code       TEXT NOT NULL,
