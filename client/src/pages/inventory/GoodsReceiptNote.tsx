@@ -228,7 +228,18 @@ export default function GoodsReceiptNote() {
     })),
     ...(allProducts as any[])
       .filter((p: any) => p.isActive !== false)
-      .map((p: any) => ({ ...p, _source: "product" })),
+      .map((p: any) => ({
+        ...p,
+        _source: "product",
+        // Normalise camelCase Drizzle fields → snake_case so pickProductForGrn can read them
+        purchase_price: p.purchasePrice ?? p.purchase_price ?? "0",
+        cost_price:     p.costPrice     ?? p.cost_price     ?? "0",
+        cgst_rate:      p.cgstRate      ?? p.cgst_rate      ?? "0",
+        sgst_rate:      p.sgstRate      ?? p.sgst_rate      ?? "0",
+        igst_rate:      p.igstRate      ?? p.igst_rate      ?? "0",
+        tax_rate:       p.taxRate       ?? p.tax_rate       ?? "0",
+        uom:            p.uom || p.unit || "Nos",
+      })),
   ];
 
   // Helper: look up expiry_required for any item by item_code
