@@ -49,7 +49,7 @@ function calcItem(it: GrnItem): GrnItem {
 }
 
 // Supplier search dropdown
-function SupplierSelect({ value, name, onChange }: { value: string; name: string; onChange: (id: string, name: string) => void }) {
+function SupplierSelect({ value, name, onChange, error }: { value: string; name: string; onChange: (id: string, name: string) => void; error?: boolean }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const { data: suppliers = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
@@ -58,7 +58,7 @@ function SupplierSelect({ value, name, onChange }: { value: string; name: string
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm text-left flex items-center justify-between hover:border-[#027fa5] outline-none transition-colors"
+        className={`w-full border rounded px-3 py-2.5 text-sm text-left flex items-center justify-between outline-none transition-colors ${error ? "border-red-500 bg-red-50 hover:border-red-600" : "border-gray-300 hover:border-[#027fa5]"}`}
         data-testid="btn-supplier-dropdown">
         <span className={name ? "text-gray-800" : "text-gray-400"}>{name || "Select Supplier"}</span>
         <ChevronDown size={14} className="text-gray-400"/>
@@ -203,6 +203,7 @@ export default function GoodsReceiptNote() {
   const itemInputRefs = useRef<Record<number, HTMLInputElement|null>>({});
   const portalDropRef = useRef<HTMLDivElement|null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+  const [valErrs, setValErrs] = useState<{ store?: boolean; supplier?: boolean; rows?: Set<number> }>({});
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
@@ -405,7 +406,26 @@ export default function GoodsReceiptNote() {
   }
 
   async function handleSave() {
-    setErr(""); setSaving(true);
+    setErr("");
+    // ── Validation ──────────────────────────────────────────────────────────
+    const errStore    = !form.store_id;
+    const errSupplier = !form.supplier_id;
+    const badRows     = new Set<number>();
+    form.items.forEach((it, i) => {
+      if (!it.item_code || it.qty <= 0 || it.rate <= 0) badRows.add(i);
+      if (it.expiry_required && !it.expiry_date) badRows.add(i);
+    });
+    if (errStore || errSupplier || badRows.size > 0) {
+      setValErrs({ store: errStore, supplier: errSupplier, rows: badRows });
+      const msgs: string[] = [];
+      if (errStore)    msgs.push("Store is required");
+      if (errSupplier) msgs.push("Supplier is required");
+      if (badRows.size > 0) msgs.push(`Row${badRows.size > 1 ? "s" : ""} ${[...badRows].map(r => r + 1).join(", ")}: Item, Qty and Rate are required`);
+      setErr(msgs.join(" · "));
+      return;
+    }
+    setValErrs({});
+    setSaving(true);
     const payload = {
       ...form,
       round_off: computedRoundOff,
@@ -547,24 +567,34 @@ export default function GoodsReceiptNote() {
                   <DatePicker value={form.grn_date} onChange={v => setForm(f=>({...f,grn_date:v}))}/>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 font-medium">Store</label>
+                  <label className="text-xs font-medium flex items-center gap-1" style={{ color: valErrs.store ? "#dc2626" : "#6b7280" }}>
+                    Store {valErrs.store && <span className="text-red-500">*</span>}
+                  </label>
                   <select value={form.store_id} onChange={e => {
                     const wh = (warehouses as any[]).find((w: any) => w.id === e.target.value);
                     setForm(f=>({...f,store_id:e.target.value,store_name:wh?.name||""}));
+                    setValErrs(v => ({ ...v, store: false }));
                   }}
-                    className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+                    className={`w-full border rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] ${valErrs.store ? "border-red-500 bg-red-50" : "border-gray-300"}`}
                     data-testid="select-store">
                     <option value="">Select Store</option>
                     {(warehouses as any[]).map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
                   </select>
+                  {valErrs.store && <p className="text-red-500 text-xs mt-0.5">Please select a store</p>}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 font-medium">Supplier Name</label>
-                  <SupplierSelect value={form.supplier_id} name={form.supplier_name_manual}
-                    onChange={(suppId, name) => setForm(f => ({ ...f, supplier_id: suppId, supplier_name_manual: name }))}/>
+                  <label className="text-xs font-medium flex items-center gap-1" style={{ color: valErrs.supplier ? "#dc2626" : "#6b7280" }}>
+                    Supplier Name {valErrs.supplier && <span className="text-red-500">*</span>}
+                  </label>
+                  <SupplierSelect value={form.supplier_id} name={form.supplier_name_manual} error={valErrs.supplier}
+                    onChange={(suppId, name) => {
+                      setForm(f => ({ ...f, supplier_id: suppId, supplier_name_manual: name }));
+                      setValErrs(v => ({ ...v, supplier: false }));
+                    }}/>
+                  {valErrs.supplier && <p className="text-red-500 text-xs mt-0.5">Please select a supplier</p>}
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 font-medium">DC No</label>
@@ -657,12 +687,18 @@ export default function GoodsReceiptNote() {
                   </tr>
                 </thead>
                 <tbody>
-                  {form.items.map((it, i) => (
-                    <tr key={i} className="border-b hover:bg-[#f0f9ff]">
-                      <td className="px-2 py-1.5 text-gray-500 text-center w-8">{it.sno}</td>
+                  {form.items.map((it, i) => {
+                    const rowErr = valErrs.rows?.has(i);
+                    return (
+                    <tr key={i} className={`border-b ${rowErr ? "bg-red-50 hover:bg-red-100" : "hover:bg-[#f0f9ff]"}`}>
+                      <td className="px-2 py-1.5 text-gray-500 text-center w-8">
+                        {rowErr
+                          ? <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold">!</span>
+                          : it.sno}
+                      </td>
                       <td className="px-1 py-1">
                         <input readOnly value={it.item_code}
-                          className="border border-gray-200 bg-gray-50 rounded px-2 py-1.5 w-20 text-xs text-gray-600"/>
+                          className={`border rounded px-2 py-1.5 w-20 text-xs text-gray-600 ${rowErr && !it.item_code ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50"}`}/>
                       </td>
                       <td className="px-1 py-1">
                         <div className="relative w-40">
@@ -745,7 +781,7 @@ export default function GoodsReceiptNote() {
                           data-testid={`btn-del-item-${i}`}><Trash2 size={12}/></button>
                       </td>
                     </tr>
-                  ))}
+                  ); })}
                 </tbody>
               </table>
             </div>
