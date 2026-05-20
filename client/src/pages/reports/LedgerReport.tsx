@@ -140,7 +140,7 @@ export default function LedgerReport() {
           <label className="text-xs font-semibold text-gray-600">Account / Sub-Ledger</label>
           <select
             data-testid="select-account"
-            value={selectedId}
+            value={selectedId ? `${selectedType}|${selectedId}` : ""}
             onChange={e => {
               const val = e.target.value;
               if (!val) { setSelectedId(""); return; }
