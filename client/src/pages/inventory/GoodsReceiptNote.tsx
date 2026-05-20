@@ -409,7 +409,7 @@ export default function GoodsReceiptNote() {
     setErr("");
     // ── Validation ──────────────────────────────────────────────────────────
     const errStore    = !form.store_id;
-    const errSupplier = !form.supplier_id;
+    const errSupplier = !form.supplier_id && !form.supplier_name_manual;
     const badRows     = new Set<number>();
     form.items.forEach((it, i) => {
       if (!it.item_code || it.qty <= 0 || it.rate <= 0) badRows.add(i);
