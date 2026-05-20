@@ -5318,6 +5318,99 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
   }
 
+  // GRR voucher posting helper — reverse of GRN
+  async function postGrrVoucher(client: any, hdr: any, b: any) {
+    const PURCHASES_GL = "7e30f23a-4c07-4768-93cb-0c478916e99d";
+    const SC_GL        = "20845da1-6847-43ce-98d5-7e3e3e44b86b";
+    const CASH_GL      = "883c3242-ddd1-47af-9fd0-07e4c3a00c4f";
+    const CGST_GL      = "cgst0001-0000-0000-0000-000000000001";
+    const SGST_GL      = "sgst0001-0000-0000-0000-000000000001";
+    const IGST_GL      = "igst0001-0000-0000-0000-000000000001";
+
+    const items      = b.items || [];
+    const taxableAmt = items.reduce((s: number, it: any) => s + (+it.taxable_amt||0), 0);
+    const cgstAmt    = items.reduce((s: number, it: any) => s + (+it.cgst_amt||0), 0);
+    const sgstAmt    = items.reduce((s: number, it: any) => s + (+it.sgst_amt||0), 0);
+    const igstAmt    = items.reduce((s: number, it: any) => s + (+it.igst_amt||0), 0);
+    const grandTotal = +(b.grand_total||0) || (taxableAmt + cgstAmt + sgstAmt + igstAmt);
+    if (grandTotal <= 0) return;
+
+    const fyRes = await client.query(`SELECT id, label FROM financial_years WHERE is_current=true LIMIT 1`);
+    const fy    = fyRes.rows[0] || { id: null, label: "" };
+    const suppName = b.supplier_name || "";
+
+    // Remove any existing voucher for re-post
+    await client.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN
+      (SELECT id FROM voucher_mas WHERE source_type='grr' AND source_id=$1)`, [hdr.id]);
+    await client.query(`DELETE FROM voucher_mas WHERE source_type='grr' AND source_id=$1`, [hdr.id]);
+
+    // Determine payment mode from original GRN
+    let grnPaymentMode = "Credit";
+    if (hdr.grn_id) {
+      const grnRes = await client.query(
+        `SELECT payment_mode FROM goods_receipt_notes WHERE id=$1 LIMIT 1`, [hdr.grn_id]);
+      if (grnRes.rows[0]?.payment_mode) grnPaymentMode = grnRes.rows[0].payment_mode;
+    }
+    const isCash = grnPaymentMode === "Cash";
+
+    // Resolve supplier sub-ledger (same priority as GRN posting)
+    let supplierSlId: string | null = hdr.sl_id || null;
+    if (!supplierSlId && hdr.supplier_id) {
+      const suppRow = await client.query(
+        `SELECT sub_ledger_id FROM suppliers WHERE id=$1 LIMIT 1`, [hdr.supplier_id]);
+      if (suppRow.rows[0]?.sub_ledger_id) supplierSlId = suppRow.rows[0].sub_ledger_id;
+    }
+    if (!supplierSlId && suppName && !isCash) {
+      const slRes = await client.query(
+        `SELECT id FROM sub_ledgers WHERE general_ledger_id=$1 AND LOWER(name)=LOWER($2) LIMIT 1`,
+        [SC_GL, suppName]);
+      if (slRes.rows.length > 0) {
+        supplierSlId = slRes.rows[0].id;
+      } else {
+        const newSl = await client.query(`
+          INSERT INTO sub_ledgers(id,code,name,general_ledger_id,payment_type,is_active)
+          VALUES(gen_random_uuid()::text,$1,$2,$3,'BillToBill',true) RETURNING id`,
+          [`SL-${Date.now()}`, suppName, SC_GL]);
+        supplierSlId = newSl.rows[0].id;
+      }
+    }
+
+    // Insert voucher_mas
+    const vmRes = await client.query(`
+      INSERT INTO voucher_mas
+        (voucher_no, voucher_type, voucher_date, ref_no, ref_date,
+         financial_year_id, financial_year, total_amount, taxable_amount, tax_amount,
+         narration, source_type, source_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'grr',$12) RETURNING id
+    `, [
+      hdr.voucher_no, "Goods Receipt Return", hdr.return_date,
+      hdr.grn_no||hdr.voucher_no, hdr.grn_date||hdr.return_date,
+      fy.id, fy.label, grandTotal, taxableAmt, cgstAmt+sgstAmt+igstAmt,
+      `GRR ${hdr.voucher_no} - Return to ${suppName||"Supplier"}`, hdr.id,
+    ]);
+    const vmId = vmRes.rows[0].id;
+
+    let seq = 1;
+    const det = async (gl: string, sl: string|null, drCr: string, amt: number, narr: string) => {
+      if (amt <= 0) return;
+      await client.query(`INSERT INTO voucher_det(voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration)
+        VALUES($1,$2,$3,$4,$5,$6,$7)`, [vmId, seq++, gl, sl, drCr, Math.abs(amt), narr]);
+    };
+
+    // DR side: reduce supplier liability (Credit) or receive cash back (Cash)
+    if (isCash) {
+      await det(CASH_GL, null, "DR", grandTotal, `Cash refund on return to ${suppName}`);
+    } else {
+      await det(SC_GL, supplierSlId, "DR", grandTotal, `Purchase return - reduces payable to ${suppName}`);
+    }
+
+    // CR side: reverse purchases + taxes
+    await det(PURCHASES_GL, null, "CR", taxableAmt, `Purchase return - goods value`);
+    if (cgstAmt > 0) await det(CGST_GL, null, "CR", cgstAmt, `CGST reversed on return`);
+    if (sgstAmt > 0) await det(SGST_GL, null, "CR", sgstAmt, `SGST reversed on return`);
+    if (igstAmt > 0) await det(IGST_GL, null, "CR", igstAmt, `IGST reversed on return`);
+  }
+
   // Create GRN
   // Helper: upsert batch-level stock (delta = +1 for GRN receipt, -1 for reversal)
   async function upsertBatchStock(client: any, items: any[], delta: number) {
@@ -6559,6 +6652,8 @@ Return ONLY valid JSON (no markdown, no explanation):
               [+(it.return_qty||0), it.item_code]);
           }
         }
+        // Post voucher entries (GRR reverses the GRN accounting)
+        await postGrrVoucher(client, hdr, b);
         await client.query("COMMIT");
         res.status(201).json({ ...hdr, items: b.items||[] });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
@@ -6594,6 +6689,8 @@ Return ONLY valid JSON (no markdown, no explanation):
           if (it.item_code && +(it.return_qty||0) > 0)
             await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+(it.return_qty||0), it.item_code]);
         }
+        // Re-post voucher entries for updated GRR
+        await postGrrVoucher(client, { id: req.params.id, ...b }, b);
         await client.query("COMMIT");
         res.json({ ok: true });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
@@ -6612,6 +6709,10 @@ Return ONLY valid JSON (no markdown, no explanation):
           if (oi.item_code && +(oi.return_qty||0) > 0)
             await client.query(`UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`, [+(oi.return_qty||0), oi.item_code]);
         }
+        // Remove voucher entries before deleting the GRR record
+        await client.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN
+          (SELECT id FROM voucher_mas WHERE source_type='grr' AND source_id=$1)`, [req.params.id]);
+        await client.query(`DELETE FROM voucher_mas WHERE source_type='grr' AND source_id=$1`, [req.params.id]);
         await client.query(`DELETE FROM goods_receipt_returns WHERE id=$1`, [req.params.id]);
         await client.query("COMMIT");
         res.json({ ok: true });
