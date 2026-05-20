@@ -362,7 +362,13 @@ export default function GoodsReceiptNote() {
   function updItem(i: number, key: keyof GrnItem, val: any) {
     setForm(f => {
       const items = [...f.items];
-      const updated = calcItem({ ...items[i], [key]: val });
+      const patch: Partial<GrnItem> = { [key]: val };
+      // Keep CGST and SGST in sync for within-state GST
+      if (key === "cgst_pct" && !grnInterState) patch.sgst_pct = val;
+      if (key === "sgst_pct" && !grnInterState) patch.cgst_pct = val;
+      // For inter-state: changing IGST clears CGST/SGST and vice versa
+      if (key === "igst_pct" && grnInterState) { patch.cgst_pct = 0; patch.sgst_pct = 0; }
+      const updated = calcItem({ ...items[i], ...patch });
       items[i] = updated;
       return { ...f, items };
     });
@@ -377,9 +383,11 @@ export default function GoodsReceiptNote() {
 
   function pickProductForGrn(i: number, prod: any) {
     const rate = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
-    const cgst = grnInterState ? 0 : parseFloat(prod.cgst_rate) || 0;
-    const sgst = grnInterState ? 0 : parseFloat(prod.sgst_rate) || 0;
-    const igst = grnInterState ? parseFloat(prod.igst_rate) || 0 : 0;
+    // Derive tax rates — prefer explicit cgst_rate/sgst_rate columns; fall back to tax_rate/2
+    const totalTax = parseFloat(prod.taxRate ?? prod.tax_rate ?? "0") || 0;
+    const cgst = grnInterState ? 0 : (parseFloat(prod.cgst_rate) || totalTax / 2);
+    const sgst = grnInterState ? 0 : (parseFloat(prod.sgst_rate) || totalTax / 2);
+    const igst = grnInterState ? (parseFloat(prod.igst_rate) || totalTax) : 0;
     const expiry_required = !!(prod.expiryRequired ?? prod.expiry_required);
     setForm(f => {
       const items = [...f.items];
