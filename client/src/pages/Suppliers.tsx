@@ -203,7 +203,10 @@ function SupplierForm({ initial, onClose }: any) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
       qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/creditors"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/with-gl"] });
+      qc.invalidateQueries({ queryKey: ["/api/ledger-accounts"] });
       onClose();
     },
     onError: (e: any) => {

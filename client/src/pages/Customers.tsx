@@ -202,7 +202,14 @@ function CustomerForm({ initial, onClose }: any) {
       if (!res.ok) throw new Error((await res.json()).message || "Save failed");
       return res.json();
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/customers"] }); qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/debtors"] }); onClose(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/customers"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/debtors"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/with-gl"] });
+      qc.invalidateQueries({ queryKey: ["/api/ledger-accounts"] });
+      onClose();
+    },
     onError: (e: any) => {
       try {
         const parsed = JSON.parse(e.message);
@@ -554,7 +561,14 @@ export default function Customers() {
       const res = await fetch(`/api/customers/${id}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error("Delete failed");
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/customers"] }); setDeleteId(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/customers"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/debtors"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers/with-gl"] });
+      qc.invalidateQueries({ queryKey: ["/api/ledger-accounts"] });
+      setDeleteId(null);
+    },
   });
 
   const openNew   = () => { setEditing(null);  setView("form"); };
