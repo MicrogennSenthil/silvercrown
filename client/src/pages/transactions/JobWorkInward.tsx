@@ -494,7 +494,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                   <Plus size={14} />
                 </button>
               </div>
-              {partyDropOpen && partySearch && filteredCustomers.length > 0 && (
+              {partyDropOpen && filteredCustomers.length > 0 && (
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto mt-0.5">
                   {filteredCustomers.slice(0, 8).map((s: any) => (
                     <button key={s.id} onClick={() => { setPartyId(s.id); setPartySearch(s.name); setPartyDropOpen(false); }}
