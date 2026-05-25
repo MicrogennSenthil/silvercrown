@@ -36,6 +36,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
   const { data: uomList = [] }      = useQuery<any[]>({ queryKey: ["/api/uom"] });
   const { data: allProducts = [] }  = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
+  const { data: processList = [] }  = useQuery<any[]>({ queryKey: ["/api/processes"] });
 
   // IDs already covered by existing invoices (excluded when editing own invoice)
   const invoicedIdsKey = editId
@@ -778,7 +779,15 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                                   data-testid={`input-item-code-${idx}`}
                                   className="border rounded px-1 py-0.5 text-xs font-mono w-24"
                                   placeholder="Code"
-                                  onChange={e => updateItem(realIdx, "item_code", e.target.value)} />
+                                  onChange={e => {
+                                    updateItem(realIdx, "item_code", e.target.value);
+                                    const match = (allProducts as any[]).find((p: any) =>
+                                      p.code?.toLowerCase() === e.target.value.toLowerCase()
+                                    );
+                                    if (match) {
+                                      selectDirectItem(realIdx, match);
+                                    }
+                                  }} />
                               : it.item_code}
                           </td>
                           <td className="px-2 py-1 font-medium text-gray-800">
@@ -811,11 +820,16 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                           <td className="px-2 py-1 text-gray-700">{it.work_order_no || "—"}</td>
                           <td className="px-2 py-1 text-gray-700">
                             {isManual
-                              ? <input value={it.process}
+                              ? <select
                                   data-testid={`input-process-${idx}`}
-                                  className="border rounded px-1 py-0.5 text-xs w-24"
-                                  placeholder="Process"
-                                  onChange={e => updateItem(realIdx, "process", e.target.value)} />
+                                  className="border rounded px-1 py-0.5 text-xs w-28 bg-white"
+                                  value={it.process || ""}
+                                  onChange={e => updateItem(realIdx, "process", e.target.value)}>
+                                  <option value="">— Process —</option>
+                                  {(processList as any[]).filter((p: any) => p.is_active !== false).map((p: any) => (
+                                    <option key={p.id} value={p.name}>{p.name}</option>
+                                  ))}
+                                </select>
                               : (it.process || "—")}
                           </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.inward_voucher_no || "—"}</td>
