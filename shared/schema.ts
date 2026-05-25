@@ -386,6 +386,17 @@ export const taxRates = pgTable("tax_rates", {
 });
 export const insertTaxRateSchema = createInsertSchema(taxRates).omit({ id: true, createdAt: true });
 export type InsertTaxRate = z.infer<typeof insertTaxRateSchema>;
+
+// Contact Roles
+export const contactRoles = pgTable("contact_roles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertContactRoleSchema = createInsertSchema(contactRoles).omit({ id: true, createdAt: true });
+export type InsertContactRole = z.infer<typeof insertContactRoleSchema>;
+export type ContactRole = typeof contactRoles.$inferSelect;
 export type TaxRate = typeof taxRates.$inferSelect;
 
 // Categories

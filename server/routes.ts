@@ -999,6 +999,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.deleteCity(req.params.id); res.json({ ok: true });
   });
 
+  // Contact Roles
+  app.get("/api/contact-roles", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query("SELECT id, name FROM contact_roles WHERE is_active=true ORDER BY name");
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/contact-roles", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { name } = req.body;
+      if (!name?.trim()) return res.status(400).json({ message: "Name required" });
+      const r = await pool.query(
+        "INSERT INTO contact_roles (name, is_active) VALUES ($1, true) ON CONFLICT (name) DO NOTHING RETURNING *",
+        [name.trim()]
+      );
+      res.json(r.rows[0] || { name: name.trim() });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   // Categories
   app.get("/api/categories", requireAuth, async (req, res) => { res.json(await storage.listCategories()); });
   app.post("/api/categories", requireAuth, async (req, res) => {

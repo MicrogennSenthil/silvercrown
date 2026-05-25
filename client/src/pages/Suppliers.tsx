@@ -71,21 +71,24 @@ function DropPlus({ label, value, onChange, options, onPlus, className = "" }: a
   );
 }
 
-function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | "state"; stateList: any[]; onSaved: (name: string, stateId?: string) => void; onCancel: () => void }) {
+function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | "state" | "role"; stateList: any[]; onSaved: (name: string, stateId?: string) => void; onCancel: () => void }) {
   const [name, setName] = useState("");
   const [stateId, setStateId] = useState("");
   const qc = useQueryClient();
 
+  const url  = type === "role" ? "/api/contact-roles" : type === "city" ? "/api/cities" : "/api/states";
+  const body = type === "role" ? { name, isActive: true } : type === "city" ? { name, stateId: stateId || undefined, isActive: true } : { name, isActive: true };
+  const qKey = type === "role" ? "/api/contact-roles" : type === "city" ? "/api/cities" : "/api/states";
+  const label = type === "role" ? "Contact Role" : type === "city" ? "City" : "State";
+
   const mut = useMutation({
     mutationFn: async () => {
-      const url   = type === "city" ? "/api/cities" : "/api/states";
-      const body  = type === "city" ? { name, stateId: stateId || undefined, isActive: true } : { name, isActive: true };
-      const res   = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "include" });
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "include" });
       if (!res.ok) throw new Error((await res.json()).message || "Save failed");
       return res.json();
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [type === "city" ? "/api/cities" : "/api/states"] });
+      qc.invalidateQueries({ queryKey: [qKey] });
       onSaved(name.trim(), type === "city" ? stateId : undefined);
     },
   });
@@ -93,10 +96,10 @@ function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | 
   return createPortal(
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center" style={{ zIndex: 9999 }}>
       <div className="bg-white rounded-xl p-5 w-80" style={{ boxShadow: "2px 2px 10px rgba(0,0,0,0.25)" }}>
-        <div className="font-semibold text-gray-800 mb-4">Add New {type === "city" ? "City" : "State"}</div>
+        <div className="font-semibold text-gray-800 mb-4">Add New {label}</div>
         <div className="space-y-3">
           <div className="relative">
-            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{type === "city" ? "City Name" : "State Name"}</label>
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">{label} Name</label>
             <input autoFocus value={name} onChange={e => setName(e.target.value)}
               className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm focus:outline-none focus:border-blue-400"
               data-testid="input-quick-add-name" />
@@ -105,7 +108,7 @@ function QuickAddModal({ type, stateList, onSaved, onCancel }: { type: "city" | 
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">State *</label>
               <select value={stateId} onChange={e => setStateId(e.target.value)}
-                className={`w-full border rounded px-3 pt-4 pb-2 text-sm focus:outline-none bg-white appearance-none ${!stateId ? "border-gray-300" : "border-gray-300"} focus:border-blue-400`}
+                className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm focus:outline-none bg-white appearance-none focus:border-blue-400"
                 data-testid="select-quick-add-state">
                 <option value="">— Select State —</option>
                 {(stateList || []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -170,13 +173,14 @@ function SupplierForm({ initial, onClose }: any) {
   });
   const [tab, setTab] = useState<"address" | "account" | "other">("address");
   const [isAlsoCustomer, setIsAlsoCustomer] = useState(false);
-  const [quickAdd, setQuickAdd] = useState<"city" | "state" | null>(null);
+  const [quickAdd, setQuickAdd] = useState<"city" | "state" | "role" | null>(null);
   const qc = useQueryClient();
   const { validate, hasError, clearError, showApiError } = useFormValidation();
 
-  const { data: cities     = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
-  const { data: states     = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
-  const { data: customers  = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: cities        = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
+  const { data: states        = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
+  const { data: customers     = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: contactRoles  = [] } = useQuery<any[]>({ queryKey: ["/api/contact-roles"] });
 
   const counterpartExists = (customers as any[]).some(
     (c: any) => c.name?.toLowerCase() === form.name?.toLowerCase()
@@ -236,8 +240,9 @@ function SupplierForm({ initial, onClose }: any) {
     { key: "other",   label: "Other Info" },
   ] as const;
 
-  const cityOptions  = (cities || []).map((c: any) => ({ value: c.name, label: c.name }));
-  const stateOptions = (states || []).map((s: any) => ({ value: s.name, label: s.name }));
+  const cityOptions  = (cities        || []).map((c: any) => ({ value: c.name, label: c.name }));
+  const stateOptions = (states        || []).map((s: any) => ({ value: s.name, label: s.name }));
+  const roleOptions  = (contactRoles  || []).map((r: any) => ({ value: r.name, label: r.name }));
 
   return (
     <>
@@ -249,6 +254,8 @@ function SupplierForm({ initial, onClose }: any) {
           if (quickAdd === "city" && savedStateId) {
             const stateName = (states || []).find((s: any) => s.id === savedStateId)?.name || "";
             setForm((p: any) => ({ ...p, city: name, ...(stateName ? { state: stateName } : {}) }));
+          } else if (quickAdd === "role") {
+            setForm((p: any) => ({ ...p, contactRole: name }));
           } else {
             setForm((p: any) => ({ ...p, [quickAdd!]: name }));
           }
@@ -309,7 +316,7 @@ function SupplierForm({ initial, onClose }: any) {
               <div className="font-semibold text-gray-700 mb-4">Contact Details</div>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Name"        value={form.contactName} onChange={f("contactName")} />
-                <Field label="Role"        value={form.contactRole} onChange={f("contactRole")} />
+                <DropPlus label="Role" value={form.contactRole} onChange={f("contactRole")} options={roleOptions} onPlus={() => setQuickAdd("role")} />
                 <Field label="Email"       value={form.email}       onChange={f("email")} />
                 <Field label="Telephone"   value={form.telephone}   onChange={f("telephone")} />
                 <Field label="Website URL" value={form.websiteUrl}  onChange={f("websiteUrl")} className="col-span-2" />
