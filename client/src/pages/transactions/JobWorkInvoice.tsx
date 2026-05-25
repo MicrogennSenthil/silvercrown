@@ -331,9 +331,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
 
   function selectDirectItem(realIdx: number, product: any) {
     const rate    = parseFloat(product.selling_price || product.rate || 0);
-    const cgstR   = parseFloat(product.cgst_rate || 0);
-    const sgstR   = parseFloat(product.sgst_rate || 0);
-    const igstR   = parseFloat(product.igst_rate || 0);
+    // inventory_items table stores a single tax_rate; split into CGST/SGST for within-state
+    const taxRate = parseFloat(product.tax_rate || 0);
+    const cgstR   = parseFloat(product.cgst_rate ?? taxRate / 2);
+    const sgstR   = parseFloat(product.sgst_rate ?? taxRate / 2);
+    const igstR   = parseFloat(product.igst_rate ?? taxRate);
     const qty     = parseFloat(items[realIdx]?.qty_despatched || 0);
     const taxable = qty * rate;
     setItems(prev => prev.map((it, i) => i !== realIdx ? it : {
@@ -341,8 +343,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       item_id:      product.id || null,
       item_code:    product.code || "",
       item_name:    product.name || "",
-      unit:         (product.uom || product.unit || "").toUpperCase(),
-      hsn:          product.hsn_code || "",
+      unit:         (product.unit || product.uom || "").toUpperCase(),
+      hsn:          product.hsn_code || product.hsn || "",
       rate,
       amount:       taxable,
       cgst_rate:    cgstR,
@@ -354,6 +356,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     }));
     setDirectSearch(prev => ({ ...prev, [realIdx]: product.name || "" }));
     setDirectDrop(null);
+    setDropPos(null);
   }
 
   // ── Charges helpers ───────────────────────────────────────────────────────────
