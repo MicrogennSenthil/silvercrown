@@ -146,7 +146,7 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
   }
 
   function selectProduct(rowKey: string, prod: any) {
-    const sellingPrice = parseFloat(prod.selling_price || 0);
+    const sellingPrice = parseFloat(prod.rate ?? prod.sellingPrice ?? prod.selling_price ?? 0);
     setItems(prev => prev.map(r => {
       if (r._key !== rowKey) return r;
       const qty = parseFloat(r.qty) || 0;
