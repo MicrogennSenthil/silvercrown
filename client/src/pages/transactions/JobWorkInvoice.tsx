@@ -78,6 +78,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [gridSearch,   setGridSearch]   = useState("");
   const [directSearch, setDirectSearch] = useState<Record<number, string>>({});
   const [directDrop,   setDirectDrop]   = useState<number | null>(null);
+  const [dropPos,      setDropPos]      = useState<{ top: number; left: number; width: number } | null>(null);
 
   // Charges tab
   const [charges,      setCharges]      = useState<any[]>([{ subledger_id: "", charge_name: "", amount: "" }]);
@@ -782,44 +783,27 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                           </td>
                           <td className="px-2 py-1 font-medium text-gray-800">
                             {isManual
-                              ? <div className="relative">
-                                  <input
-                                    data-testid={`input-item-name-${idx}`}
-                                    className="border rounded px-1 py-0.5 text-xs w-40"
-                                    placeholder="Search item..."
-                                    value={directSearch[realIdx] !== undefined ? directSearch[realIdx] : it.item_name}
-                                    onChange={e => {
-                                      setDirectSearch(prev => ({ ...prev, [realIdx]: e.target.value }));
-                                      updateItem(realIdx, "item_name", e.target.value);
-                                      setDirectDrop(realIdx);
-                                    }}
-                                    onFocus={() => setDirectDrop(realIdx)}
-                                    onBlur={() => setTimeout(() => setDirectDrop(null), 200)}
-                                  />
-                                  {directDrop === realIdx && (directSearch[realIdx] || "").length > 0 && (() => {
-                                    const q = (directSearch[realIdx] || "").toLowerCase();
-                                    const hits = (allProducts as any[]).filter((p: any) =>
-                                      p.is_active !== false &&
-                                      (p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q))
-                                    ).slice(0, 10);
-                                    return hits.length > 0 ? (
-                                      <div className="absolute z-50 top-full left-0 mt-0.5 bg-white border border-gray-200 rounded shadow-lg w-64 max-h-48 overflow-y-auto">
-                                        {hits.map((p: any) => (
-                                          <div key={p.id}
-                                            className="px-2 py-1.5 text-xs cursor-pointer hover:bg-blue-50 border-b last:border-0"
-                                            onMouseDown={() => {
-                                              selectDirectItem(realIdx, p);
-                                              updateItem(realIdx, "item_code", p.code || "");
-                                            }}>
-                                            <span className="font-mono text-gray-500 mr-1">{p.code}</span>
-                                            <span className="font-medium text-gray-800">{p.name}</span>
-                                            {p.selling_price > 0 && <span className="text-gray-400 ml-1">₹{parseFloat(p.selling_price).toLocaleString("en-IN")}</span>}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : null;
-                                  })()}
-                                </div>
+                              ? <input
+                                  data-testid={`input-item-name-${idx}`}
+                                  className="border rounded px-1 py-0.5 text-xs w-40"
+                                  placeholder="Search item..."
+                                  value={directSearch[realIdx] !== undefined ? directSearch[realIdx] : it.item_name}
+                                  onChange={e => {
+                                    setDirectSearch(prev => ({ ...prev, [realIdx]: e.target.value }));
+                                    updateItem(realIdx, "item_name", e.target.value);
+                                    setDirectDrop(realIdx);
+                                  }}
+                                  onFocus={e => {
+                                    const r = (e.target as HTMLInputElement).getBoundingClientRect();
+                                    setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: 260 });
+                                    setDirectDrop(realIdx);
+                                  }}
+                                  onKeyUp={e => {
+                                    const r = (e.target as HTMLInputElement).getBoundingClientRect();
+                                    setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: 260 });
+                                  }}
+                                  onBlur={() => setTimeout(() => { setDirectDrop(null); setDropPos(null); }, 200)}
+                                />
                               : it.item_name}
                           </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.despatch_voucher_no || "—"}</td>
@@ -1152,6 +1136,45 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           </button>
         </div>
       </div>
+
+      {/* Fixed-position item autocomplete dropdown — rendered outside table overflow */}
+      {directDrop !== null && dropPos && (() => {
+        const q = (directSearch[directDrop] || "").toLowerCase();
+        if (!q) return null;
+        const hits = (allProducts as any[]).filter((p: any) =>
+          p.is_active !== false &&
+          (p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q))
+        ).slice(0, 12);
+        if (!hits.length) return null;
+        return (
+          <div
+            style={{
+              position: "fixed",
+              top: dropPos.top + 2,
+              left: dropPos.left,
+              width: dropPos.width,
+              zIndex: 9999,
+            }}
+            className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-52 overflow-y-auto">
+            {hits.map((p: any) => (
+              <div key={p.id}
+                className="px-3 py-2 text-xs cursor-pointer hover:bg-blue-50 border-b last:border-0 flex justify-between items-center"
+                onMouseDown={() => {
+                  selectDirectItem(directDrop, p);
+                  updateItem(directDrop, "item_code", p.code || "");
+                }}>
+                <div>
+                  <span className="font-mono text-gray-500 mr-1.5">{p.code}</span>
+                  <span className="font-medium text-gray-800">{p.name}</span>
+                </div>
+                {parseFloat(p.selling_price) > 0 && (
+                  <span className="text-gray-400 ml-2 shrink-0">₹{parseFloat(p.selling_price).toLocaleString("en-IN")}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
