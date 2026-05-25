@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PencilLine, Plus, Trash2, Info, ChevronDown, ArrowLeft, TrendingUp, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -62,6 +62,13 @@ function LedgerForm({
     queryFn: () => fetch(`/api/sub-ledgers/${item.id}/statement`, { credentials: "include" }).then(r => r.json()),
     enabled: isEdit && !!item?.id,
   });
+
+  const billGridRef = useRef<HTMLDivElement>(null);
+  function scrollToBillGrid() {
+    billGridRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    billGridRef.current?.classList.add("ring-2", "ring-[#027fa5]", "ring-offset-1");
+    setTimeout(() => billGridRef.current?.classList.remove("ring-2", "ring-[#027fa5]", "ring-offset-1"), 2000);
+  }
 
   const [name, setName] = useState(item?.name || "");
   const [glId, setGlId] = useState(item?.generalLedgerId || initialGlId || "");
@@ -323,7 +330,7 @@ function LedgerForm({
 
           {/* Bill Detail Grid (shown only when obEntry is ON AND Bill-to-Bill) */}
           {obEntry && paymentType === "BillToBill" && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div ref={billGridRef} className="border border-gray-200 rounded-lg overflow-hidden transition-all duration-300">
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ background: SC.tonal }}>
@@ -527,12 +534,22 @@ function LedgerForm({
                         <td className="px-3 py-1.5">
                           <div className="text-gray-600 truncate max-w-[200px]">{r.narration || "—"}</div>
                           {r.sourceType && (
-                            <span className="inline-block text-[10px] px-1.5 py-0.5 rounded mt-0.5 font-medium"
-                              style={r.sourceType === "Bills"
-                                ? { background: "#fde8dc", color: "#d74700" }
-                                : { background: SC.tonal, color: SC.primary }}>
-                              {r.sourceType === "grn" ? "Purchase" : r.sourceType}
-                            </span>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium"
+                                style={r.sourceType === "Bills"
+                                  ? { background: "#fde8dc", color: "#d74700" }
+                                  : { background: SC.tonal, color: SC.primary }}>
+                                {r.sourceType === "grn" ? "Purchase" : r.sourceType}
+                              </span>
+                              {(r.sourceType === "Opening Bill" || r.sourceType === "Bills") && isEdit && (
+                                <button type="button" onClick={scrollToBillGrid}
+                                  className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium border transition-colors hover:bg-[#027fa5] hover:text-white"
+                                  style={{ borderColor: SC.primary, color: SC.primary }}
+                                  title="Click to scroll up and edit this bill entry">
+                                  <PencilLine size={9} /> Edit
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-right font-mono text-red-600">
