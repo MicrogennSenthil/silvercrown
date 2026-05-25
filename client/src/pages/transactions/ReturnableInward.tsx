@@ -155,7 +155,7 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
         item_id: prod.id,
         item_code: prod.code || "",
         item_name: prod.name,
-        hsn: prod.hsn_code || "",
+        hsn: prod.hsnCode ?? prod.hsn_code ?? "",
         unit: prod.uom || prod.unit || "",
         unit_value: sellingPrice ? String(sellingPrice) : "",
         total_value: sellingPrice && qty ? (sellingPrice * qty).toFixed(2) : r.total_value,
