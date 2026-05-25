@@ -1235,6 +1235,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           SELECT ref_no, ref_date AS txn_date, voucher_no, voucher_date,
                  amount, cr_dr AS dr_cr, 'Opening Bill' AS source_type, '' AS narration
           FROM sub_ledger_bills WHERE sub_ledger_id = $1
+            AND NOT EXISTS (
+              SELECT 1 FROM job_work_invoices jwi WHERE jwi.voucher_no = sub_ledger_bills.ref_no
+            )
           ORDER BY ref_date NULLS FIRST, id
         `, [id]);
 
@@ -1374,6 +1377,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ''             AS narration
         FROM sub_ledger_bills
         WHERE sub_ledger_id = $1
+          AND NOT EXISTS (
+            SELECT 1 FROM job_work_invoices jwi WHERE jwi.voucher_no = sub_ledger_bills.ref_no
+          )
         ORDER BY ref_date NULLS FIRST, id
       `, [slId]);
 
