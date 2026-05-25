@@ -65,7 +65,7 @@ function recalcItem(row: PoItem, isInterState = false): PoItem {
 function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const qc = useQueryClient();
   const isEdit = !!editData?.id;
-  const { data: suppliers = [] }    = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
+  const { data: suppliers = [] }    = useQuery<any[]>({ queryKey: ["/api/all-parties"] });
   const { data: products = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: termTypes = [] }    = useQuery<any[]>({ queryKey: ["/api/term-types"] });
   const { data: allTerms = [] }     = useQuery<any[]>({ queryKey: ["/api/terms"] });

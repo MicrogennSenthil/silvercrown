@@ -193,6 +193,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Customers
+  app.get("/api/all-parties", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT id, name, 'supplier' AS party_type FROM suppliers
+        UNION ALL
+        SELECT id, name, 'customer' AS party_type FROM customers
+        ORDER BY name
+      `);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/customers", requireAuth, async (_req, res) => {
     try {
       const { pool } = await import("./db");
