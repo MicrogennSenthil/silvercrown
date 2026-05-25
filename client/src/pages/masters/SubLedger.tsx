@@ -63,6 +63,14 @@ function LedgerForm({
     enabled: isEdit && !!item?.id,
   });
 
+  // Financial year max date for "Opening" bills: last day of previous FY
+  // India FY: April 1 – March 31. If today >= April 1, current FY started this year.
+  const prevFYEndDate = (() => {
+    const now = new Date();
+    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    return `${fyStartYear}-03-31`;
+  })();
+
   const billGridRef = useRef<HTMLDivElement>(null);
   function scrollToBillGrid() {
     billGridRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -122,7 +130,16 @@ function LedgerForm({
   const catName = categoriesList.find((c: any) => c.id === catId)?.name || "";
 
   function updateBill(key: string, field: keyof BillRow, val: string) {
-    setBills(prev => prev.map(b => b._key === key ? { ...b, [field]: val } : b));
+    setBills(prev => prev.map(b => {
+      if (b._key !== key) return b;
+      const updated = { ...b, [field]: val };
+      // When switching type to "Opening", clear dates that exceed the prev FY end
+      if (field === "billType" && val === "Opening") {
+        if (updated.refDate && updated.refDate > prevFYEndDate) updated.refDate = "";
+        if (updated.voucherDate && updated.voucherDate > prevFYEndDate) updated.voucherDate = "";
+      }
+      return updated;
+    }));
   }
   function addBill() {
     if (bills.length > 0) {
@@ -377,6 +394,7 @@ function LedgerForm({
                         <DatePicker
                           value={b.refDate}
                           onChange={v => updateBill(b._key, "refDate", v)}
+                          max={b.billType === "Opening" ? prevFYEndDate : undefined}
                           data-testid={`input-ref-date-${i}`}
                         />
                       </td>
@@ -389,6 +407,7 @@ function LedgerForm({
                         <DatePicker
                           value={b.voucherDate}
                           onChange={v => updateBill(b._key, "voucherDate", v)}
+                          max={b.billType === "Opening" ? prevFYEndDate : undefined}
                           data-testid={`input-voucher-date-${i}`}
                         />
                       </td>
