@@ -67,6 +67,14 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
   const [partySearch,   setPartySearch]   = useState(editData?.party_name_db || editData?.party_name_manual || "");
   const [partyDropOpen, setPartyDropOpen] = useState(false);
 
+  // Sync party fields when editData arrives (handles async fetch timing)
+  useEffect(() => {
+    if (editData?.id) {
+      setPartyId(editData.party_id || "");
+      setPartySearch(editData.party_name_db || editData.party_name_manual || "");
+    }
+  }, [editData?.id]);
+
   // Vehicle No — 4 parts
   const rawVeh = (editData?.vehicle_no || "").toUpperCase();
   const [vehP1, setVehP1] = useState(rawVeh.slice(0, 2));
@@ -649,6 +657,6 @@ export default function ReturnableInward() {
   function handleNew() { setEditData(null); setView("form"); }
   function handleBack() { setEditData(null); setView("list"); }
 
-  if (view === "form") return <RInwardForm editData={editData} onBack={handleBack} />;
+  if (view === "form") return <RInwardForm key={editData?.id || "new"} editData={editData} onBack={handleBack} />;
   return <RInwardList onNew={handleNew} onEdit={handleEdit} />;
 }
