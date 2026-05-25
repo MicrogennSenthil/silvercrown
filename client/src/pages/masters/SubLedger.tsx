@@ -736,6 +736,7 @@ export default function SubLedgerMaster() {
   );
   if (view === "edit") return (
     <LedgerForm
+      key={editItem?.id}
       item={editItem}
       onBack={handleBack}
     />
