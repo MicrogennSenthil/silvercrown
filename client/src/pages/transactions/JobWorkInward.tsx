@@ -453,7 +453,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     }
     setItems(prev => prev.map(r => r._key === rowKey ? {
       ...r, item_id: item.id, item_code: item.code, item_name: item.name,
-      unit: item.uom || r.unit, hsn: item.hsn_code || r.hsn,
+      unit: (item.uom || r.unit || "").toUpperCase(), hsn: item.hsn_code || r.hsn,
     } : r));
     setItemSearch(prev => ({ ...prev, [rowKey]: item.name }));
     setItemDropOpen(null);
@@ -733,7 +733,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                           data-testid={`select-unit-${i}`}>
                           <option value="">—</option>
                           {(uomList as any[]).filter((u: any) => u.isActive !== false).map((u: any) => (
-                            <option key={u.id} value={u.shortForm || u.code}>{u.shortForm || u.code}</option>
+                            <option key={u.id} value={(u.shortForm || u.code || "").toUpperCase()}>{u.shortForm || u.code}</option>
                           ))}
                         </select>
                       </td>
@@ -771,7 +771,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                                   item_id: match.id,
                                   item_code: match.code || r.item_code,
                                   item_name: match.name || r.item_name,
-                                  unit: match.uom || r.unit,
+                                  unit: (match.uom || r.unit || "").toUpperCase(),
                                 } : r));
                                 setItemSearch(prev => ({ ...prev, [row._key]: match.name }));
                               }
