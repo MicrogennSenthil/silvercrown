@@ -158,6 +158,7 @@ function LedgerForm({
         closingBalance: cbAmount, closingBalanceType: cbType,
         notes, isActive: true,
         bills: bills.map(b => ({
+          billType: b.billType || "Opening",
           refNo: b.refNo, refDate: b.refDate || null,
           voucherNo: b.voucherNo, voucherDate: b.voucherDate || null,
           amount: b.amount || "0", crDr: b.crDr,
@@ -383,6 +384,7 @@ function LedgerForm({
                           value={b.refDate}
                           onChange={v => updateBill(b._key, "refDate", v)}
                           max={b.billType === "Opening" ? prevFYEndDate : undefined}
+                          openUp
                           data-testid={`input-ref-date-${i}`}
                         />
                       </td>
@@ -396,6 +398,7 @@ function LedgerForm({
                           value={b.voucherDate}
                           onChange={v => updateBill(b._key, "voucherDate", v)}
                           max={b.billType === "Opening" ? prevFYEndDate : undefined}
+                          openUp
                           data-testid={`input-voucher-date-${i}`}
                         />
                       </td>

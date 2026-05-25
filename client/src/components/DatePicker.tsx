@@ -31,6 +31,7 @@ interface Props {
   min?: string;
   max?: string;
   placeholder?: string;
+  openUp?: boolean;
   "data-testid"?: string;
   className?: string;
 }
@@ -39,9 +40,9 @@ type Mode = "day" | "month" | "year";
 
 // Popup dimensions (approximate, used for flip logic)
 const POPUP_W = 288;
-const POPUP_H = 320;
+const POPUP_H = 350;
 
-export default function DatePicker({ value, onChange, label, min, max, placeholder = "Select date", "data-testid": testId, className = "" }: Props) {
+export default function DatePicker({ value, onChange, label, min, max, placeholder = "Select date", openUp = false, "data-testid": testId, className = "" }: Props) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("day");
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -67,21 +68,22 @@ export default function DatePicker({ value, onChange, label, min, max, placehold
     let left = r.left;
     if (left + POPUP_W > vw - 8) left = Math.max(8, vw - POPUP_W - 8);
 
-    // Vertical: open downward if space, otherwise upward
+    // Vertical: openUp forces upward; otherwise prefer direction with more space
     const spaceBelow = vh - r.bottom;
     const spaceAbove = r.top;
     let top: number;
     let transformOrigin: string;
-    if (spaceBelow >= POPUP_H || spaceBelow >= spaceAbove) {
-      top = r.bottom + 4;
-      transformOrigin = "top left";
-    } else {
+    const goUp = openUp ? spaceAbove >= 80 : spaceAbove > spaceBelow && spaceAbove >= POPUP_H;
+    if (goUp) {
       top = r.top - POPUP_H - 4;
       transformOrigin = "bottom left";
+    } else {
+      top = r.bottom + 4;
+      transformOrigin = "top left";
     }
 
     setPopupStyle({ position: "fixed", top, left, width: POPUP_W, transformOrigin, zIndex: 9999 });
-  }, []);
+  }, [openUp]);
 
   useEffect(() => {
     const d = parseYMD(value);
