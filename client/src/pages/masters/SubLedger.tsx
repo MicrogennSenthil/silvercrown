@@ -310,9 +310,9 @@ function LedgerForm({
                   <tr style={{ background: SC.tonal }}>
                     <th className="px-3 py-2 text-left font-semibold text-gray-700 w-10">S.no</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-700">Ref no</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Ref Date</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 w-36">Ref Date</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-700">Voucher no</th>
-                    <th className="px-3 py-2 text-left font-semibold text-gray-700">Voucher Date</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 w-36">Voucher Date</th>
                     <th className="px-3 py-2 text-right font-semibold text-gray-700">Amount ₹</th>
                     <th className="px-3 py-2 text-center font-semibold text-gray-700">Cr/Dr</th>
                     <th className="w-8"></th>

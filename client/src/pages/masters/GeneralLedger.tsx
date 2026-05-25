@@ -239,7 +239,7 @@ function SLPanel({ sl, generalLedgers, categories, onClose, onSaved }: { sl: any
             <table className="w-full text-xs">
               <thead><tr className="bg-gray-50 border-b">
                 <th className="px-2 py-1.5 text-left">Ref No</th>
-                <th className="px-2 py-1.5 text-left">Ref Date</th>
+                <th className="px-2 py-1.5 text-left w-36">Ref Date</th>
                 <th className="px-2 py-1.5 text-right">Amount</th>
                 <th className="px-2 py-1.5 text-center">Cr/Dr</th>
                 <th className="w-6"></th>
