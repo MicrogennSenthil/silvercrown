@@ -65,12 +65,26 @@ async function openPrint(type: DocType, row: ListRow) {
     </tr>`;
   }).join("");
 
-  const totalAmt = items.reduce((s: number, it: any) => {
+  const taxableAmt = items.reduce((s: number, it: any) => {
     const qty = parseFloat(it.qty || it.qty_despatched || "0");
     const rate = parseFloat(it.rate || "0");
     const amt  = parseFloat(it.amount || it.total || (qty * rate).toFixed(2) || "0");
     return s + amt;
   }, 0);
+  const cgstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.cgst_amt || "0"), 0);
+  const sgstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.sgst_amt || "0"), 0);
+  const igstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.igst_amt || "0"), 0);
+  const charges: any[] = doc.charges || [];
+  const chargesTotal = charges.reduce((s: number, ch: any) => s + parseFloat(ch.amount || "0"), 0);
+  const totalAmt     = taxableAmt + cgstTotal + sgstTotal + igstTotal + chargesTotal;
+
+  const gstRows = [
+    `<tr><td colspan="6" style="text-align:right;color:#555">Taxable Amount</td><td style="text-align:right">${fmtAmt(taxableAmt)}</td></tr>`,
+    cgstTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">CGST</td><td style="text-align:right">${fmtAmt(cgstTotal)}</td></tr>` : "",
+    sgstTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">SGST</td><td style="text-align:right">${fmtAmt(sgstTotal)}</td></tr>` : "",
+    igstTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">IGST</td><td style="text-align:right">${fmtAmt(igstTotal)}</td></tr>` : "",
+    chargesTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">Additional Charges</td><td style="text-align:right">${fmtAmt(chargesTotal)}</td></tr>` : "",
+  ].join("");
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -117,11 +131,14 @@ async function openPrint(type: DocType, row: ListRow) {
   </tr></thead>
   <tbody>
     ${itemRows || '<tr><td colspan="7" style="text-align:center;color:#999">No items</td></tr>'}
+  </tbody>
+  <tfoot>
+    ${gstRows}
     <tr class="total-row">
-      <td colspan="6" style="text-align:right">Total</td>
+      <td colspan="6" style="text-align:right">Grand Total</td>
       <td style="text-align:right">₹ ${fmtAmt(totalAmt)}</td>
     </tr>
-  </tbody>
+  </tfoot>
 </table>
 <div class="footer">Printed on ${new Date().toLocaleString("en-IN")}</div>
 </body></html>`;
@@ -150,11 +167,17 @@ function ViewModal({ type, row, onClose }: { type: DocType; row: ListRow; onClos
     : "";
 
   const items: any[] = doc?.items || [];
-  const totalAmt = items.reduce((s: number, it: any) => {
+  const charges: any[] = doc?.charges || [];
+  const taxableAmt = items.reduce((s: number, it: any) => {
     const qty = parseFloat(it.qty || it.qty_despatched || "0");
     const rate = parseFloat(it.rate || "0");
     return s + parseFloat(it.amount || it.total || (qty * rate).toFixed(2) || "0");
   }, 0);
+  const cgstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.cgst_amt || "0"), 0);
+  const sgstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.sgst_amt || "0"), 0);
+  const igstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.igst_amt || "0"), 0);
+  const chargesTotal = charges.reduce((s: number, ch: any) => s + parseFloat(ch.amount || "0"), 0);
+  const totalAmt     = taxableAmt + cgstTotal + sgstTotal + igstTotal + chargesTotal;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -238,6 +261,26 @@ function ViewModal({ type, row, onClose }: { type: DocType; row: ListRow; onClos
                     })}
                   </tbody>
                   <tfoot>
+                    <tr className="border-t border-gray-200">
+                      <td colSpan={4} className="px-3 py-1.5 text-right text-gray-500 text-xs">Taxable Amount</td>
+                      <td className="px-3 py-1.5 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(taxableAmt)}</td>
+                    </tr>
+                    {cgstTotal > 0 && <tr>
+                      <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">CGST</td>
+                      <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(cgstTotal)}</td>
+                    </tr>}
+                    {sgstTotal > 0 && <tr>
+                      <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">SGST</td>
+                      <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(sgstTotal)}</td>
+                    </tr>}
+                    {igstTotal > 0 && <tr>
+                      <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">IGST</td>
+                      <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(igstTotal)}</td>
+                    </tr>}
+                    {chargesTotal > 0 && <tr>
+                      <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">Additional Charges</td>
+                      <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(chargesTotal)}</td>
+                    </tr>}
                     <tr style={{ background: SC.tonal }}>
                       <td colSpan={4} className="px-3 py-2 text-right font-bold text-gray-700 text-xs">Grand Total</td>
                       <td className="px-3 py-2 text-right font-bold text-gray-800 tabular-nums">₹ {fmtAmt(totalAmt)}</td>
