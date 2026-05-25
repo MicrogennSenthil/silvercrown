@@ -33,6 +33,7 @@ function CrDrToggle({ value, onChange }: { value: string; onChange: (v: string) 
 // ── Bill row ────────────────────────────────────────────────────────────────
 type BillRow = {
   _key: string;
+  billType: "Opening" | "Bills";
   refNo: string;
   refDate: string;
   voucherNo: string;
@@ -42,7 +43,7 @@ type BillRow = {
 };
 
 function newBill(): BillRow {
-  return { _key: crypto.randomUUID(), refNo: "", refDate: "", voucherNo: "", voucherDate: "", amount: "", crDr: "Cr" };
+  return { _key: crypto.randomUUID(), billType: "Opening", refNo: "", refDate: "", voucherNo: "", voucherDate: "", amount: "", crDr: "Cr" };
 }
 
 // ── Ledger Form ────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ function LedgerForm({
     item?.bills?.length
       ? item.bills.map((b: any) => ({
           _key: crypto.randomUUID(),
+          billType: (b.billType || "Opening") as "Opening" | "Bills",
           refNo: b.refNo || "",
           refDate: b.refDate || "",
           voucherNo: b.voucherNo || "",
@@ -95,10 +97,12 @@ function LedgerForm({
     if (gl?.categoryId) setCatId(gl.categoryId);
   }, [glId, generalLedgersList]);
 
-  // When bills change and obEntry is on + BillToBill, sum amounts → opening/closing balance
+  // When bills change and obEntry is on + BillToBill, sum only "Opening" type amounts → opening/closing balance
   useEffect(() => {
     if (!obEntry || paymentType !== "BillToBill") return;
-    const total = bills.reduce((acc, b) => acc + (parseFloat(b.amount) || 0), 0);
+    const total = bills
+      .filter(b => b.billType === "Opening")
+      .reduce((acc, b) => acc + (parseFloat(b.amount) || 0), 0);
     setObAmount(total.toFixed(2));
     setCbAmount(total.toFixed(2));
   }, [bills, obEntry, paymentType]);
@@ -324,6 +328,7 @@ function LedgerForm({
                 <thead>
                   <tr style={{ background: SC.tonal }}>
                     <th className="px-3 py-2 text-left font-semibold text-gray-700 w-10">S.no</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-700 w-28">Type</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-700">Ref no</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-700 w-36">Ref Date</th>
                     <th className="px-3 py-2 text-left font-semibold text-gray-700">Voucher no</th>
@@ -336,8 +341,8 @@ function LedgerForm({
                 <tbody>
                   {bills.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-3 py-6 text-center text-gray-400 text-sm">
-                        No bill entries. Click "+ Add Bill" to add opening bill details.
+                      <td colSpan={9} className="px-3 py-6 text-center text-gray-400 text-sm">
+                        No bill entries. Click "+ Add Bill" to add bill details.
                       </td>
                     </tr>
                   )}
@@ -345,6 +350,17 @@ function LedgerForm({
                     <tr key={b._key} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
                       data-testid={`row-bill-${i}`}>
                       <td className="px-3 py-1.5 text-gray-500 text-center">{String(i + 1).padStart(2, "0")}</td>
+                      <td className="px-2 py-1.5">
+                        <select value={b.billType} onChange={e => updateBill(b._key, "billType", e.target.value)}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs bg-white outline-none focus:border-[#027fa5] font-medium"
+                          data-testid={`select-bill-type-${i}`}
+                          style={b.billType === "Opening"
+                            ? { color: SC.primary, borderColor: SC.tonal }
+                            : { color: "#d74700", borderColor: "#fde8dc" }}>
+                          <option value="Opening">Opening</option>
+                          <option value="Bills">Bills</option>
+                        </select>
+                      </td>
                       <td className="px-2 py-1.5">
                         <input value={b.refNo} onChange={e => updateBill(b._key, "refNo", e.target.value)}
                           placeholder="REF no" className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
@@ -394,7 +410,7 @@ function LedgerForm({
                 </tbody>
               </table>
 
-              {/* Bill grid footer — total + add row */}
+              {/* Bill grid footer — totals + add row */}
               <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50/50">
                 <button type="button" onClick={addBill}
                   className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded"
@@ -402,10 +418,16 @@ function LedgerForm({
                   data-testid="btn-add-bill">
                   <Plus size={12} /> Add Bill
                 </button>
-                <div className="flex items-center gap-2 text-xs text-gray-600 font-semibold">
-                  <span>Total:</span>
-                  <span className="font-mono text-gray-800">
-                    ₹{fmt(bills.reduce((a, b) => a + (parseFloat(b.amount) || 0), 0))}
+                <div className="flex items-center gap-4 text-xs text-gray-600 font-semibold">
+                  <span>
+                    Opening Total: <span className="font-mono text-gray-800">
+                      ₹{fmt(bills.filter(b => b.billType === "Opening").reduce((a, b) => a + (parseFloat(b.amount) || 0), 0))}
+                    </span>
+                  </span>
+                  <span>
+                    Bills Total: <span className="font-mono" style={{ color: SC.orange }}>
+                      ₹{fmt(bills.filter(b => b.billType === "Bills").reduce((a, b) => a + (parseFloat(b.amount) || 0), 0))}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -506,8 +528,10 @@ function LedgerForm({
                           <div className="text-gray-600 truncate max-w-[200px]">{r.narration || "—"}</div>
                           {r.sourceType && (
                             <span className="inline-block text-[10px] px-1.5 py-0.5 rounded mt-0.5 font-medium"
-                              style={{ background: SC.tonal, color: SC.primary }}>
-                              {r.sourceType === "grn" ? "Purchase" : r.sourceType === "Opening Bill" ? "Opening Bill" : r.sourceType}
+                              style={r.sourceType === "Bills"
+                                ? { background: "#fde8dc", color: "#d74700" }
+                                : { background: SC.tonal, color: SC.primary }}>
+                              {r.sourceType === "grn" ? "Purchase" : r.sourceType}
                             </span>
                           )}
                         </td>

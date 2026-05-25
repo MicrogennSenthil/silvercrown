@@ -1394,7 +1394,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           voucher_date  AS voucher_date,
           amount        AS amount,
           cr_dr         AS dr_cr,
-          'Opening Bill' AS source_type,
+          COALESCE(bill_type, 'Opening') AS bill_type,
+          CASE WHEN COALESCE(bill_type, 'Opening') = 'Opening' THEN 'Opening Bill' ELSE 'Bills' END AS source_type,
           ''             AS narration
         FROM sub_ledger_bills
         WHERE sub_ledger_id = $1

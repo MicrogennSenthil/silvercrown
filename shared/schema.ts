@@ -640,6 +640,7 @@ export const subLedgerBills = pgTable("sub_ledger_bills", {
   voucherDate: date("voucher_date"),
   amount: decimal("amount", { precision: 15, scale: 2 }).notNull().default("0"),
   crDr: text("cr_dr").notNull().default("Cr"),
+  billType: text("bill_type").notNull().default("Opening"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertSubLedgerBillSchema = createInsertSchema(subLedgerBills).omit({ id: true, createdAt: true });
