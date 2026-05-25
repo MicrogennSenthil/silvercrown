@@ -3648,19 +3648,55 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         ]
       );
 
-      // Replace items atomically
-      await client.query(`DELETE FROM job_work_inward_items WHERE inward_id=$1`, [req.params.id]);
+      // Replace items — respecting FK references from despatch items
+      // 1. Find existing items that are referenced by despatch (cannot delete)
+      const referencedRes = await client.query(
+        `SELECT jwii.id, jwii.item_id FROM job_work_inward_items jwii
+         WHERE jwii.inward_id=$1
+           AND EXISTS (SELECT 1 FROM job_work_despatch_items d WHERE d.inward_item_id = jwii.id)`,
+        [req.params.id]
+      );
+      const referencedRows: { id: string; item_id: string | null }[] = referencedRes.rows;
+      const referencedIds = new Set(referencedRows.map((r: any) => r.id));
+
+      // 2. Delete only unreferenced items
+      if (referencedIds.size > 0) {
+        await client.query(
+          `DELETE FROM job_work_inward_items WHERE inward_id=$1 AND id != ALL($2::uuid[])`,
+          [req.params.id, [...referencedIds]]
+        );
+      } else {
+        await client.query(`DELETE FROM job_work_inward_items WHERE inward_id=$1`, [req.params.id]);
+      }
+
+      // 3. Process incoming items — UPDATE referenced rows in place, INSERT the rest
+      const remainingRefs = new Map(referencedRows.map((r: any) => [r.item_id, r.id]));
       let seq = 1;
       for (const it of items) {
         if (!it.item_name?.trim() && !it.item_code?.trim()) continue;
         const { itemId } = await resolveItemMasters(client, it);
-        await client.query(
-          `INSERT INTO job_work_inward_items
-             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, process_id, hsn, remark)
-           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-          [req.params.id, seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
-           (it.unit || "").toUpperCase(), it.process || "", it.process_id || null, it.hsn || "", it.remark || ""]
-        );
+        const refRowId = remainingRefs.get(itemId);
+        if (refRowId) {
+          // UPDATE the referenced row in place (preserves FK)
+          await client.query(
+            `UPDATE job_work_inward_items SET
+               seq_no=$1, item_code=$2, item_id=$3, item_name=$4, qty=$5,
+               unit=$6, process=$7, process_id=$8, hsn=$9, remark=$10
+             WHERE id=$11`,
+            [seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
+             (it.unit || "").toUpperCase(), it.process || "", it.process_id || null,
+             it.hsn || "", it.remark || "", refRowId]
+          );
+          remainingRefs.delete(itemId);
+        } else {
+          await client.query(
+            `INSERT INTO job_work_inward_items
+               (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, process_id, hsn, remark)
+             VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            [req.params.id, seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
+             (it.unit || "").toUpperCase(), it.process || "", it.process_id || null, it.hsn || "", it.remark || ""]
+          );
+        }
       }
 
       await client.query("COMMIT");
@@ -3680,6 +3716,17 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      // Block delete if any items have been despatched
+      const refCheck = await client.query(
+        `SELECT COUNT(*) FROM job_work_inward_items jwii
+         WHERE jwii.inward_id=$1
+           AND EXISTS (SELECT 1 FROM job_work_despatch_items d WHERE d.inward_item_id = jwii.id)`,
+        [req.params.id]
+      );
+      if (parseInt(refCheck.rows[0].count) > 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: "Cannot delete: one or more items have already been despatched." });
+      }
       await client.query(`DELETE FROM job_work_inward_items WHERE inward_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_inward WHERE id=$1`, [req.params.id]);
       await client.query("COMMIT");
