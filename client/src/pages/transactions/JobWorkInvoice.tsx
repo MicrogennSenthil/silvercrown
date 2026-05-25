@@ -330,12 +330,12 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   function addDirectRow() { setItems(prev => [...prev, newDirectRow()]); }
 
   function selectDirectItem(realIdx: number, product: any) {
-    const rate    = parseFloat(product.selling_price || product.rate || 0);
-    // inventory_items table stores a single tax_rate; split into CGST/SGST for within-state
-    const taxRate = parseFloat(product.tax_rate || 0);
-    const cgstR   = parseFloat(product.cgst_rate ?? taxRate / 2);
-    const sgstR   = parseFloat(product.sgst_rate ?? taxRate / 2);
-    const igstR   = parseFloat(product.igst_rate ?? taxRate);
+    // Drizzle returns camelCase; also accept snake_case as fallback for safety
+    const rate    = parseFloat(product.sellingPrice ?? product.selling_price ?? product.rate ?? 0);
+    const taxRate = parseFloat(product.taxRate ?? product.tax_rate ?? 0);
+    const cgstR   = taxRate / 2;
+    const sgstR   = taxRate / 2;
+    const igstR   = taxRate;
     const qty     = parseFloat(items[realIdx]?.qty_despatched || 0);
     const taxable = qty * rate;
     setItems(prev => prev.map((it, i) => i !== realIdx ? it : {
@@ -344,7 +344,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       item_code:    product.code || "",
       item_name:    product.name || "",
       unit:         (product.unit || product.uom || "").toUpperCase(),
-      hsn:          product.hsn_code || product.hsn || "",
+      hsn:          product.hsnCode ?? product.hsn_code ?? product.hsn ?? "",
       rate,
       amount:       taxable,
       cgst_rate:    cgstR,
@@ -1158,8 +1158,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
         const q = (directSearch[directDrop] || "").toLowerCase().trim();
         if (!q) return null;
         const hits = (allProducts as any[]).filter((p: any) =>
-          p.is_active !== false &&
-          (p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q))
+          p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q)
         ).slice(0, 12);
         if (!hits.length) return null;
         const rowIdx = directDrop;
