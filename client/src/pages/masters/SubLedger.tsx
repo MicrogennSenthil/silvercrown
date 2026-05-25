@@ -66,8 +66,9 @@ function LedgerForm({
   const [glId, setGlId] = useState(item?.generalLedgerId || initialGlId || "");
   const [catId, setCatId] = useState(item?.categoryId || initialCatId || "");
   const [levelType, setLevelType] = useState(item?.levelType || "Same");
-  const [paymentType, setPaymentType] = useState(item?.paymentType || "BillToBill");
-  const [obEntry, setObEntry] = useState<boolean>(item?.openingBalanceEntry ?? false);
+  const hasSavedBills = isEdit && (item?.bills?.length ?? 0) > 0;
+  const [paymentType, setPaymentType] = useState(hasSavedBills ? "BillToBill" : (item?.paymentType || "BillToBill"));
+  const [obEntry, setObEntry] = useState<boolean>(hasSavedBills || (item?.openingBalanceEntry ?? false));
   const [obAmount, setObAmount] = useState(item?.openingBalance || "0");
   const [obType, setObType] = useState(item?.openingBalanceType || "Credit");
   const [cbAmount, setCbAmount] = useState(item?.closingBalance || "0");
@@ -102,9 +103,9 @@ function LedgerForm({
     setCbAmount(total.toFixed(2));
   }, [bills, obEntry, paymentType]);
 
-  // Clear bills when switching to OnAccount
+  // Clear bills when switching to OnAccount (only if no saved bills from DB)
   useEffect(() => {
-    if (paymentType === "OnAccount") setBills([]);
+    if (paymentType === "OnAccount" && !hasSavedBills) setBills([]);
   }, [paymentType]);
 
   const catName = categoriesList.find((c: any) => c.id === catId)?.name || "";
