@@ -199,30 +199,20 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const totalTax      = totalCgst + totalSgst + totalIgst;
   const grandTotal    = totalTaxable + totalTax + charges.reduce((s, c) => s + (parseFloat(c.amount)||0), 0);
 
-  // ── Tax breakdown rows ────────────────────────────────────────────────────
-  type TaxRow = { label: string; pct: number; amt: number };
-  const taxBreakdown: TaxRow[] = [];
-  if (totalCgst > 0) {
-    const pcts = [...new Set(items.map(r => parseFloat(r.cgst_pct)||0))];
-    pcts.forEach(pct => {
-      const amt = items.filter(r => parseFloat(r.cgst_pct)===pct).reduce((s,r) => s+(parseFloat(r.cgst_amt)||0),0);
-      if (amt > 0) taxBreakdown.push({ label: "CGST", pct, amt });
-    });
-  }
-  if (totalSgst > 0) {
-    const pcts = [...new Set(items.map(r => parseFloat(r.sgst_pct)||0))];
-    pcts.forEach(pct => {
-      const amt = items.filter(r => parseFloat(r.sgst_pct)===pct).reduce((s,r) => s+(parseFloat(r.sgst_amt)||0),0);
-      if (amt > 0) taxBreakdown.push({ label: "SGST", pct, amt });
-    });
-  }
-  if (totalIgst > 0) {
-    const pcts = [...new Set(items.map(r => parseFloat(r.igst_pct)||0))];
-    pcts.forEach(pct => {
-      const amt = items.filter(r => parseFloat(r.igst_pct)===pct).reduce((s,r) => s+(parseFloat(r.igst_amt)||0),0);
-      if (amt > 0) taxBreakdown.push({ label: "IGST", pct, amt });
-    });
-  }
+  // ── Tax breakdown — one row per GST slab (grouped by unique tax %) ─────────
+  type TaxSlabRow = { slabPct: number; taxable: number; cgst: number; sgst: number; igst: number; total: number };
+  const taxSlabMap = new Map<string, TaxSlabRow>();
+  items.forEach(r => {
+    const cp = parseFloat(r.cgst_pct)||0, sp = parseFloat(r.sgst_pct)||0, ip = parseFloat(r.igst_pct)||0;
+    const slabPct = cp + sp + ip;
+    if (slabPct === 0) return;
+    const key = `${cp}_${sp}_${ip}`;
+    const existing = taxSlabMap.get(key) || { slabPct, taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 };
+    const tx = parseFloat(r.taxable_amt)||0;
+    const ca = parseFloat(r.cgst_amt)||0, sa = parseFloat(r.sgst_amt)||0, ia = parseFloat(r.igst_amt)||0;
+    taxSlabMap.set(key, { slabPct, taxable: existing.taxable + tx, cgst: existing.cgst + ca, sgst: existing.sgst + sa, igst: existing.igst + ia, total: existing.total + ca + sa + ia });
+  });
+  const taxSlabs = Array.from(taxSlabMap.values()).sort((a, b) => b.slabPct - a.slabPct);
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const saveMut = useMutation({
@@ -677,22 +667,38 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             </>
           )}
 
-          {/* Tax Breakdown */}
-          {taxBreakdown.length > 0 && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden w-80">
+          {/* Tax Breakdown — summarised by GST slab */}
+          {taxSlabs.length > 0 && (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
               <div className="grid text-xs font-semibold text-gray-600 bg-gray-50 border-b"
-                style={{ gridTemplateColumns: "36px 1fr 70px 90px" }}>
-                {["S.No","Tax Setup","%","Amount ₹"].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
+                style={{ gridTemplateColumns: "36px 80px 90px 90px 90px 80px 90px" }}>
+                {["S.No","Tax %","Taxable ₹","CGST ₹","SGST ₹","IGST ₹","Amount ₹"].map(h => (
+                  <div key={h} className={`px-2 py-2 ${h !== "S.No" && h !== "Tax %" ? "text-right" : ""}`}>{h}</div>
+                ))}
               </div>
-              {taxBreakdown.map((tb, idx) => (
-                <div key={idx} className="grid border-b last:border-0"
-                  style={{ gridTemplateColumns: "36px 1fr 70px 90px" }}>
+              {taxSlabs.map((tb, idx) => (
+                <div key={idx} className={`grid border-b last:border-0 ${idx%2===0?"bg-white":"bg-gray-50/40"}`}
+                  style={{ gridTemplateColumns: "36px 80px 90px 90px 90px 80px 90px" }}>
                   <div className="px-2 py-1.5 text-xs text-gray-500">{String(idx+1).padStart(2,"0")}</div>
-                  <div className="px-2 py-1.5 text-xs font-medium text-gray-700">{tb.label}</div>
-                  <div className="px-2 py-1.5 text-xs text-right text-gray-600">{tb.pct.toFixed(2)}</div>
-                  <div className="px-2 py-1.5 text-xs text-right font-semibold text-gray-800">{n2(tb.amt)}</div>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-gray-700">{tb.slabPct.toFixed(0)}%</div>
+                  <div className="px-2 py-1.5 text-xs text-right text-gray-700">{n2(tb.taxable)}</div>
+                  <div className="px-2 py-1.5 text-xs text-right text-gray-600">{tb.cgst > 0 ? n2(tb.cgst) : <span className="text-gray-300">—</span>}</div>
+                  <div className="px-2 py-1.5 text-xs text-right text-gray-600">{tb.sgst > 0 ? n2(tb.sgst) : <span className="text-gray-300">—</span>}</div>
+                  <div className="px-2 py-1.5 text-xs text-right text-gray-600">{tb.igst > 0 ? n2(tb.igst) : <span className="text-gray-300">—</span>}</div>
+                  <div className="px-2 py-1.5 text-xs text-right font-semibold text-gray-800">{n2(tb.total)}</div>
                 </div>
               ))}
+              {taxSlabs.length > 1 && (
+                <div className="grid border-t-2 border-gray-200 bg-gray-50"
+                  style={{ gridTemplateColumns: "36px 80px 90px 90px 90px 80px 90px" }}>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-gray-700 col-span-2">Total</div>
+                  <div className="px-2 py-1.5 text-xs text-right font-semibold text-gray-700">{n2(totalTaxable)}</div>
+                  <div className="px-2 py-1.5 text-xs text-right font-semibold text-gray-700">{totalCgst > 0 ? n2(totalCgst) : <span className="text-gray-300">—</span>}</div>
+                  <div className="px-2 py-1.5 text-xs text-right font-semibold text-gray-700">{totalSgst > 0 ? n2(totalSgst) : <span className="text-gray-300">—</span>}</div>
+                  <div className="px-2 py-1.5 text-xs text-right font-semibold text-gray-700">{totalIgst > 0 ? n2(totalIgst) : <span className="text-gray-300">—</span>}</div>
+                  <div className="px-2 py-1.5 text-xs text-right font-bold" style={{ color: SC.primary }}>{n2(totalTax)}</div>
+                </div>
+              )}
             </div>
           )}
         </div>
