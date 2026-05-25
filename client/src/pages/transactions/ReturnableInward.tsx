@@ -523,7 +523,17 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
           <button onClick={onBack}
             className="px-8 py-2 border border-gray-300 rounded text-sm font-semibold text-gray-700 hover:bg-gray-50"
             data-testid="btn-cancel">Cancel</button>
-          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
+          <button onClick={() => {
+              if (!partySearch.trim()) {
+                toast({ title: "Party required", description: "Please select a party before saving.", variant: "destructive" });
+                return;
+              }
+              if (grandTotal <= 0) {
+                toast({ title: "Amount required", description: "Grand total must be greater than ₹0 before saving.", variant: "destructive" });
+                return;
+              }
+              saveMut.mutate();
+            }} disabled={saveMut.isPending}
             className="px-10 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: SC.orange }} data-testid="btn-save">
             {saveMut.isPending ? "Saving…" : "Save"}
