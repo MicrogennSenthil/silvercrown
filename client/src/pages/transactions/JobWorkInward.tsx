@@ -283,6 +283,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: processes = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
+  const { data: uomList = [] } = useQuery<any[]>({ queryKey: ["/api/uom"] });
   // All products available for engineering screens
   const storeItems = (allProducts as any[]).filter(
     (p: any) => p.isActive !== false
@@ -644,9 +645,14 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                           data-testid={`input-qty-${i}`} />
                       </td>
                       <td className="px-2 py-1.5">
-                        <input value={row.unit} onChange={e => updateRow(row._key, "unit", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
-                          data-testid={`input-unit-${i}`} />
+                        <select value={row.unit} onChange={e => updateRow(row._key, "unit", e.target.value)}
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] bg-white"
+                          data-testid={`select-unit-${i}`}>
+                          <option value="">—</option>
+                          {(uomList as any[]).filter((u: any) => u.is_active !== false).map((u: any) => (
+                            <option key={u.id} value={u.short_form || u.code}>{u.short_form || u.code}</option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-2 py-1.5">
                         <select
@@ -669,7 +675,25 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                         )}
                       </td>
                       <td className="px-2 py-1.5">
-                        <input value={row.hsn} onChange={e => updateRow(row._key, "hsn", e.target.value)}
+                        <input value={row.hsn}
+                          onChange={e => {
+                            const val = e.target.value;
+                            updateRow(row._key, "hsn", val);
+                            if (val.length >= 4) {
+                              const match = storeItems.find((s: any) => s.hsn_code && s.hsn_code.trim() === val.trim());
+                              if (match) {
+                                setItems(prev => prev.map(r => r._key === row._key ? {
+                                  ...r,
+                                  hsn: val,
+                                  item_id: match.id,
+                                  item_code: match.code || r.item_code,
+                                  item_name: match.name || r.item_name,
+                                  unit: match.uom || r.unit,
+                                } : r));
+                                setItemSearch(prev => ({ ...prev, [row._key]: match.name }));
+                              }
+                            }
+                          }}
                           className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
                           data-testid={`input-hsn-${i}`} />
                       </td>

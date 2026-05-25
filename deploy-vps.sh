@@ -2,7 +2,7 @@
 # Silver Crown VPS Deploy Script
 # Usage: bash deploy-vps.sh
 # VPS app directory: /var/www/silvercrown-element
-# SSH key: ~/.ssh/sc_deploy_silvercrown
+# SSH key: auto-reconstructed from VPS_SSH_KEY_B64 secret
 
 set -e
 
@@ -15,6 +15,17 @@ echo ""
 echo "============================================"
 echo "  Silver Crown VPS Deploy — $TIMESTAMP"
 echo "============================================"
+
+# Reconstruct SSH key from secret (persists across Replit sessions)
+if [ -n "$VPS_SSH_KEY_B64" ]; then
+  mkdir -p "$HOME/.ssh"
+  echo "$VPS_SSH_KEY_B64" | base64 -d > "$KEY_FILE"
+  chmod 600 "$KEY_FILE"
+  echo "      ✓ SSH key restored from secret"
+elif [ ! -f "$KEY_FILE" ]; then
+  echo "ERROR: No SSH key available. Set VPS_SSH_KEY_B64 secret in Replit."
+  exit 1
+fi
 
 # Step 1: Push to GitHub
 echo ""
@@ -43,20 +54,12 @@ echo ""
 echo "      → Removing old build..."
 rm -rf dist
 
-echo "      → Building (this takes ~5 minutes)..."
+echo "      → Building (this takes ~30s)..."
 npm run build 2>&1 | tail -8
-
-echo ""
-echo "      → Copying session table SQL..."
-cp node_modules/connect-pg-simple/table.sql dist/table.sql
 
 echo ""
 echo "      → Applying DB migrations..."
 npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tail -5
-
-echo ""
-echo "      → Granting DB permissions..."
-sudo -u postgres psql -d silvercrown_db -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO silvercrown_user; GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO silvercrown_user;" 2>&1 | tail -3
 
 echo ""
 echo "      → Restarting PM2..."
