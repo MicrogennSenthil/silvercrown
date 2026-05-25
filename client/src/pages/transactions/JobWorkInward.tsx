@@ -54,13 +54,76 @@ function QuickAddPartyModal({ defaultName, onCreated, onClose }: { defaultName: 
 }
 
 // ── Quick-Add Item Modal ─────────────────────────────────────────────────────
+function QuickAddUomModal({ onCreated, onClose }: { onCreated: (u: any) => void; onClose: () => void }) {
+  const [uomName, setUomName] = useState("");
+  const [uomCode, setUomCode] = useState("");
+  const [shortForm, setShortForm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const qc = useQueryClient();
+
+  async function save() {
+    if (!uomName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/uom", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: uomCode.trim() || uomName.trim().toUpperCase(), name: uomName.trim(), shortForm: shortForm.trim() || uomCode.trim() || uomName.trim(), isActive: true }),
+      });
+      const u = await res.json();
+      qc.invalidateQueries({ queryKey: ["/api/uom"] });
+      onCreated(u);
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-xs mx-4 p-5" style={{ fontFamily: "Source Sans Pro, sans-serif" }}>
+        <h3 className="font-semibold text-gray-800 mb-3 text-sm">Quick Add Unit of Measure</h3>
+        <div className="space-y-3">
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Name *</label>
+            <input value={uomName} onChange={e => setUomName(e.target.value)} autoFocus
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5]"
+              placeholder="e.g. Numbers" data-testid="input-quick-uom-name" />
+          </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Code</label>
+              <input value={uomCode} onChange={e => setUomCode(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5]"
+                placeholder="NOS" data-testid="input-quick-uom-code" />
+            </div>
+            <div className="relative flex-1">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Short Form</label>
+              <input value={shortForm} onChange={e => setShortForm(e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5]"
+                placeholder="Nos" data-testid="input-quick-uom-short" />
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end mt-4">
+          <button onClick={onClose} className="px-4 py-1.5 border border-gray-300 rounded text-sm text-gray-700">Cancel</button>
+          <button onClick={save} disabled={!uomName.trim() || saving}
+            className="px-4 py-1.5 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="btn-quick-save-uom">
+            {saving ? "Saving..." : "Add"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QuickAddItemModal({ defaultName, onCreated, onClose }: { defaultName: string; onCreated: (it: any) => void; onClose: () => void }) {
   const [name, setName] = useState(defaultName);
   const [code, setCode] = useState("");
   const [hsn, setHsn] = useState("");
   const [uom, setUom] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showAddUom, setShowAddUom] = useState(false);
   const qc = useQueryClient();
+  const { data: uomList = [] } = useQuery<any[]>({ queryKey: ["/api/uom"] });
 
   async function save() {
     if (!name.trim()) return;
@@ -79,47 +142,67 @@ function QuickAddItemModal({ defaultName, onCreated, onClose }: { defaultName: s
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6" style={{ fontFamily: "Source Sans Pro, sans-serif" }}>
-        <h3 className="font-semibold text-gray-800 mb-4">Quick Add Item</h3>
-        <div className="space-y-3">
-          <div className="relative">
-            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Item Name *</label>
-            <input value={name} onChange={e => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-              autoFocus data-testid="input-quick-item-name" />
-          </div>
-          <div className="relative">
-            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Item Code</label>
-            <input value={code} onChange={e => setCode(e.target.value)} placeholder="Auto-generated if blank"
-              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-              data-testid="input-quick-item-code" />
-          </div>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">HSN</label>
-              <input value={hsn} onChange={e => setHsn(e.target.value)}
+    <>
+      {showAddUom && (
+        <QuickAddUomModal
+          onCreated={u => { setUom(u.shortForm || u.code); setShowAddUom(false); }}
+          onClose={() => setShowAddUom(false)}
+        />
+      )}
+      <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6" style={{ fontFamily: "Source Sans Pro, sans-serif" }}>
+          <h3 className="font-semibold text-gray-800 mb-4">Quick Add Item</h3>
+          <div className="space-y-3">
+            <div className="relative">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Item Name *</label>
+              <input value={name} onChange={e => setName(e.target.value)}
                 className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                data-testid="input-quick-item-hsn" />
+                autoFocus data-testid="input-quick-item-name" />
             </div>
-            <div className="relative flex-1">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Unit</label>
-              <input value={uom} onChange={e => setUom(e.target.value)}
+            <div className="relative">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Item Code</label>
+              <input value={code} onChange={e => setCode(e.target.value)} placeholder="Auto-generated if blank"
                 className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                data-testid="input-quick-item-uom" />
+                data-testid="input-quick-item-code" />
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">HSN</label>
+                <input value={hsn} onChange={e => setHsn(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+                  data-testid="input-quick-item-hsn" />
+              </div>
+              <div className="relative flex-1">
+                <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Unit</label>
+                <div className="flex">
+                  <select value={uom} onChange={e => setUom(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-l px-2 py-2.5 text-sm outline-none focus:border-[#027fa5] bg-white"
+                    data-testid="select-quick-item-uom">
+                    <option value="">— Select —</option>
+                    {(uomList as any[]).filter((u: any) => u.isActive !== false).map((u: any) => (
+                      <option key={u.id} value={u.shortForm || u.code}>{u.shortForm || u.code}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => setShowAddUom(true)} title="Add new unit"
+                    className="border border-l-0 border-gray-300 rounded-r px-2 text-gray-500 hover:bg-[#d2f1fa] hover:text-[#027fa5] transition-colors"
+                    data-testid="btn-quick-add-uom">
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex gap-3 justify-end mt-4">
-          <button onClick={onClose} className="px-5 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700">Cancel</button>
-          <button onClick={save} disabled={!name.trim() || saving}
-            className="px-5 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
-            style={{ background: SC.orange }} data-testid="btn-quick-save-item">
-            {saving ? "Saving..." : "Add"}
-          </button>
+          <div className="flex gap-3 justify-end mt-4">
+            <button onClick={onClose} className="px-5 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700">Cancel</button>
+            <button onClick={save} disabled={!name.trim() || saving}
+              className="px-5 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: SC.orange }} data-testid="btn-quick-save-item">
+              {saving ? "Saving..." : "Add"}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -649,8 +732,8 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                           className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] bg-white"
                           data-testid={`select-unit-${i}`}>
                           <option value="">—</option>
-                          {(uomList as any[]).filter((u: any) => u.is_active !== false).map((u: any) => (
-                            <option key={u.id} value={u.short_form || u.code}>{u.short_form || u.code}</option>
+                          {(uomList as any[]).filter((u: any) => u.isActive !== false).map((u: any) => (
+                            <option key={u.id} value={u.shortForm || u.code}>{u.shortForm || u.code}</option>
                           ))}
                         </select>
                       </td>
