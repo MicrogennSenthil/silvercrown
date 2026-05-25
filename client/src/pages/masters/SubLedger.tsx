@@ -142,18 +142,6 @@ function LedgerForm({
     }));
   }
   function addBill() {
-    if (bills.length > 0) {
-      const last = bills[bills.length - 1];
-      if (!last.refNo.trim()) {
-        toast({ title: "Bill No required", description: "Please enter the Ref / Bill No for the current row before adding a new one.", variant: "destructive" }); return;
-      }
-      if (!last.refDate) {
-        toast({ title: "Ref Date required", description: "Please select the Ref Date for the current row before adding a new one.", variant: "destructive" }); return;
-      }
-      if (!last.amount || parseFloat(last.amount) <= 0) {
-        toast({ title: "Amount required", description: "Please enter a valid Amount for the current row before adding a new one.", variant: "destructive" }); return;
-      }
-    }
     setBills(prev => [...prev, newBill()]);
   }
   function removeBill(key: string) { setBills(prev => prev.filter(b => b._key !== key)); }
