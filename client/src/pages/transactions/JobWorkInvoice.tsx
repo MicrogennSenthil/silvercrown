@@ -35,6 +35,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
   const { data: uomList = [] }      = useQuery<any[]>({ queryKey: ["/api/uom"] });
+  const { data: allProducts = [] }  = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
 
   // IDs already covered by existing invoices (excluded when editing own invoice)
   const invoicedIdsKey = editId
@@ -75,6 +76,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // Items grid (Invoice tab)
   const [items,        setItems]        = useState<any[]>([]);
   const [gridSearch,   setGridSearch]   = useState("");
+  const [directSearch, setDirectSearch] = useState<Record<number, string>>({});
+  const [directDrop,   setDirectDrop]   = useState<number | null>(null);
 
   // Charges tab
   const [charges,      setCharges]      = useState<any[]>([{ subledger_id: "", charge_name: "", amount: "" }]);
@@ -322,6 +325,33 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     };
   }
   function addDirectRow() { setItems(prev => [...prev, newDirectRow()]); }
+
+  function selectDirectItem(realIdx: number, product: any) {
+    const rate    = parseFloat(product.selling_price || product.rate || 0);
+    const cgstR   = parseFloat(product.cgst_rate || 0);
+    const sgstR   = parseFloat(product.sgst_rate || 0);
+    const igstR   = parseFloat(product.igst_rate || 0);
+    const qty     = parseFloat(items[realIdx]?.qty_despatched || 0);
+    const taxable = qty * rate;
+    setItems(prev => prev.map((it, i) => i !== realIdx ? it : {
+      ...it,
+      item_id:      product.id || null,
+      item_code:    product.code || "",
+      item_name:    product.name || "",
+      unit:         (product.uom || product.unit || "").toUpperCase(),
+      hsn:          product.hsn_code || "",
+      rate,
+      amount:       taxable,
+      cgst_rate:    cgstR,
+      sgst_rate:    sgstR,
+      igst_rate:    igstR,
+      cgst_amt:     isInterState ? 0 : taxable * cgstR / 100,
+      sgst_amt:     isInterState ? 0 : taxable * sgstR / 100,
+      igst_amt:     isInterState ? taxable * igstR / 100 : 0,
+    }));
+    setDirectSearch(prev => ({ ...prev, [realIdx]: product.name || "" }));
+    setDirectDrop(null);
+  }
 
   // ── Charges helpers ───────────────────────────────────────────────────────────
   function addCharge() {
@@ -752,11 +782,44 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                           </td>
                           <td className="px-2 py-1 font-medium text-gray-800">
                             {isManual
-                              ? <input value={it.item_name}
-                                  data-testid={`input-item-name-${idx}`}
-                                  className="border rounded px-1 py-0.5 text-xs w-36"
-                                  placeholder="Item name"
-                                  onChange={e => updateItem(realIdx, "item_name", e.target.value)} />
+                              ? <div className="relative">
+                                  <input
+                                    data-testid={`input-item-name-${idx}`}
+                                    className="border rounded px-1 py-0.5 text-xs w-40"
+                                    placeholder="Search item..."
+                                    value={directSearch[realIdx] !== undefined ? directSearch[realIdx] : it.item_name}
+                                    onChange={e => {
+                                      setDirectSearch(prev => ({ ...prev, [realIdx]: e.target.value }));
+                                      updateItem(realIdx, "item_name", e.target.value);
+                                      setDirectDrop(realIdx);
+                                    }}
+                                    onFocus={() => setDirectDrop(realIdx)}
+                                    onBlur={() => setTimeout(() => setDirectDrop(null), 200)}
+                                  />
+                                  {directDrop === realIdx && (directSearch[realIdx] || "").length > 0 && (() => {
+                                    const q = (directSearch[realIdx] || "").toLowerCase();
+                                    const hits = (allProducts as any[]).filter((p: any) =>
+                                      p.is_active !== false &&
+                                      (p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q))
+                                    ).slice(0, 10);
+                                    return hits.length > 0 ? (
+                                      <div className="absolute z-50 top-full left-0 mt-0.5 bg-white border border-gray-200 rounded shadow-lg w-64 max-h-48 overflow-y-auto">
+                                        {hits.map((p: any) => (
+                                          <div key={p.id}
+                                            className="px-2 py-1.5 text-xs cursor-pointer hover:bg-blue-50 border-b last:border-0"
+                                            onMouseDown={() => {
+                                              selectDirectItem(realIdx, p);
+                                              updateItem(realIdx, "item_code", p.code || "");
+                                            }}>
+                                            <span className="font-mono text-gray-500 mr-1">{p.code}</span>
+                                            <span className="font-medium text-gray-800">{p.name}</span>
+                                            {p.selling_price > 0 && <span className="text-gray-400 ml-1">₹{parseFloat(p.selling_price).toLocaleString("en-IN")}</span>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null;
+                                  })()}
+                                </div>
                               : it.item_name}
                           </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.despatch_voucher_no || "—"}</td>
