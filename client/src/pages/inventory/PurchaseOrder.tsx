@@ -483,19 +483,40 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                         {parseFloat(row.taxable_amt) > 0 ? n2(parseFloat(row.taxable_amt)) : "—"}
                       </div>
 
-                      {/* CGST */}
+                      {/* CGST — show rate% when item selected; hide for inter-state */}
                       <div className="px-1.5 py-1.5 text-xs text-right text-gray-600">
-                        {parseFloat(row.cgst_amt) > 0 ? `${n2(parseFloat(row.cgst_amt))}(${row.cgst_pct}%)` : "—"}
+                        {purchaseType === "inter_state"
+                          ? <span className="text-gray-300">—</span>
+                          : parseFloat(row.cgst_pct) > 0
+                            ? parseFloat(row.cgst_amt) > 0
+                              ? <><span className="text-gray-800 font-medium">{n2(parseFloat(row.cgst_amt))}</span><span className="text-gray-400 text-[10px] ml-0.5">({row.cgst_pct}%)</span></>
+                              : <span className="text-[#027fa5] font-semibold text-[10px]">{row.cgst_pct}%</span>
+                            : "—"
+                        }
                       </div>
 
-                      {/* SGST */}
+                      {/* SGST — show rate% when item selected; hide for inter-state */}
                       <div className="px-1.5 py-1.5 text-xs text-right text-gray-600">
-                        {parseFloat(row.sgst_amt) > 0 ? `${n2(parseFloat(row.sgst_amt))}(${row.sgst_pct}%)` : "—"}
+                        {purchaseType === "inter_state"
+                          ? <span className="text-gray-300">—</span>
+                          : parseFloat(row.sgst_pct) > 0
+                            ? parseFloat(row.sgst_amt) > 0
+                              ? <><span className="text-gray-800 font-medium">{n2(parseFloat(row.sgst_amt))}</span><span className="text-gray-400 text-[10px] ml-0.5">({row.sgst_pct}%)</span></>
+                              : <span className="text-[#027fa5] font-semibold text-[10px]">{row.sgst_pct}%</span>
+                            : "—"
+                        }
                       </div>
 
-                      {/* IGST */}
+                      {/* IGST — show rate% when item selected; hide for within-state */}
                       <div className="px-1.5 py-1.5 text-xs text-right text-gray-600">
-                        {parseFloat(row.igst_amt) > 0 ? `${n2(parseFloat(row.igst_amt))}(${row.igst_pct}%)` : "—"}
+                        {purchaseType === "within_state"
+                          ? <span className="text-gray-300">—</span>
+                          : parseFloat(row.igst_pct) > 0
+                            ? parseFloat(row.igst_amt) > 0
+                              ? <><span className="text-gray-800 font-medium">{n2(parseFloat(row.igst_amt))}</span><span className="text-gray-400 text-[10px] ml-0.5">({row.igst_pct}%)</span></>
+                              : <span className="text-[#027fa5] font-semibold text-[10px]">{row.igst_pct}%</span>
+                            : "—"
+                        }
                       </div>
 
                       {/* Total */}
