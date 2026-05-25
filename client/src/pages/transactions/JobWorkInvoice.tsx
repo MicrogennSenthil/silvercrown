@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2, AlertCircle, CheckCircle2, Trash2, Plus, PencilLine } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
@@ -798,18 +799,16 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                                   placeholder="Search item..."
                                   value={directSearch[realIdx] !== undefined ? directSearch[realIdx] : it.item_name}
                                   onChange={e => {
+                                    const r = (e.target as HTMLInputElement).getBoundingClientRect();
+                                    setDropPos({ top: r.bottom, left: r.left, width: 260 });
                                     setDirectSearch(prev => ({ ...prev, [realIdx]: e.target.value }));
                                     updateItem(realIdx, "item_name", e.target.value);
                                     setDirectDrop(realIdx);
                                   }}
                                   onFocus={e => {
                                     const r = (e.target as HTMLInputElement).getBoundingClientRect();
-                                    setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: 260 });
+                                    setDropPos({ top: r.bottom, left: r.left, width: 260 });
                                     setDirectDrop(realIdx);
-                                  }}
-                                  onKeyUp={e => {
-                                    const r = (e.target as HTMLInputElement).getBoundingClientRect();
-                                    setDropPos({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: 260 });
                                   }}
                                   onBlur={() => setTimeout(() => { setDirectDrop(null); setDropPos(null); }, 200)}
                                 />
@@ -1151,31 +1150,32 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
         </div>
       </div>
 
-      {/* Fixed-position item autocomplete dropdown — rendered outside table overflow */}
+      {/* Item autocomplete dropdown — portalled to document.body to escape all overflow/z-index */}
       {directDrop !== null && dropPos && (() => {
-        const q = (directSearch[directDrop] || "").toLowerCase();
+        const q = (directSearch[directDrop] || "").toLowerCase().trim();
         if (!q) return null;
         const hits = (allProducts as any[]).filter((p: any) =>
           p.is_active !== false &&
           (p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q))
         ).slice(0, 12);
         if (!hits.length) return null;
-        return (
+        const rowIdx = directDrop;
+        return createPortal(
           <div
             style={{
               position: "fixed",
               top: dropPos.top + 2,
               left: dropPos.left,
               width: dropPos.width,
-              zIndex: 9999,
+              zIndex: 99999,
             }}
-            className="bg-white border border-gray-200 rounded-lg shadow-xl max-h-52 overflow-y-auto">
+            className="bg-white border border-gray-200 rounded-lg shadow-2xl max-h-52 overflow-y-auto">
             {hits.map((p: any) => (
               <div key={p.id}
                 className="px-3 py-2 text-xs cursor-pointer hover:bg-blue-50 border-b last:border-0 flex justify-between items-center"
-                onMouseDown={() => {
-                  selectDirectItem(directDrop, p);
-                  updateItem(directDrop, "item_code", p.code || "");
+                onMouseDown={e => {
+                  e.preventDefault();
+                  selectDirectItem(rowIdx, p);
                 }}>
                 <div>
                   <span className="font-mono text-gray-500 mr-1.5">{p.code}</span>
@@ -1186,7 +1186,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                 )}
               </div>
             ))}
-          </div>
+          </div>,
+          document.body
         );
       })()}
     </div>
