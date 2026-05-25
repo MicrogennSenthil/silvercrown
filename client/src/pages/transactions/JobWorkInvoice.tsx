@@ -36,7 +36,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
   const { data: uomList = [] }      = useQuery<any[]>({ queryKey: ["/api/uom"] });
-  const { data: allProducts = [] }  = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
+  const { data: allProducts = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: processList = [] }  = useQuery<any[]>({ queryKey: ["/api/processes"] });
 
   // IDs already covered by existing invoices (excluded when editing own invoice)
@@ -330,29 +330,34 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   function addDirectRow() { setItems(prev => [...prev, newDirectRow()]); }
 
   function selectDirectItem(realIdx: number, product: any) {
-    // Drizzle returns camelCase; also accept snake_case as fallback for safety
-    const rate    = parseFloat(product.sellingPrice ?? product.selling_price ?? product.rate ?? 0);
-    const taxRate = parseFloat(product.taxRate ?? product.tax_rate ?? 0);
-    const cgstR   = taxRate / 2;
-    const sgstR   = taxRate / 2;
-    const igstR   = taxRate;
+    // Products schema (Drizzle camelCase):
+    //   selling_price col → product.rate
+    //   cgst_rate col     → product.cgstRate
+    //   sgst_rate col     → product.sgstRate
+    //   igst_rate col     → product.igstRate
+    //   hsn_code col      → product.hsnCode
+    //   unit / uom        → product.unit / product.uom
+    const rate  = parseFloat(product.rate ?? product.sellingPrice ?? product.selling_price ?? 0);
+    const cgstR = parseFloat(product.cgstRate ?? product.cgst_rate ?? 0);
+    const sgstR = parseFloat(product.sgstRate ?? product.sgst_rate ?? 0);
+    const igstR = parseFloat(product.igstRate ?? product.igst_rate ?? 0);
     const qty     = parseFloat(items[realIdx]?.qty_despatched || 0);
     const taxable = qty * rate;
     setItems(prev => prev.map((it, i) => i !== realIdx ? it : {
       ...it,
-      item_id:      product.id || null,
-      item_code:    product.code || "",
-      item_name:    product.name || "",
-      unit:         (product.unit || product.uom || "").toUpperCase(),
-      hsn:          product.hsnCode ?? product.hsn_code ?? product.hsn ?? "",
+      item_id:   product.id || null,
+      item_code: product.code || "",
+      item_name: product.name || "",
+      unit:      (product.unit || product.uom || "").toUpperCase(),
+      hsn:       product.hsnCode ?? product.hsn_code ?? "",
       rate,
-      amount:       taxable,
-      cgst_rate:    cgstR,
-      sgst_rate:    sgstR,
-      igst_rate:    igstR,
-      cgst_amt:     isInterState ? 0 : taxable * cgstR / 100,
-      sgst_amt:     isInterState ? 0 : taxable * sgstR / 100,
-      igst_amt:     isInterState ? taxable * igstR / 100 : 0,
+      amount:    taxable,
+      cgst_rate: cgstR,
+      sgst_rate: sgstR,
+      igst_rate: igstR,
+      cgst_amt:  isInterState ? 0 : taxable * cgstR / 100,
+      sgst_amt:  isInterState ? 0 : taxable * sgstR / 100,
+      igst_amt:  isInterState ? taxable * igstR / 100 : 0,
     }));
     setDirectSearch(prev => ({ ...prev, [realIdx]: product.name || "" }));
     setDirectDrop(null);
@@ -1158,7 +1163,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
         const q = (directSearch[directDrop] || "").toLowerCase().trim();
         if (!q) return null;
         const hits = (allProducts as any[]).filter((p: any) =>
-          p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q)
+          p.isActive !== false &&
+          (p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q))
         ).slice(0, 12);
         if (!hits.length) return null;
         const rowIdx = directDrop;
