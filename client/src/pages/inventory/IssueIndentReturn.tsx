@@ -56,7 +56,10 @@ export default function IssueIndentReturn() {
   const { data: warehouses = [] }      = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
   const { data: departments = [] }     = useQuery<any[]>({ queryKey: ["/api/departments"] });
   const { data: siis = [] }            = useQuery<any[]>({ queryKey: ["/api/store-issue-indents"] });
-  const { data: allProducts = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allProductsRaw = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] }   = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
+  const allProducts = rawMatCatId ? (allProductsRaw as any[]).filter((p: any) => p.categoryId === rawMatCatId) : allProductsRaw;
 
   const totalQty    = form.items.reduce((s, it) => s + p2(it.return_qty), 0);
   const grandTotal  = form.items.reduce((s, it) => s + p2(it.amount), 0);

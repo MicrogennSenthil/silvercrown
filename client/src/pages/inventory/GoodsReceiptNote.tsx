@@ -207,8 +207,10 @@ export default function GoodsReceiptNote() {
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
-  const { data: allInvItems = [] } = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
-  const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
+  const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
 
   // Merge inventory items + engineering products for GRN item search
   const rawMaterials = [
@@ -227,7 +229,7 @@ export default function GoodsReceiptNote() {
       _source: "inventory",
     })),
     ...(allProducts as any[])
-      .filter((p: any) => p.isActive !== false)
+      .filter((p: any) => p.isActive !== false && (!rawMatCatId || p.categoryId === rawMatCatId))
       .map((p: any) => ({
         ...p,
         _source: "product",

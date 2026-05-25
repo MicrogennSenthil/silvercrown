@@ -121,9 +121,11 @@ export default function PhyReconciliation() {
 
   const { data: recs = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/phy-reconciliations"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
-  const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
 
-  const products = (allProducts as any[]).filter((p: any) => p.is_active !== false);
+  const products = (allProducts as any[]).filter((p: any) => p.is_active !== false && (!rawMatCatId || p.categoryId === rawMatCatId));
 
   const closeDropdown = useCallback(() => { setOpenDropIdx(null); setDropAnchor(null); }, []);
 

@@ -114,8 +114,10 @@ export default function StoreRequestNote() {
 
   const { data: srns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-request-notes"] });
   const { data: stores = [] }          = useQuery<any[]>({ queryKey: ["/api/stores"] });
-  const { data: allInvItems = [] }     = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
-  const { data: allProducts = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
+  const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
 
   // Merge store inventory items + engineering products — same approach as GRN
   const products = [
@@ -132,7 +134,7 @@ export default function StoreRequestNote() {
       _source: "inventory",
     })),
     ...(allProducts as any[])
-      .filter((p: any) => p.isActive !== false)
+      .filter((p: any) => p.isActive !== false && (!rawMatCatId || p.categoryId === rawMatCatId))
       .map((p: any) => ({ ...p, _source: "product" })),
   ];
 

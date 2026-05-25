@@ -118,10 +118,12 @@ export default function StoreIssueIndent() {
   const { data: siis = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-issue-indents"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
   const { data: departments = [] } = useQuery<any[]>({ queryKey: ["/api/departments"] });
-  const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
-  const { data: allSrns = [] } = useQuery<any[]>({ queryKey: ["/api/store-request-notes"] });
+  const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allSrns = [] }        = useQuery<any[]>({ queryKey: ["/api/store-request-notes"] });
+  const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
 
-  const products = (allProducts as any[]).filter((p: any) => p.is_active !== false);
+  const products = (allProducts as any[]).filter((p: any) => p.is_active !== false && (!rawMatCatId || p.categoryId === rawMatCatId));
 
   // For Goods Request mode: SRNs filtered by selected store
   const selectedStoreName = (warehouses as any[]).find((w: any) => w.id === form.store_id)?.name || "";
