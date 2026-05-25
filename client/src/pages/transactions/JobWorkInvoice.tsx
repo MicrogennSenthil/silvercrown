@@ -34,6 +34,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
+  const { data: uomList = [] }      = useQuery<any[]>({ queryKey: ["/api/uom"] });
 
   // IDs already covered by existing invoices (excluded when editing own invoice)
   const invoicedIdsKey = editId
@@ -290,8 +291,37 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
 
   // ── Update item editable fields ───────────────────────────────────────────────
   function updateItem(idx: number, field: string, value: any) {
-    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it));
+    setItems(prev => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const updated = { ...it, [field]: value };
+      if (field === "qty_despatched" || field === "rate") {
+        const qty = parseFloat(field === "qty_despatched" ? value : updated.qty_despatched) || 0;
+        const rate = parseFloat(field === "rate" ? value : updated.rate) || 0;
+        const t = qty * rate;
+        const cgR = parseFloat(updated.cgst_rate) || 0;
+        const sgR = parseFloat(updated.sgst_rate) || 0;
+        const igR = parseFloat(updated.igst_rate) || 0;
+        updated.amount   = t;
+        updated.cgst_amt = isInterState ? 0 : t * cgR / 100;
+        updated.sgst_amt = isInterState ? 0 : t * sgR / 100;
+        updated.igst_amt = isInterState ? t * igR / 100 : 0;
+      }
+      return updated;
+    }));
   }
+
+  function newDirectRow() {
+    return {
+      _manual: true,
+      despatch_id: null, inward_id: null, inward_item_id: null, item_id: null,
+      item_code: "", item_name: "", unit: "", process: "", hsn: "",
+      qty_despatched: 0, rate: 0, amount: 0,
+      po_no: "", party_dc: "", work_order_no: "", despatch_voucher_no: "", inward_voucher_no: "",
+      no_of_cover: 0, packages: 0,
+      cgst_rate: 0, sgst_rate: 0, igst_rate: 0, cgst_amt: 0, sgst_amt: 0, igst_amt: 0,
+    };
+  }
+  function addDirectRow() { setItems(prev => [...prev, newDirectRow()]); }
 
   // ── Charges helpers ───────────────────────────────────────────────────────────
   function addCharge() {
@@ -691,7 +721,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                     {filteredItems.length === 0 && (
                       <tr>
                         <td colSpan={isInterState ? 18 : 19} className="text-center py-8 text-gray-400 text-sm">
-                          Select a despatch or inward from the panel to load items
+                          {invoiceType === "direct_invoice"
+                            ? "Click \"+ Add Row\" below to add items, or check an inward from the panel"
+                            : "Select a despatch or inward from the panel to load items"}
                         </td>
                       </tr>
                     )}
@@ -704,16 +736,41 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                       const sgstAmt  = parseFloat(it.sgst_amt || 0);
                       const igstAmt  = parseFloat(it.igst_amt || 0);
                       const rowTotal = isInterState ? taxable + igstAmt : taxable + cgstAmt + sgstAmt;
+                      const isManual = it._manual || !it.inward_item_id;
                       return (
                         <tr key={idx} className="border-b hover:bg-blue-50 transition-colors">
                           <td className="px-2 py-1 text-gray-500">{idx + 1}</td>
                           <td className="px-2 py-1 text-gray-600">{it.po_no || "—"}</td>
-                          <td className="px-2 py-1 font-mono">{it.item_code}</td>
-                          <td className="px-2 py-1 font-medium text-gray-800">{it.item_name}</td>
+                          <td className="px-2 py-1 font-mono">
+                            {isManual
+                              ? <input value={it.item_code}
+                                  data-testid={`input-item-code-${idx}`}
+                                  className="border rounded px-1 py-0.5 text-xs font-mono w-24"
+                                  placeholder="Code"
+                                  onChange={e => updateItem(realIdx, "item_code", e.target.value)} />
+                              : it.item_code}
+                          </td>
+                          <td className="px-2 py-1 font-medium text-gray-800">
+                            {isManual
+                              ? <input value={it.item_name}
+                                  data-testid={`input-item-name-${idx}`}
+                                  className="border rounded px-1 py-0.5 text-xs w-36"
+                                  placeholder="Item name"
+                                  onChange={e => updateItem(realIdx, "item_name", e.target.value)} />
+                              : it.item_name}
+                          </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.despatch_voucher_no || "—"}</td>
                           <td className="px-2 py-1 text-gray-600">{it.party_dc || "—"}</td>
                           <td className="px-2 py-1 text-gray-700">{it.work_order_no || "—"}</td>
-                          <td className="px-2 py-1 text-gray-700">{it.process || "—"}</td>
+                          <td className="px-2 py-1 text-gray-700">
+                            {isManual
+                              ? <input value={it.process}
+                                  data-testid={`input-process-${idx}`}
+                                  className="border rounded px-1 py-0.5 text-xs w-24"
+                                  placeholder="Process"
+                                  onChange={e => updateItem(realIdx, "process", e.target.value)} />
+                              : (it.process || "—")}
+                          </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.inward_voucher_no || "—"}</td>
                           <td className="px-2 py-1">
                             <input type="number" min={0}
@@ -729,8 +786,30 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                               value={it.packages || ""}
                               onChange={e => updateItem(realIdx, "packages", parseInt(e.target.value || "0"))} />
                           </td>
-                          <td className="px-2 py-1 text-right font-semibold">{qty.toLocaleString("en-IN")}</td>
-                          <td className="px-2 py-1 text-gray-600">{it.unit}</td>
+                          <td className="px-2 py-1 text-right font-semibold">
+                            {isManual
+                              ? <input type="number" min={0} step="0.001"
+                                  data-testid={`input-qty-${idx}`}
+                                  className="border rounded px-1 py-0.5 text-xs text-right w-20"
+                                  value={it.qty_despatched || ""}
+                                  placeholder="0"
+                                  onChange={e => updateItem(realIdx, "qty_despatched", parseFloat(e.target.value || "0"))} />
+                              : qty.toLocaleString("en-IN")}
+                          </td>
+                          <td className="px-2 py-1 text-gray-600">
+                            {isManual
+                              ? <select
+                                  data-testid={`select-unit-${idx}`}
+                                  className="border rounded px-1 py-0.5 text-xs bg-white w-16"
+                                  value={it.unit}
+                                  onChange={e => updateItem(realIdx, "unit", e.target.value)}>
+                                  <option value="">—</option>
+                                  {(uomList as any[]).filter((u: any) => u.isActive !== false).map((u: any) => (
+                                    <option key={u.id} value={(u.shortForm || u.code || "").toUpperCase()}>{u.shortForm || u.code}</option>
+                                  ))}
+                                </select>
+                              : it.unit}
+                          </td>
                           <td className="px-2 py-1 text-right">
                             <input type="number" min={0} step="0.01"
                               data-testid={`input-rate-${idx}`}
@@ -795,14 +874,25 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
               </div>
             </div>
 
-            {/* Footer: Remove all + Totals */}
+            {/* Footer: Remove all + Add Row (direct) + Totals */}
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <button
-                data-testid="btn-remove-all"
-                onClick={removeAllItems}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors">
-                <Trash2 size={13} /> Remove all
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  data-testid="btn-remove-all"
+                  onClick={removeAllItems}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors">
+                  <Trash2 size={13} /> Remove all
+                </button>
+                {invoiceType === "direct_invoice" && (
+                  <button
+                    data-testid="btn-add-direct-row"
+                    onClick={addDirectRow}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded hover:bg-blue-50 transition-colors"
+                    style={{ color: SC.primary, borderColor: SC.primary }}>
+                    <Plus size={13} /> Add Row
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-5 text-sm flex-wrap">
                 <span className="text-gray-600">Total Qty: <strong style={{ color: SC.primary }}>{totalQty.toLocaleString("en-IN", { maximumFractionDigits: 3 })}</strong></span>
                 <span className="text-gray-600">Taxable: <strong style={{ color: SC.primary }}>₹{totalTaxable.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></span>
