@@ -72,6 +72,7 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
     if (editData?.id) {
       setPartyId(editData.party_id || "");
       setPartySearch(editData.party_name_db || editData.party_name_manual || "");
+      setPartyDropOpen(false);
     }
   }, [editData?.id]);
 
