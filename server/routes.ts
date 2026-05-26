@@ -1274,6 +1274,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             AND NOT EXISTS (
               SELECT 1 FROM job_work_invoices jwi WHERE jwi.voucher_no = sub_ledger_bills.ref_no
             )
+            AND NOT EXISTS (
+              SELECT 1 FROM voucher_mas vm
+              JOIN voucher_det vd ON vd.voucher_mas_id = vm.id
+              WHERE vm.voucher_no = sub_ledger_bills.voucher_no
+                AND vd.sub_ledger_id = sub_ledger_bills.sub_ledger_id
+            )
           ORDER BY ref_date NULLS FIRST, id
         `, [id]);
 
@@ -1417,6 +1423,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE sub_ledger_id = $1
           AND NOT EXISTS (
             SELECT 1 FROM job_work_invoices jwi WHERE jwi.voucher_no = sub_ledger_bills.ref_no
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM voucher_mas vm
+            JOIN voucher_det vd ON vd.voucher_mas_id = vm.id
+            WHERE vm.voucher_no = sub_ledger_bills.voucher_no
+              AND vd.sub_ledger_id = sub_ledger_bills.sub_ledger_id
           )
         ORDER BY ref_date NULLS FIRST, id
       `, [slId]);
