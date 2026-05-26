@@ -4,11 +4,26 @@ import { Plus, Search, Trash2, Edit, X, Loader2, AlertTriangle } from "lucide-re
 
 const SC = { primary: "#027fa5", orange: "#d74700" };
 
+function Toggle({ label, name, value, onChange }: { label: string; name: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between py-2 px-3 border-2 rounded" style={{ borderColor: "#00000020" }}>
+      <span className="text-sm font-medium" style={{ color: "#5b5e66" }}>{label}</span>
+      <button type="button" onClick={() => onChange(!value)}
+        className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+        style={{ background: value ? "#027fa5" : "#d1d5db" }}
+        data-testid={`toggle-${name}`}>
+        <span className="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+          style={{ transform: value ? "translateX(22px)" : "translateX(2px)" }}/>
+      </button>
+    </div>
+  );
+}
+
 function ItemForm({ initial, categories, onClose }: any) {
   const [form, setForm] = useState({
     code: "", name: "", categoryId: "", unit: "Nos", description: "",
     purchasePrice: 0, sellingPrice: 0, stockQuantity: 0, minStockLevel: 0,
-    hsnCode: "", taxRate: 18, ...initial
+    hsnCode: "", taxRate: 18, batchRequired: false, expiryRequired: false, ...initial
   });
   const qc = useQueryClient();
   const saveMut = useMutation({
@@ -54,6 +69,10 @@ function ItemForm({ initial, categories, onClose }: any) {
           <F label="Selling Price" name="sellingPrice" type="number" />
           <F label="Stock Quantity" name="stockQuantity" type="number" />
           <F label="Min Stock Level" name="minStockLevel" type="number" />
+          <Toggle label="Batch No Required" name="batchRequired" value={!!form.batchRequired}
+            onChange={v => setForm((f: any) => ({ ...f, batchRequired: v }))}/>
+          <Toggle label="Expiry Date Required" name="expiryRequired" value={!!form.expiryRequired}
+            onChange={v => setForm((f: any) => ({ ...f, expiryRequired: v }))}/>
           <div className="col-span-2">
             <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Description</label>
             <textarea value={form.description || ""} onChange={e => setForm((f: any) => ({ ...f, description: e.target.value }))}

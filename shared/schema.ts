@@ -149,6 +149,8 @@ export const inventoryItems = pgTable("inventory_items", {
   minStockLevel: decimal("min_stock_level", { precision: 15, scale: 3 }).default("0"),
   hsnCode: text("hsn_code").default(""),
   taxRate: decimal("tax_rate", { precision: 5, scale: 2 }).default("18"),
+  batchRequired: boolean("batch_required").default(false),
+  expiryRequired: boolean("expiry_required").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({ id: true, createdAt: true });

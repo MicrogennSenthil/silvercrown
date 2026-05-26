@@ -12,7 +12,7 @@ const p2 = (v: any) => parseFloat(v)||0;
 type GrnItem = {
   id?: string; sno: number;
   item_code: string; item_name: string; batch_no: string; expiry_date: string;
-  expiry_required: boolean;
+  expiry_required: boolean; batch_required: boolean;
   qty: number; unit: string; rate: number; taxable_amt: number;
   cgst_pct: number; cgst_amt: number; sgst_pct: number; sgst_amt: number;
   igst_pct: number; igst_amt: number; total: number;
@@ -29,7 +29,8 @@ type GrnForm = {
 };
 
 const blankItem = (): GrnItem => ({
-  sno:1, item_code:"", item_name:"", batch_no:"", expiry_date:"", expiry_required: false,
+  sno:1, item_code:"", item_name:"", batch_no:"", expiry_date:"",
+  expiry_required: false, batch_required: false,
   qty:0, unit:"Nos", rate:0, taxable_amt:0,
   cgst_pct:6, cgst_amt:0, sgst_pct:6, sgst_amt:0, igst_pct:0, igst_amt:0, total:0,
 });
@@ -255,12 +256,17 @@ export default function GoodsReceiptNote() {
       })),
   ];
 
-  // Helper: look up expiry_required for any item by item_code
-  function lookupExpiry(item_code: string): boolean {
-    if (!item_code) return false;
+  // Helper: look up batch_required + expiry_required flags from item master
+  function lookupItemFlags(item_code: string): { expiry_required: boolean; batch_required: boolean } {
+    if (!item_code) return { expiry_required: false, batch_required: false };
     const found = rawMaterials.find((m: any) => m.code === item_code || m.item_code === item_code);
-    return !!(found?.expiryRequired ?? found?.expiry_required);
+    return {
+      expiry_required: !!(found?.expiryRequired ?? found?.expiry_required),
+      batch_required:  !!(found?.batchRequired  ?? found?.batch_required),
+    };
   }
+  // Backward-compat alias
+  function lookupExpiry(item_code: string): boolean { return lookupItemFlags(item_code).expiry_required; }
 
   // When tax type toggles, zero out the inactive tax on all rows and recalculate
   useEffect(() => {
@@ -370,15 +376,18 @@ export default function GoodsReceiptNote() {
 
     // Tick: fetch PO details and add its items
     const full = await fetch(`/api/purchase-orders/${po.id}`, { credentials:"include" }).then(r=>r.json());
-    const newItems: GrnItem[] = (full.items||[]).map((it: any) => calcItem({
-      sno: 0, // will be recalculated
-      item_code: it.item_code||"", item_name: it.item_name||"", batch_no:"", expiry_date:"",
-      expiry_required: lookupExpiry(it.item_code||""),
-      qty: p2(it.qty), unit: it.unit||"Nos", rate: p2(it.rate), taxable_amt:0,
-      cgst_pct: p2(it.cgst_pct), cgst_amt:0,
-      sgst_pct: p2(it.sgst_pct), sgst_amt:0, igst_pct: p2(it.igst_pct||0), igst_amt:0, total:0,
-      _poId: po.id,
-    }));
+    const newItems: GrnItem[] = (full.items||[]).map((it: any) => {
+      const flags = lookupItemFlags(it.item_code||"");
+      return calcItem({
+        sno: 0,
+        item_code: it.item_code||"", item_name: it.item_name||"", batch_no:"", expiry_date:"",
+        expiry_required: flags.expiry_required, batch_required: flags.batch_required,
+        qty: p2(it.qty), unit: it.unit||"Nos", rate: p2(it.rate), taxable_amt:0,
+        cgst_pct: p2(it.cgst_pct), cgst_amt:0,
+        sgst_pct: p2(it.sgst_pct), sgst_amt:0, igst_pct: p2(it.igst_pct||0), igst_amt:0, total:0,
+        _poId: po.id,
+      });
+    });
 
     const newIds = [...selectedPoIds, po.id];
     setSelectedPoIds(newIds);
@@ -446,20 +455,21 @@ export default function GoodsReceiptNote() {
 
   function pickProductForGrn(i: number, prod: any) {
     const rate = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
-    // Derive tax rates — prefer explicit cgst_rate/sgst_rate columns; fall back to tax_rate/2
     const totalTax = parseFloat(prod.taxRate ?? prod.tax_rate ?? "0") || 0;
     const cgst = grnInterState ? 0 : (parseFloat(prod.cgst_rate) || totalTax / 2);
     const sgst = grnInterState ? 0 : (parseFloat(prod.sgst_rate) || totalTax / 2);
     const igst = grnInterState ? (parseFloat(prod.igst_rate) || totalTax) : 0;
     const expiry_required = !!(prod.expiryRequired ?? prod.expiry_required);
+    const batch_required  = !!(prod.batchRequired  ?? prod.batch_required);
     setForm(f => {
       const items = [...f.items];
       items[i] = calcItem({ ...items[i],
         item_code: prod.code || "", item_name: prod.name || "",
         unit: prod.uom || prod.unit || "Nos", rate,
         cgst_pct: cgst, sgst_pct: sgst, igst_pct: igst,
-        expiry_required,
+        expiry_required, batch_required,
         expiry_date: expiry_required ? items[i].expiry_date : "",
+        batch_no:    batch_required  ? items[i].batch_no   : "",
       });
       return { ...f, items };
     });
@@ -475,6 +485,7 @@ export default function GoodsReceiptNote() {
     const badRows     = new Set<number>();
     form.items.forEach((it, i) => {
       if (!it.item_code || it.qty <= 0 || it.rate <= 0) badRows.add(i);
+      if (it.batch_required  && !it.batch_no)   badRows.add(i);
       if (it.expiry_required && !it.expiry_date) badRows.add(i);
     });
     if (errStore || errSupplier || badRows.size > 0) {
@@ -482,7 +493,7 @@ export default function GoodsReceiptNote() {
       const msgs: string[] = [];
       if (errStore)    msgs.push("Store is required");
       if (errSupplier) msgs.push("Supplier is required");
-      if (badRows.size > 0) msgs.push(`Row${badRows.size > 1 ? "s" : ""} ${[...badRows].map(r => r + 1).join(", ")}: Item, Qty and Rate are required`);
+      if (badRows.size > 0) msgs.push(`Row${badRows.size > 1 ? "s" : ""} ${[...badRows].map(r => r + 1).join(", ")}: check Item, Qty, Rate, Batch No and Expiry Date`);
       setErr(msgs.join(" · "));
       return;
     }
@@ -793,13 +804,21 @@ export default function GoodsReceiptNote() {
                         </div>
                       </td>
                       <td className="px-1 py-1">
-                        <input value={it.batch_no} onChange={e => updItem(i,"batch_no",e.target.value)}
-                          className="border border-gray-200 rounded px-2 py-1.5 w-20 outline-none focus:border-[#027fa5] text-xs"/>
+                        {it.batch_required ? (
+                          <input value={it.batch_no} onChange={e => updItem(i,"batch_no",e.target.value)}
+                            className={`border rounded px-2 py-1.5 w-20 outline-none focus:border-[#027fa5] text-xs ${rowErr && it.batch_required && !it.batch_no ? "border-red-400 bg-red-50" : "border-gray-200"}`}
+                            placeholder="Batch*" data-testid={`input-batch-${i}`}/>
+                        ) : (
+                          <input value={it.batch_no} onChange={e => updItem(i,"batch_no",e.target.value)}
+                            className="border border-gray-200 rounded px-2 py-1.5 w-20 outline-none focus:border-[#027fa5] text-xs"
+                            placeholder="Optional" data-testid={`input-batch-${i}`}/>
+                        )}
                       </td>
-                      <td className="px-1 py-1">
+                      <td className="px-1 py-1 w-32">
                         {it.expiry_required ? (
-                          <input type="date" value={it.expiry_date} onChange={e => updItem(i,"expiry_date",e.target.value)}
-                            className="border border-gray-200 rounded px-2 py-1.5 w-28 outline-none focus:border-[#027fa5] text-xs"
+                          <DatePicker value={it.expiry_date} onChange={v => updItem(i,"expiry_date",v)}
+                            placeholder="Pick date" openUp={i >= form.items.length - 2}
+                            className={rowErr && it.expiry_required && !it.expiry_date ? "[&>button]:border-red-400 [&>button]:bg-red-50" : ""}
                             data-testid={`input-expiry-${i}`}/>
                         ) : (
                           <span className="text-gray-300 text-xs px-2">N/A</span>
@@ -869,23 +888,65 @@ export default function GoodsReceiptNote() {
 
           {/* Tax summary + Grand total */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="border border-gray-200 rounded-lg p-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tax Breakdown</div>
-              <div className="space-y-1.5 text-sm">
-                {[
-                  { label:"Taxable Amount", val:taxableTotal, bold:false },
-                  { label:"CGST", val:cgstTotal, bold:false },
-                  { label:"SGST", val:sgstTotal, bold:false },
-                  { label:"IGST", val:igstTotal, bold:false },
-                  { label:"Round Off", val:computedRoundOff, bold:false },
-                  { label:"Grand Total", val:grandRounded, bold:true },
-                ].map(r => (
-                  <div key={r.label} className="flex justify-between">
-                    <span className={r.bold?"font-semibold text-gray-800":"text-gray-600"}>{r.label}</span>
-                    <span className={r.bold?"font-bold text-gray-900":"text-gray-700"}>₹ {n2(r.val)}</span>
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide border-b bg-gray-50">Tax Breakdown</div>
+              {/* Grouped tax table */}
+              {(() => {
+                // Build groups by effective tax rate key
+                const groups: Record<string, { taxable: number; cgst: number; sgst: number; igst: number; cgst_pct: number; sgst_pct: number; igst_pct: number }> = {};
+                form.items.forEach(it => {
+                  const key = grnInterState
+                    ? `IGST ${it.igst_pct}%`
+                    : `GST ${it.cgst_pct + it.sgst_pct}%`;
+                  if (!groups[key]) groups[key] = { taxable:0, cgst:0, sgst:0, igst:0, cgst_pct: it.cgst_pct, sgst_pct: it.sgst_pct, igst_pct: it.igst_pct };
+                  groups[key].taxable += p2(it.taxable_amt);
+                  groups[key].cgst    += p2(it.cgst_amt);
+                  groups[key].sgst    += p2(it.sgst_amt);
+                  groups[key].igst    += p2(it.igst_amt);
+                });
+                const groupKeys = Object.keys(groups);
+                return (
+                  <div>
+                    {/* Group header */}
+                    <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b px-2 py-1.5"
+                      style={{ gridTemplateColumns: grnInterState ? "2fr 2fr 2fr" : "2fr 2fr 1.5fr 1.5fr" }}>
+                      <span>Tax %</span>
+                      <span className="text-right">Taxable ₹</span>
+                      {!grnInterState && <span className="text-right">CGST ₹</span>}
+                      {!grnInterState && <span className="text-right">SGST ₹</span>}
+                      {grnInterState  && <span className="text-right">IGST ₹</span>}
+                    </div>
+                    {groupKeys.map(k => (
+                      <div key={k} className="grid text-xs px-2 py-1.5 border-b last:border-0 hover:bg-gray-50"
+                        style={{ gridTemplateColumns: grnInterState ? "2fr 2fr 2fr" : "2fr 2fr 1.5fr 1.5fr" }}>
+                        <span className="font-medium text-gray-700">{k}</span>
+                        <span className="text-right text-gray-700">{n2(groups[k].taxable)}</span>
+                        {!grnInterState && <span className="text-right text-gray-600">{n2(groups[k].cgst)}</span>}
+                        {!grnInterState && <span className="text-right text-gray-600">{n2(groups[k].sgst)}</span>}
+                        {grnInterState  && <span className="text-right text-gray-600">{n2(groups[k].igst)}</span>}
+                      </div>
+                    ))}
+                    {/* Totals row */}
+                    <div className="grid text-xs font-semibold px-2 py-1.5 bg-[#e8f6fb] border-t"
+                      style={{ gridTemplateColumns: grnInterState ? "2fr 2fr 2fr" : "2fr 2fr 1.5fr 1.5fr" }}>
+                      <span className="text-gray-700">Total</span>
+                      <span className="text-right text-gray-800">{n2(taxableTotal)}</span>
+                      {!grnInterState && <span className="text-right text-gray-800">{n2(cgstTotal)}</span>}
+                      {!grnInterState && <span className="text-right text-gray-800">{n2(sgstTotal)}</span>}
+                      {grnInterState  && <span className="text-right text-gray-800">{n2(igstTotal)}</span>}
+                    </div>
+                    {/* Grand total row */}
+                    <div className="px-3 py-2 border-t space-y-1 text-sm">
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>Round Off</span><span>₹ {n2(computedRoundOff)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-gray-900">
+                        <span>Grand Total</span><span>₹ {n2(grandRounded)}</span>
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
+                );
+              })()}
             </div>
 
             <div className="space-y-3">
