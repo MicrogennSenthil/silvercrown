@@ -112,6 +112,35 @@ function LedgerForm({
   type EditingBill = { id: string; billType: string; refNo: string; refDate: string; voucherNo: string; voucherDate: string; amount: string; crDr: string; };
   const [editingBill, setEditingBill] = useState<EditingBill | null>(null);
 
+  // Inline opening-balance edit state
+  const [editingOB, setEditingOB] = useState(false);
+  const [obEditAmount, setObEditAmount] = useState("");
+  const [obEditType, setObEditType]   = useState("Credit");
+
+  const updateOBMutation = useMutation({
+    mutationFn: async (data: { amount: string; type: string }) => {
+      const res = await fetch(`/api/sub-ledgers/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ openingBalance: data.amount, openingBalanceType: data.type }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Update failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      setObAmount(obEditAmount);
+      setCbAmount(obEditAmount);
+      setObType(obEditType);
+      setCbType(obEditType);
+      setEditingOB(false);
+      toast({ title: "Opening balance updated" });
+      qc.refetchQueries({ queryKey: ["/api/sub-ledgers", item?.id, "statement"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
+    },
+    onError: (e: any) => toast({ title: "Failed to update opening balance", description: e.message, variant: "destructive" }),
+  });
+
   const updateBillMutation = useMutation({
     mutationFn: async (data: { id: string } & Omit<EditingBill, "id">) => {
       const res = await fetch(`/api/sub-ledger-bills/${data.id}`, {
@@ -562,23 +591,78 @@ function LedgerForm({
                   {/* Static rows: opening balance, loading, empty */}
                   <tbody>
                     {stmtData && (
-                      <tr className="border-b border-gray-50 bg-blue-50/30">
-                        <td className="px-3 py-1.5 text-gray-400">—</td>
-                        <td className="px-3 py-1.5 text-gray-500 italic">Opening</td>
-                        <td className="px-3 py-1.5 text-gray-500 italic" colSpan={2}>Opening Balance</td>
-                        <td className="px-3 py-1.5 text-xs text-gray-400 font-medium">—</td>
-                        <td className="px-3 py-1.5 text-gray-500 italic">—</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-gray-600">
-                          {stmtData.openingBalanceType !== "Credit" ? fmt(stmtData.openingBalance) : "—"}
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-mono text-gray-600">
-                          {stmtData.openingBalanceType === "Credit" ? fmt(stmtData.openingBalance) : "—"}
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
-                          {fmt(stmtData.openingBalance)} <span className="text-gray-400 text-[10px]">{stmtData.openingBalanceType?.slice(0,2)}</span>
-                        </td>
-                        <td></td>
-                      </tr>
+                      <>
+                        <tr className="border-b border-gray-50 bg-blue-50/30">
+                          <td className="px-3 py-1.5 text-gray-400">—</td>
+                          <td className="px-3 py-1.5 text-gray-500 italic">Opening</td>
+                          <td className="px-3 py-1.5 text-gray-500 italic" colSpan={2}>Opening Balance</td>
+                          <td className="px-3 py-1.5 text-xs text-gray-400 font-medium">—</td>
+                          <td className="px-3 py-1.5 text-gray-500 italic">—</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-gray-600">
+                            {stmtData.openingBalanceType !== "Credit" ? fmt(stmtData.openingBalance) : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono text-gray-600">
+                            {stmtData.openingBalanceType === "Credit" ? fmt(stmtData.openingBalance) : "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
+                            {fmt(stmtData.openingBalance)} <span className="text-gray-400 text-[10px]">{stmtData.openingBalanceType?.slice(0,2)}</span>
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            {isEdit && (
+                              <button type="button"
+                                onClick={() => {
+                                  if (editingOB) { setEditingOB(false); return; }
+                                  setObEditAmount(fmt(stmtData.openingBalance));
+                                  setObEditType(stmtData.openingBalanceType || "Credit");
+                                  setEditingOB(true);
+                                }}
+                                className="inline-flex items-center gap-0.5 text-[10px] px-2 py-1 rounded font-semibold border transition-colors hover:bg-[#027fa5] hover:text-white"
+                                style={editingOB
+                                  ? { background: SC.primary, color: "#fff", borderColor: SC.primary }
+                                  : { borderColor: SC.primary, color: SC.primary }}
+                                data-testid="btn-edit-ob">
+                                <PencilLine size={10} /> {editingOB ? "Close" : "Edit"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {editingOB && (
+                          <tr className="border-b border-[#027fa5]/30 bg-[#d2f1fa]/40">
+                            <td colSpan={10} className="px-3 py-3">
+                              <div className="flex flex-wrap items-end gap-3 text-xs">
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-gray-500 font-medium">Amount ₹</span>
+                                  <input type="number" value={obEditAmount}
+                                    onChange={e => setObEditAmount(e.target.value)}
+                                    placeholder="0.00"
+                                    className="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] w-32 text-right" />
+                                </div>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-gray-500 font-medium">Cr / Dr</span>
+                                  <select value={obEditType}
+                                    onChange={e => setObEditType(e.target.value)}
+                                    className="border border-gray-300 rounded px-2 py-1 bg-white text-xs outline-none focus:border-[#027fa5] w-24">
+                                    <option value="Credit">Credit</option>
+                                    <option value="Debit">Debit</option>
+                                  </select>
+                                </div>
+                                <button type="button"
+                                  disabled={updateOBMutation.isPending}
+                                  onClick={() => updateOBMutation.mutate({ amount: obEditAmount, type: obEditType })}
+                                  className="px-4 py-1 rounded text-xs font-semibold text-white disabled:opacity-60 self-end"
+                                  style={{ background: SC.primary }}>
+                                  {updateOBMutation.isPending ? "Saving…" : "Save"}
+                                </button>
+                                <button type="button"
+                                  onClick={() => setEditingOB(false)}
+                                  className="px-4 py-1 rounded text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50 self-end">
+                                  Cancel
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     )}
                     {stmtLoading && (
                       <tr><td colSpan={10} className="px-3 py-6 text-center text-gray-400">Loading statement…</td></tr>

@@ -1481,9 +1481,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/sub-ledgers/:id", requireAuth, async (req, res) => {
     try {
-      const { bills = [], ...data } = req.body;
+      const { bills, ...data } = req.body;
       const ledger = await storage.updateSubLedger(req.params.id, data);
-      const savedBills = await storage.replaceSubLedgerBills(req.params.id, bills);
+      // Only replace bills when the caller explicitly sends a bills array
+      const savedBills = bills !== undefined
+        ? await storage.replaceSubLedgerBills(req.params.id, bills)
+        : await storage.listSubLedgerBills(req.params.id);
       res.json({ ...ledger, bills: savedBills });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
