@@ -68,8 +68,7 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const { data: suppliers = [] }    = useQuery<any[]>({ queryKey: ["/api/all-parties"] });
   const { data: allProductsRaw = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
-  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
-  const products = rawMatCatId ? (allProductsRaw as any[]).filter((p: any) => p.categoryId === rawMatCatId) : allProductsRaw;
+  const products = allProductsRaw as any[];
   const { data: termTypes = [] }    = useQuery<any[]>({ queryKey: ["/api/term-types"] });
   const { data: allTerms = [] }     = useQuery<any[]>({ queryKey: ["/api/terms"] });
   const { data: expenseSleds = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
