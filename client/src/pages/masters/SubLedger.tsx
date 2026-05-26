@@ -106,6 +106,30 @@ function LedgerForm({
   );
   const { toast } = useToast();
 
+  // Inline bill editing state (for Account Statement rows)
+  type EditingBill = { id: string; billType: string; refNo: string; refDate: string; voucherNo: string; voucherDate: string; amount: string; crDr: string; };
+  const [editingBill, setEditingBill] = useState<EditingBill | null>(null);
+
+  const updateBillMutation = useMutation({
+    mutationFn: (data: { id: string } & Omit<EditingBill, "id">) =>
+      apiRequest("PUT", `/api/sub-ledger-bills/${data.id}`, {
+        billType: data.billType,
+        refNo: data.refNo,
+        refDate: data.refDate || null,
+        voucherNo: data.voucherNo,
+        voucherDate: data.voucherDate || null,
+        amount: data.amount,
+        crDr: data.crDr,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers", item?.id, "statement"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
+      setEditingBill(null);
+      toast({ title: "Bill updated" });
+    },
+    onError: (e: any) => toast({ title: "Failed to update bill", description: e.message, variant: "destructive" }),
+  });
+
   // When GL changes, auto-populate categoryId from GL's category
   useEffect(() => {
     const gl = generalLedgersList.find((g: any) => g.id === glId);
@@ -508,8 +532,8 @@ function LedgerForm({
                       <th className="px-3 py-2 text-right text-gray-500 font-semibold">Balance ₹</th>
                     </tr>
                   </thead>
+                  {/* Static rows: opening balance, loading, empty */}
                   <tbody>
-                    {/* Opening balance row */}
                     {stmtData && (
                       <tr className="border-b border-gray-50 bg-blue-50/30">
                         <td className="px-3 py-1.5 text-gray-400">—</td>
@@ -528,11 +552,9 @@ function LedgerForm({
                         </td>
                       </tr>
                     )}
-
                     {stmtLoading && (
                       <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">Loading statement…</td></tr>
                     )}
-
                     {!stmtLoading && stmtData?.statement?.length === 0 && (
                       <tr>
                         <td colSpan={9} className="px-3 py-5 text-center text-gray-400">
@@ -540,60 +562,155 @@ function LedgerForm({
                         </td>
                       </tr>
                     )}
-
-                    {stmtData?.statement?.map((r: any, i: number) => (
-                      <tr key={i} className={`border-b border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
-                        data-testid={`stmt-row-${i}`}>
-                        <td className="px-3 py-1.5 text-gray-400 text-center">{i + 1}</td>
-                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
-                          {r.txnDate ? new Date(r.txnDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <div className="font-semibold text-gray-700">{r.voucherNo || r.refNo || "—"}</div>
-                          {r.refNo && r.refNo !== r.voucherNo && <div className="text-gray-400 text-[10px]">Ref: {r.refNo}</div>}
-                        </td>
-                        {/* Voucher Date */}
-                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
-                          {r.voucherDate ? new Date(r.voucherDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
-                        </td>
-                        {/* Voucher Type */}
-                        <td className="px-3 py-1.5">
-                          {r.billType ? (
-                            <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium"
-                              style={r.billType === "Bills"
-                                ? { background: "#fde8dc", color: "#d74700" }
-                                : { background: SC.tonal, color: SC.primary }}>
-                              {r.billType}
-                            </span>
-                          ) : r.sourceType ? (
-                            <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-100 text-gray-500">
-                              {r.sourceType === "grn" ? "Purchase" : r.sourceType}
-                            </span>
-                          ) : "—"}
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <div className="text-gray-600 truncate max-w-[160px]">{r.narration || "—"}</div>
-                          {(r.sourceType === "Opening Bill" || r.sourceType === "Bills") && isEdit && (
-                            <button type="button" onClick={scrollToBillGrid}
-                              className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium border transition-colors hover:bg-[#027fa5] hover:text-white mt-0.5"
-                              style={{ borderColor: SC.primary, color: SC.primary }}
-                              title="Click to scroll up and edit this bill entry">
-                              <PencilLine size={9} /> Edit
-                            </button>
-                          )}
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-mono text-red-600">
-                          {r.debit > 0 ? fmt(r.debit) : "—"}
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-mono text-green-700">
-                          {r.credit > 0 ? fmt(r.credit) : "—"}
-                        </td>
-                        <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
-                          {fmt(r.balance)} <span className="text-gray-400 text-[10px]">{r.balanceType}</span>
-                        </td>
-                      </tr>
-                    ))}
                   </tbody>
+
+                  {/* Transaction rows — each row (+ optional inline edit) is its own tbody */}
+                  {stmtData?.statement?.map((r: any, i: number) => {
+                      const isBillRow = !!(r.billId);
+                      const isEditing = editingBill?.id === r.billId;
+                      const rowBg = i % 2 === 0 ? "bg-white" : "bg-gray-50/30";
+                      return (
+                        <tbody key={i}>
+                          <tr className={`border-b border-gray-50 ${rowBg}`} data-testid={`stmt-row-${i}`}>
+                            <td className="px-3 py-1.5 text-gray-400 text-center">{i + 1}</td>
+                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
+                              {r.txnDate ? new Date(r.txnDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <div className="font-semibold text-gray-700">{r.voucherNo || r.refNo || "—"}</div>
+                              {r.refNo && r.refNo !== r.voucherNo && <div className="text-gray-400 text-[10px]">Ref: {r.refNo}</div>}
+                            </td>
+                            {/* Voucher Date */}
+                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
+                              {r.voucherDate ? new Date(r.voucherDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                            </td>
+                            {/* Voucher Type */}
+                            <td className="px-3 py-1.5">
+                              {r.billType ? (
+                                <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium"
+                                  style={r.billType === "Bills"
+                                    ? { background: "#fde8dc", color: "#d74700" }
+                                    : { background: SC.tonal, color: SC.primary }}>
+                                  {r.billType}
+                                </span>
+                              ) : r.sourceType ? (
+                                <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-100 text-gray-500">
+                                  {r.sourceType === "grn" ? "Purchase" : r.sourceType}
+                                </span>
+                              ) : "—"}
+                            </td>
+                            <td className="px-3 py-1.5">
+                              <div className="text-gray-600 truncate max-w-[140px]">{r.narration || "—"}</div>
+                              {isBillRow && isEdit && (
+                                <button type="button"
+                                  onClick={() => {
+                                    if (isEditing) { setEditingBill(null); return; }
+                                    setEditingBill({
+                                      id: r.billId,
+                                      billType: r.billType || "Opening",
+                                      refNo: r.refNo || "",
+                                      refDate: r.txnDate || "",
+                                      voucherNo: r.voucherNo || "",
+                                      voucherDate: r.voucherDate || "",
+                                      amount: String(r.debit > 0 ? r.debit : r.credit),
+                                      crDr: r.debit > 0 ? "Dr" : "Cr",
+                                    });
+                                  }}
+                                  className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium border transition-colors hover:bg-[#027fa5] hover:text-white mt-0.5"
+                                  style={isEditing
+                                    ? { background: SC.primary, color: "#fff", borderColor: SC.primary }
+                                    : { borderColor: SC.primary, color: SC.primary }}
+                                  data-testid={`btn-edit-bill-${i}`}>
+                                  <PencilLine size={9} /> {isEditing ? "Cancel" : "Edit"}
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono text-red-600">
+                              {r.debit > 0 ? fmt(r.debit) : "—"}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono text-green-700">
+                              {r.credit > 0 ? fmt(r.credit) : "—"}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
+                              {fmt(r.balance)} <span className="text-gray-400 text-[10px]">{r.balanceType}</span>
+                            </td>
+                          </tr>
+                          {/* Inline edit row — expands below the bill row */}
+                          {isEditing && editingBill && (
+                            <tr className="border-b border-[#027fa5]/30 bg-[#d2f1fa]/40">
+                              <td colSpan={9} className="px-3 py-3">
+                                <div className="flex flex-wrap items-end gap-2 text-xs">
+                                  {/* Type */}
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-gray-500 font-medium">Type</span>
+                                    <select value={editingBill.billType}
+                                      onChange={e => setEditingBill(prev => prev ? { ...prev, billType: e.target.value } : prev)}
+                                      className="border border-gray-300 rounded px-2 py-1 bg-white text-xs outline-none focus:border-[#027fa5] w-24"
+                                      style={editingBill.billType === "Opening" ? { color: SC.primary } : { color: "#d74700" }}>
+                                      <option value="Opening">Opening</option>
+                                      <option value="Bills">Bills</option>
+                                    </select>
+                                  </div>
+                                  {/* Ref No */}
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-gray-500 font-medium">Ref No</span>
+                                    <input value={editingBill.refNo}
+                                      onChange={e => setEditingBill(prev => prev ? { ...prev, refNo: e.target.value } : prev)}
+                                      placeholder="Ref no" className="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] w-28" />
+                                  </div>
+                                  {/* Ref Date */}
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-gray-500 font-medium">Ref Date</span>
+                                    <input type="date" value={editingBill.refDate}
+                                      onChange={e => setEditingBill(prev => prev ? { ...prev, refDate: e.target.value } : prev)}
+                                      className="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] w-34" />
+                                  </div>
+                                  {/* Voucher No */}
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-gray-500 font-medium">Voucher No</span>
+                                    <input value={editingBill.voucherNo}
+                                      onChange={e => setEditingBill(prev => prev ? { ...prev, voucherNo: e.target.value } : prev)}
+                                      placeholder="Voucher no" className="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] w-28" />
+                                  </div>
+                                  {/* Voucher Date */}
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-gray-500 font-medium">Voucher Date</span>
+                                    <input type="date" value={editingBill.voucherDate}
+                                      onChange={e => setEditingBill(prev => prev ? { ...prev, voucherDate: e.target.value } : prev)}
+                                      className="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] w-34" />
+                                  </div>
+                                  {/* Amount */}
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-gray-500 font-medium">Amount ₹</span>
+                                    <input type="number" value={editingBill.amount}
+                                      onChange={e => setEditingBill(prev => prev ? { ...prev, amount: e.target.value } : prev)}
+                                      placeholder="0.00" className="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] w-24 text-right" />
+                                  </div>
+                                  {/* Cr/Dr */}
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-gray-500 font-medium">Cr/Dr</span>
+                                    <select value={editingBill.crDr}
+                                      onChange={e => setEditingBill(prev => prev ? { ...prev, crDr: e.target.value } : prev)}
+                                      className="border border-gray-300 rounded px-2 py-1 bg-white text-xs outline-none focus:border-[#027fa5] w-16">
+                                      <option value="Cr">Cr</option>
+                                      <option value="Dr">Dr</option>
+                                    </select>
+                                  </div>
+                                  {/* Save */}
+                                  <button type="button"
+                                    disabled={updateBillMutation.isPending}
+                                    onClick={() => updateBillMutation.mutate({ ...editingBill })}
+                                    className="px-3 py-1 rounded text-xs font-semibold text-white transition-opacity disabled:opacity-60"
+                                    style={{ background: SC.primary }}>
+                                    {updateBillMutation.isPending ? "Saving…" : "Save"}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      );
+                    })}
                   {stmtData?.statement?.length > 0 && (
                     <tfoot>
                       <tr className="border-t-2 border-gray-200 bg-gray-50">

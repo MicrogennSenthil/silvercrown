@@ -260,6 +260,7 @@ export interface IStorage {
   deleteSubLedger(id: string): Promise<void>;
   listSubLedgerBills(subLedgerId: string): Promise<SubLedgerBill[]>;
   replaceSubLedgerBills(subLedgerId: string, bills: Omit<InsertSubLedgerBill, 'subLedgerId'>[]): Promise<SubLedgerBill[]>;
+  updateSubLedgerBill(id: string, data: Partial<InsertSubLedgerBill>): Promise<SubLedgerBill>;
 
   // Term Types
   listTermTypes(): Promise<TermType[]>;
@@ -628,6 +629,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(subLedgerBills).where(eq(subLedgerBills.subLedgerId, subLedgerId));
     if (!bills.length) return [];
     return db.insert(subLedgerBills).values(bills.map(b => ({ ...b, subLedgerId, id: randomUUID() }))).returning();
+  }
+  async updateSubLedgerBill(id: string, data: Partial<InsertSubLedgerBill>) {
+    const { id: _id, subLedgerId: _slId, createdAt: _ca, ...rest } = data as any;
+    const [r] = await db.update(subLedgerBills).set(rest).where(eq(subLedgerBills.id, id)).returning();
+    return r;
   }
 
   // Term Types

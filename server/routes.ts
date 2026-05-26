@@ -1388,6 +1388,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Opening balance bills (manually entered)
       const billsRes = await pool.query(`
         SELECT
+          id            AS bill_id,
           ref_no        AS ref_no,
           ref_date      AS txn_date,
           voucher_no    AS voucher_no,
@@ -1448,6 +1449,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (drCr === "CR") balance += amt;
         else balance -= amt;
         return {
+          billId: r.bill_id || "",
           refNo: r.ref_no || "",
           txnDate: r.txn_date ? String(r.txn_date).slice(0, 10) : "",
           voucherNo: r.voucher_no || "",
@@ -1483,6 +1485,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const ledger = await storage.updateSubLedger(req.params.id, data);
       const savedBills = await storage.replaceSubLedgerBills(req.params.id, bills);
       res.json({ ...ledger, bills: savedBills });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.put("/api/sub-ledger-bills/:id", requireAuth, async (req, res) => {
+    try {
+      const updated = await storage.updateSubLedgerBill(req.params.id, req.body);
+      res.json(updated);
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.delete("/api/sub-ledgers/:id", requireAuth, async (req, res) => {
