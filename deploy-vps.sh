@@ -59,7 +59,7 @@ npm run build 2>&1 | tail -8
 
 echo ""
 echo "      → Applying DB migrations..."
-npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tail -5
+printf "\n" | npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tail -5
 
 echo ""
 echo "      → Restarting PM2..."
