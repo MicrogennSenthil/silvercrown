@@ -213,15 +213,17 @@ function LedgerForm({
     if (gl?.categoryId) setCatId(gl.categoryId);
   }, [glId, generalLedgersList]);
 
-  // When bills change and obEntry is on + BillToBill, sum only "Opening" type amounts → opening/closing balance
+  // When bills change and obEntry is on + BillToBill, sum only valid "Opening" type amounts
+  // A bill counts as Opening only if: billType=Opening AND (no refDate OR refDate is before current FY start)
   useEffect(() => {
     if (!obEntry || paymentType !== "BillToBill") return;
     const total = bills
-      .filter(b => b.billType === "Opening")
+      .filter(b => b.billType === "Opening" && (!b.refDate || b.refDate < fyStartDate))
       .reduce((acc, b) => acc + (parseFloat(b.amount) || 0), 0);
     setObAmount(total.toFixed(2));
-    setCbAmount(total.toFixed(2));
-  }, [bills, obEntry, paymentType]);
+    // Only reset closing balance when no live statement data (new ledger)
+    if (!stmtData) setCbAmount(total.toFixed(2));
+  }, [bills, obEntry, paymentType, fyStartDate, stmtData]);
 
   // Clear bills when switching to OnAccount (only if no saved bills from DB)
   useEffect(() => {
@@ -546,7 +548,7 @@ function LedgerForm({
                 <div className="flex items-center gap-4 text-xs text-gray-600 font-semibold">
                   <span>
                     Opening Total: <span className="font-mono text-gray-800">
-                      ₹{fmt(bills.filter(b => b.billType === "Opening").reduce((a, b) => a + (parseFloat(b.amount) || 0), 0))}
+                      ₹{fmt(bills.filter(b => b.billType === "Opening" && (!b.refDate || b.refDate < fyStartDate)).reduce((a, b) => a + (parseFloat(b.amount) || 0), 0))}
                     </span>
                   </span>
                   <span>

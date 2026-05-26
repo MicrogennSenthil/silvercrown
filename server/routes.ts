@@ -1432,8 +1432,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           voucher_date::text  AS voucher_date,
           amount        AS amount,
           cr_dr         AS dr_cr,
-          COALESCE(bill_type, 'Opening') AS bill_type,
-          CASE WHEN COALESCE(bill_type, 'Opening') = 'Opening' THEN 'Opening Bill' ELSE 'Bills' END AS source_type,
+          COALESCE(bill_type, 'Bills') AS bill_type,
+          CASE WHEN COALESCE(bill_type, 'Bills') = 'Opening' THEN 'Opening Bill' ELSE 'Bills' END AS source_type,
           ''             AS narration
         FROM sub_ledger_bills
         WHERE sub_ledger_id = $1
@@ -4339,8 +4339,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     // Sub-ledger outstanding bill (DR = amount receivable from customer)
     if (customerSlId) {
       await client.query(`INSERT INTO sub_ledger_bills
-        (id, sub_ledger_id, ref_no, ref_date, voucher_no, voucher_date, amount, cr_dr)
-        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,'DR')`,
+        (id, sub_ledger_id, bill_type, ref_no, ref_date, voucher_no, voucher_date, amount, cr_dr)
+        VALUES (gen_random_uuid()::text,$1,'Bills',$2,$3,$4,$5,$6,'DR')`,
         [customerSlId, invoiceRow.voucher_no, invoiceRow.invoice_date,
          invoiceRow.voucher_no, invoiceRow.invoice_date, grandTotal]);
     }
@@ -5495,8 +5495,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       } else {
         // Credit: leave payable open and record outstanding bill
         await client.query(`INSERT INTO sub_ledger_bills
-          (id, sub_ledger_id, ref_no, ref_date, voucher_no, voucher_date, amount, cr_dr)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,'CR')`,
+          (id, sub_ledger_id, bill_type, ref_no, ref_date, voucher_no, voucher_date, amount, cr_dr)
+          VALUES (gen_random_uuid()::text,$1,'Bills',$2,$3,$4,$5,$6,'CR')`,
           [supplierSlId, b.bill_no||hdr.voucher_no, b.bill_date||hdr.grn_date,
            hdr.voucher_no, hdr.grn_date, grandTotal]);
       }
