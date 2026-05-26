@@ -387,7 +387,23 @@ const EMPTY_PRODUCT = {
   rate: "", costPrice: "", minStockLevel: "", maxStockLevel: "",
   cgstRate: "", sgstRate: "", igstRate: "",
   isActive: true, code: "", description: "",
+  batchRequired: false, expiryRequired: false,
 };
+
+function PToggle({ label, name, value, onChange }: { label: string; name: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between border border-gray-300 rounded px-3 py-2 h-[42px]">
+      <span className="text-sm text-gray-700 font-medium">{label}</span>
+      <button type="button" onClick={() => onChange(!value)}
+        className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none"
+        style={{ background: value ? "#027fa5" : "#d1d5db" }}
+        data-testid={`toggle-${name}`}>
+        <span className="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform"
+          style={{ transform: value ? "translateX(18px)" : "translateX(2px)" }} />
+      </button>
+    </div>
+  );
+}
 
 function ProductModal({ initial, categories, subCategories, uomList, onClose }: any) {
   const [form, setForm] = useState<any>({ ...EMPTY_PRODUCT, ...initial });
@@ -505,6 +521,16 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
             <FField label="CGST %"  value={form.cgstRate} onChange={f("cgstRate")} placeholder="0.00" type="number" />
             <FField label="SGST %"  value={form.sgstRate} onChange={f("sgstRate")} placeholder="0.00" type="number" />
             <FField label="IGST %"  value={form.igstRate} onChange={f("igstRate")} placeholder="0.00" type="number" />
+          </div>
+
+          {/* Row 6: Batch No Required + Expiry Date Required */}
+          <div className="grid grid-cols-2 gap-3">
+            <PToggle label="Batch No Required" name="batchRequired"
+              value={!!form.batchRequired}
+              onChange={v => setForm((p: any) => ({ ...p, batchRequired: v }))} />
+            <PToggle label="Expiry Date Required" name="expiryRequired"
+              value={!!form.expiryRequired}
+              onChange={v => setForm((p: any) => ({ ...p, expiryRequired: v }))} />
           </div>
         </div>
 
