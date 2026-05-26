@@ -243,8 +243,8 @@ function drCrLabel(drCr: "DR" | "CR") {
 }
 
 function getMainDrCr(nature: Nature): "DR" | "CR" {
-  // Payment → Party Debited (To)  Receipt → Cash/Bank Debited (To)
-  return "DR";
+  // Payment → Party Debited (To = DR)  Receipt → Party Credited (By = CR)
+  return nature === "receipt" ? "CR" : "DR";
 }
 
 // ── Per-line ledger filter (by row index) ─────────────────────────────────────
@@ -258,9 +258,9 @@ function getLineFilter(vtName: string, idx: number): FilterType {
     return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   if (nature === "receipt") {
-    // Row 0 = Bank or Cash (To — Debit: where money received), Row 1+ = party (By — Credit: who paid)
-    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
-    return "party";
+    // Row 0 = party (By — Credit: who paid), Row 1+ = Bank or Cash (To — Debit: where money received)
+    if (idx === 0) return "party";
+    return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   return "all";
 }
@@ -810,7 +810,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               {nature === "receipt" && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
                 <span className="px-2 py-0.5 rounded font-bold bg-green-50 text-green-700">Receipt</span>
-                <span className="text-gray-400">·  <b className="text-green-700">To</b> Cash/Bank (Debit)  ·  <b className="text-red-700">By</b> Party (Credit)</span>
+                <span className="text-gray-400">·  <b className="text-red-700">By</b> Party (Credit)  ·  <b className="text-green-700">To</b> Cash/Bank (Debit)</span>
               </>}
               {nature === "contra"  && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
