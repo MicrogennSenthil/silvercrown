@@ -547,6 +547,7 @@ function LedgerForm({
                       <th className="px-3 py-2 text-right text-gray-500 font-semibold">Debit ₹</th>
                       <th className="px-3 py-2 text-right text-gray-500 font-semibold">Credit ₹</th>
                       <th className="px-3 py-2 text-right text-gray-500 font-semibold">Balance ₹</th>
+                      <th className="px-2 py-2 w-14"></th>
                     </tr>
                   </thead>
                   {/* Static rows: opening balance, loading, empty */}
@@ -567,14 +568,15 @@ function LedgerForm({
                         <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
                           {fmt(stmtData.openingBalance)} <span className="text-gray-400 text-[10px]">{stmtData.openingBalanceType?.slice(0,2)}</span>
                         </td>
+                        <td></td>
                       </tr>
                     )}
                     {stmtLoading && (
-                      <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">Loading statement…</td></tr>
+                      <tr><td colSpan={10} className="px-3 py-6 text-center text-gray-400">Loading statement…</td></tr>
                     )}
                     {!stmtLoading && stmtData?.statement?.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="px-3 py-5 text-center text-gray-400">
+                        <td colSpan={10} className="px-3 py-5 text-center text-gray-400">
                           No transactions posted yet. Purchases, sales, payments and receipts will appear here.
                         </td>
                       </tr>
@@ -618,6 +620,18 @@ function LedgerForm({
                             </td>
                             <td className="px-3 py-1.5">
                               <div className="text-gray-600 truncate max-w-[140px]">{r.narration || "—"}</div>
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono text-red-600">
+                              {r.debit > 0 ? fmt(r.debit) : "—"}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono text-green-700">
+                              {r.credit > 0 ? fmt(r.credit) : "—"}
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
+                              {fmt(r.balance)} <span className="text-gray-400 text-[10px]">{r.balanceType}</span>
+                            </td>
+                            {/* Dedicated Edit action column */}
+                            <td className="px-2 py-1.5 text-center">
                               {isBillRow && isEdit && (
                                 <button type="button"
                                   onClick={() => {
@@ -633,29 +647,20 @@ function LedgerForm({
                                       crDr: r.debit > 0 ? "Dr" : "Cr",
                                     });
                                   }}
-                                  className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium border transition-colors hover:bg-[#027fa5] hover:text-white mt-0.5"
+                                  className="inline-flex items-center gap-0.5 text-[10px] px-2 py-1 rounded font-semibold border transition-colors hover:bg-[#027fa5] hover:text-white"
                                   style={isEditing
                                     ? { background: SC.primary, color: "#fff", borderColor: SC.primary }
                                     : { borderColor: SC.primary, color: SC.primary }}
                                   data-testid={`btn-edit-bill-${i}`}>
-                                  <PencilLine size={9} /> {isEditing ? "Cancel" : "Edit"}
+                                  <PencilLine size={10} /> {isEditing ? "Close" : "Edit"}
                                 </button>
                               )}
-                            </td>
-                            <td className="px-3 py-1.5 text-right font-mono text-red-600">
-                              {r.debit > 0 ? fmt(r.debit) : "—"}
-                            </td>
-                            <td className="px-3 py-1.5 text-right font-mono text-green-700">
-                              {r.credit > 0 ? fmt(r.credit) : "—"}
-                            </td>
-                            <td className="px-3 py-1.5 text-right font-mono font-semibold" style={{ color: SC.primary }}>
-                              {fmt(r.balance)} <span className="text-gray-400 text-[10px]">{r.balanceType}</span>
                             </td>
                           </tr>
                           {/* Inline edit row — expands below the bill row */}
                           {isEditing && editingBill && (
                             <tr className="border-b border-[#027fa5]/30 bg-[#d2f1fa]/40">
-                              <td colSpan={9} className="px-3 py-3">
+                              <td colSpan={10} className="px-3 py-3">
                                 <div className="flex flex-wrap items-end gap-2 text-xs">
                                   {/* Type */}
                                   <div className="flex flex-col gap-0.5">
@@ -730,25 +735,33 @@ function LedgerForm({
                         </tbody>
                       );
                     })}
-                  {stmtData?.statement?.length > 0 && (
-                    <tfoot>
-                      <tr className="border-t-2 border-gray-200 bg-gray-50">
-                        <td colSpan={6} className="px-3 py-2 text-xs font-semibold text-gray-600">Closing Balance</td>
-                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-600">
-                          {fmt(stmtData.statement.reduce((s: number, r: any) => s + r.debit, 0))}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-green-700">
-                          {fmt(stmtData.statement.reduce((s: number, r: any) => s + r.credit, 0))}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-sm font-bold" style={{ color: SC.primary }}>
-                          {fmt(stmtData.statement[stmtData.statement.length - 1]?.balance)}{" "}
-                          <span className="text-xs font-semibold text-gray-500">
-                            {stmtData.statement[stmtData.statement.length - 1]?.balanceType}
-                          </span>
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
+                  {stmtData?.statement?.length > 0 && (() => {
+                    const obAmt = parseFloat(stmtData.openingBalance || "0");
+                    const obIsCredit = stmtData.openingBalanceType === "Credit";
+                    const txnDr  = stmtData.statement.reduce((s: number, r: any) => s + (r.debit  || 0), 0);
+                    const txnCr  = stmtData.statement.reduce((s: number, r: any) => s + (r.credit || 0), 0);
+                    const totalDr = txnDr + (obIsCredit ? 0 : obAmt);
+                    const totalCr = txnCr + (obIsCredit ? obAmt : 0);
+                    const lastRow = stmtData.statement[stmtData.statement.length - 1];
+                    return (
+                      <tfoot>
+                        <tr className="border-t-2 border-gray-200 bg-gray-50">
+                          <td colSpan={6} className="px-3 py-2 text-xs font-semibold text-gray-600">Closing Balance</td>
+                          <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-600">
+                            {fmt(totalDr)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-green-700">
+                            {fmt(totalCr)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-sm font-bold" style={{ color: SC.primary }}>
+                            {fmt(lastRow?.balance)}{" "}
+                            <span className="text-xs font-semibold text-gray-500">{lastRow?.balanceType}</span>
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
                 </table>
               </div>
 
