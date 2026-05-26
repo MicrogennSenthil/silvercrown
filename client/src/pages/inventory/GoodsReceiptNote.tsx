@@ -811,9 +811,7 @@ export default function GoodsReceiptNote() {
                             className={`border rounded px-2 py-1.5 w-20 outline-none focus:border-[#027fa5] text-xs ${rowErr && it.batch_required && !it.batch_no ? "border-red-400 bg-red-50" : "border-gray-200"}`}
                             placeholder="Batch*" data-testid={`input-batch-${i}`}/>
                         ) : (
-                          <input value={it.batch_no} onChange={e => updItem(i,"batch_no",e.target.value)}
-                            className="border border-gray-200 rounded px-2 py-1.5 w-20 outline-none focus:border-[#027fa5] text-xs"
-                            placeholder="Optional" data-testid={`input-batch-${i}`}/>
+                          <span className="text-gray-300 text-xs px-2">N/A</span>
                         )}
                       </td>
                       <td className="px-1 py-1 w-32">
