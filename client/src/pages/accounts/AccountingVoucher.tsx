@@ -237,14 +237,14 @@ function getNature(name: string): Nature {
   return "journal";
 }
 
-// By = Debit / To = Credit  (Tally convention)
+// To = Debit (DR) / By = Credit (CR)  — standard Indian accounting convention
 function drCrLabel(drCr: "DR" | "CR") {
-  return drCr === "DR" ? "By" : "To";
+  return drCr === "DR" ? "To" : "By";
 }
 
 function getMainDrCr(nature: Nature): "DR" | "CR" {
-  // Payment → Party is Credited (To)  Receipt/Contra → Bank is Debited (By)
-  return nature === "payment" ? "CR" : "DR";
+  // Payment → Party Debited (To)  Receipt → Cash/Bank Debited (To)
+  return "DR";
 }
 
 // ── Per-line ledger filter (by row index) ─────────────────────────────────────
@@ -253,14 +253,14 @@ function getLineFilter(vtName: string, idx: number): FilterType {
   const nature = getNature(vtName);
   if (n.includes("contra")) return "bank_cash";
   if (nature === "payment") {
-    // Row 0 = Bank or Cash (To — where payment goes from), Row 1+ = party (By — who receives)
-    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
-    return "party";
-  }
-  if (nature === "receipt") {
-    // Row 0 = party (supplier / customer who paid), Row 1+ = Bank or Cash (where received)
+    // Row 0 = party (To — Debit: supplier/party being paid), Row 1+ = Bank or Cash (By — Credit: source)
     if (idx === 0) return "party";
     return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+  }
+  if (nature === "receipt") {
+    // Row 0 = Bank or Cash (To — Debit: where money received), Row 1+ = party (By — Credit: who paid)
+    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+    return "party";
   }
   return "all";
 }
@@ -805,12 +805,12 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               {nature === "payment" && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
                 <span className="px-2 py-0.5 rounded font-bold bg-orange-50 text-orange-700">Payment</span>
-                <span className="text-gray-400">·  <b className="text-green-700">To</b> Cash/Bank (Debit)  ·  <b className="text-red-700">By</b> Party (Credit)</span>
+                <span className="text-gray-400">·  <b className="text-green-700">To</b> Party (Debit)  ·  <b className="text-red-700">By</b> Cash/Bank (Credit)</span>
               </>}
               {nature === "receipt" && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
                 <span className="px-2 py-0.5 rounded font-bold bg-green-50 text-green-700">Receipt</span>
-                <span className="text-gray-400">·  <b className="text-red-700">By</b> Party (Credit)  ·  <b className="text-green-700">To</b> Cash/Bank (Debit)</span>
+                <span className="text-gray-400">·  <b className="text-green-700">To</b> Cash/Bank (Debit)  ·  <b className="text-red-700">By</b> Party (Credit)</span>
               </>}
               {nature === "contra"  && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
