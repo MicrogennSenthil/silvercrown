@@ -110,14 +110,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 -- opening balance seed
                 CASE WHEN sl2.opening_balance_type = 'Credit' THEN sl2.opening_balance::numeric
                      ELSE -sl2.opening_balance::numeric END
-                -- add sub_ledger_bills (only those NOT already posted as vouchers)
+                -- add sub_ledger_bills (all bills — GRN amounts tracked here, not in voucher_det)
                 + COALESCE((SELECT SUM(CASE WHEN UPPER(slb.cr_dr)='CR' THEN slb.amount::numeric ELSE -slb.amount::numeric END)
-                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = s.sub_ledger_id
-                            AND NOT EXISTS (
-                              SELECT 1 FROM voucher_mas vm JOIN voucher_det vd2 ON vd2.voucher_mas_id = vm.id
-                              WHERE vm.voucher_no = slb.voucher_no AND vd2.sub_ledger_id = slb.sub_ledger_id
-                            )), 0)
-                -- add posted vouchers (exclude GRN CR — already captured in sub_ledger_bills)
+                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = s.sub_ledger_id), 0)
+                -- add posted vouchers (exclude GRN source — already captured in sub_ledger_bills)
                 + COALESCE((SELECT SUM(CASE WHEN UPPER(vd.dr_cr)='CR' THEN vd.amount::numeric ELSE -vd.amount::numeric END)
                             FROM voucher_det vd
                             JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
@@ -133,11 +129,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 CASE WHEN sl2.opening_balance_type = 'Credit' THEN sl2.opening_balance::numeric
                      ELSE -sl2.opening_balance::numeric END
                 + COALESCE((SELECT SUM(CASE WHEN UPPER(slb.cr_dr)='CR' THEN slb.amount::numeric ELSE -slb.amount::numeric END)
-                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = s.sub_ledger_id
-                            AND NOT EXISTS (
-                              SELECT 1 FROM voucher_mas vm JOIN voucher_det vd2 ON vd2.voucher_mas_id = vm.id
-                              WHERE vm.voucher_no = slb.voucher_no AND vd2.sub_ledger_id = slb.sub_ledger_id
-                            )), 0)
+                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = s.sub_ledger_id), 0)
                 + COALESCE((SELECT SUM(CASE WHEN UPPER(vd.dr_cr)='CR' THEN vd.amount::numeric ELSE -vd.amount::numeric END)
                             FROM voucher_det vd
                             JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
@@ -235,11 +227,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 CASE WHEN sl2.opening_balance_type = 'Debit' THEN sl2.opening_balance::numeric
                      ELSE -sl2.opening_balance::numeric END
                 + COALESCE((SELECT SUM(CASE WHEN UPPER(slb.cr_dr)='DR' THEN slb.amount::numeric ELSE -slb.amount::numeric END)
-                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = c.sub_ledger_id
-                            AND NOT EXISTS (
-                              SELECT 1 FROM voucher_mas vm JOIN voucher_det vd2 ON vd2.voucher_mas_id = vm.id
-                              WHERE vm.voucher_no = slb.voucher_no AND vd2.sub_ledger_id = slb.sub_ledger_id
-                            )), 0)
+                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = c.sub_ledger_id), 0)
                 + COALESCE((SELECT SUM(CASE WHEN UPPER(vd.dr_cr)='DR' THEN vd.amount::numeric ELSE -vd.amount::numeric END)
                             FROM voucher_det vd
                             JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
@@ -255,11 +243,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 CASE WHEN sl2.opening_balance_type = 'Debit' THEN sl2.opening_balance::numeric
                      ELSE -sl2.opening_balance::numeric END
                 + COALESCE((SELECT SUM(CASE WHEN UPPER(slb.cr_dr)='DR' THEN slb.amount::numeric ELSE -slb.amount::numeric END)
-                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = c.sub_ledger_id
-                            AND NOT EXISTS (
-                              SELECT 1 FROM voucher_mas vm JOIN voucher_det vd2 ON vd2.voucher_mas_id = vm.id
-                              WHERE vm.voucher_no = slb.voucher_no AND vd2.sub_ledger_id = slb.sub_ledger_id
-                            )), 0)
+                            FROM sub_ledger_bills slb WHERE slb.sub_ledger_id = c.sub_ledger_id), 0)
                 + COALESCE((SELECT SUM(CASE WHEN UPPER(vd.dr_cr)='DR' THEN vd.amount::numeric ELSE -vd.amount::numeric END)
                             FROM voucher_det vd
                             JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
@@ -1313,10 +1297,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         const voucherRes = await pool.query(`
           SELECT vm.ref_no, vm.voucher_date::text AS txn_date, vm.voucher_no,
-                 vm.voucher_date::text AS voucher_date, vd.amount, vd.dr_cr, vm.source_type, vm.narration
+                 vm.voucher_date::text AS voucher_date, vd.amount, vd.dr_cr, vm.source_type, vm.narration,
+                 grn.payment_mode AS grn_payment_mode
           FROM voucher_det vd
           JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+          LEFT JOIN goods_receipt_notes grn ON grn.id::text = vm.source_id AND vm.source_type = 'grn'
           WHERE vd.sub_ledger_id = $1
+            AND NOT (vm.source_type = 'grn' AND COALESCE(grn.payment_mode, 'Credit') = 'Cash')
           ORDER BY vm.voucher_date, vm.voucher_no, vd.seq_no
         `, [id]);
 
@@ -1342,6 +1329,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             voucherNo: r.voucher_no || "",
             narration: r.narration || "",
             sourceType: r.source_type || "",
+            grnPaymentMode: r.grn_payment_mode || "",
             debit:  drCr === "DR" ? amt : 0,
             credit: drCr === "CR" ? amt : 0,
             balance: Math.abs(balance),
@@ -1471,10 +1459,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           vd.amount,
           vd.dr_cr,
           vm.source_type,
-          vm.narration
+          vm.narration,
+          grn.payment_mode AS grn_payment_mode
         FROM voucher_det vd
         JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
+        LEFT JOIN goods_receipt_notes grn ON grn.id::text = vm.source_id AND vm.source_type = 'grn'
         WHERE vd.sub_ledger_id = $1
+          AND NOT (vm.source_type = 'grn' AND COALESCE(grn.payment_mode, 'Credit') = 'Cash')
         ORDER BY vm.voucher_date, vm.voucher_no, vd.seq_no
       `, [slId]);
 
@@ -1531,6 +1522,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             billType:    "",
             narration:   r.narration  || "",
             sourceType:  r.source_type || "",
+            grnPaymentMode: r.grn_payment_mode || "",
             debit:  drCr === "DR" ? amt : 0,
             credit: drCr === "CR" ? amt : 0,
             balance:     Math.abs(balance),

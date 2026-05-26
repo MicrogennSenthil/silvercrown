@@ -729,7 +729,9 @@ function LedgerForm({
                                 </span>
                               ) : r.sourceType ? (
                                 <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-100 text-gray-500">
-                                  {r.sourceType === "grn" ? "Purchase" : r.sourceType}
+                                  {r.sourceType === "grn"
+                                    ? (r.grnPaymentMode === "Cash" ? "Cash Purchase" : "Credit Purchase")
+                                    : r.sourceType}
                                 </span>
                               ) : "—"}
                             </td>
