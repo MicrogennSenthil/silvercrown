@@ -1956,6 +1956,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // 4. GRNs for supplier linked to this sub-ledger (Sundry Creditors side)
       //    Match by: sl_id (ID-based) OR supplier_name_manual (name-based, using clean name)
+      //    Exclude GRNs that are already represented as a sub_ledger_bill (section 1)
+      //    to avoid double-counting. Also back-fill sl_id on unlinked GRNs by name.
+      await pool.query(`
+        UPDATE goods_receipt_notes g
+        SET sl_id = $1
+        WHERE sl_id IS NULL
+          AND ($2 != '')
+          AND LOWER(TRIM(g.supplier_name_manual)) = LOWER(TRIM($2))
+      `, [subLedgerId, slNameClean]).catch(() => {});
+
       const grns = await pool.query(`
         SELECT
           g.id,
@@ -1970,6 +1980,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         )
           AND g.grand_total::numeric > COALESCE(g.paid_amount::numeric, 0)
           AND COALESCE(g.status,'Draft') NOT IN ('Cancelled','Paid')
+          AND NOT EXISTS (
+            SELECT 1 FROM sub_ledger_bills slb2
+            WHERE slb2.sub_ledger_id = $1
+              AND UPPER(slb2.cr_dr) = 'CR'
+              AND slb2.ref_no = COALESCE(NULLIF(g.bill_no,''), g.voucher_no)
+          )
         ORDER BY COALESCE(g.bill_date, g.grn_date)
       `, [subLedgerId, slNameClean]);
 
