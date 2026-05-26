@@ -119,11 +119,36 @@ export default function StoreIssueIndent() {
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
   const { data: departments = [] } = useQuery<any[]>({ queryKey: ["/api/departments"] });
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allSrns = [] }        = useQuery<any[]>({ queryKey: ["/api/store-request-notes"] });
   const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  // Live closing stock per item_code from item_batch_stock
+  const { data: liveStockMap = {} }   = useQuery<Record<string, number>>({ queryKey: ["/api/item-stock-summary"] });
   const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
 
-  const products = (allProducts as any[]).filter((p: any) => p.is_active !== false && (!rawMatCatId || p.categoryId === rawMatCatId));
+  // Merge inventory items + engineering products — normalise all to snake_case
+  const products = [
+    ...(allInvItems as any[]).map((it: any) => ({
+      id: it.id,
+      code: it.code,
+      name: it.name,
+      uom: it.unit,
+      unit: it.unit,
+      purchase_price: String(it.purchasePrice ?? it.purchase_price ?? "0"),
+      cost_price:     String(it.purchasePrice ?? it.purchase_price ?? "0"),
+      current_stock:  (liveStockMap as Record<string, number>)[it.code] ?? it.currentStock ?? it.current_stock ?? 0,
+      isActive: it.isActive ?? it.is_active ?? true,
+    })),
+    ...(allProducts as any[])
+      .filter((p: any) => p.isActive !== false && p.is_active !== false)
+      .map((p: any) => ({
+        ...p,
+        purchase_price: String(p.purchasePrice ?? p.purchase_price ?? p.rate ?? "0"),
+        cost_price:     String(p.costPrice     ?? p.cost_price     ?? "0"),
+        current_stock:  (liveStockMap as Record<string, number>)[p.code] ?? p.currentStock ?? p.current_stock ?? 0,
+        uom: p.uom || p.unit || "Nos",
+      })),
+  ];
 
   // For Goods Request mode: SRNs filtered by selected store
   const selectedStoreName = (warehouses as any[]).find((w: any) => w.id === form.store_id)?.name || "";
@@ -179,7 +204,8 @@ export default function StoreIssueIndent() {
         const data = await r.json();
         const newItems: SiiItem[] = (data.items || []).map((it: any, i: number) => ({
           sno: 0, item_code: it.item_code || "", item_name: it.item_name || "",
-          stock: +it.stock || 0, issued_qty: +it.qty || 0, unit: it.unit || "Nos",
+          stock: (liveStockMap as Record<string, number>)[it.item_code] ?? (+it.stock || 0),
+          issued_qty: +it.qty || 0, unit: it.unit || "Nos",
           rate: +it.rate || 0, amount: +(it.qty * it.rate) || 0, srn_id: srn.id,
         }));
         setForm(f => {
