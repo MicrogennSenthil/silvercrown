@@ -671,44 +671,83 @@ function LedgerForm({
 }
 
 // ── Sub Ledger List ──────────────────────────────────────────────────────────
+type RowEdit = {
+  name: string; glId: string; levelType: string;
+  paymentType: string; obAmount: string; obType: string; dirty: boolean;
+};
+
 export default function SubLedgerMaster() {
   const [location, setLocation] = useLocation();
 
-  // Parse URL query params for pre-fill from GL tree
   const params = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : ""
   );
-  const urlMode   = params.get("mode");        // "new"
-  const urlGlId   = params.get("glId") || "";
-  const urlCatId  = params.get("catId") || "";
-  const urlFrom   = params.get("from") || "";  // "gl-tree"
+  const urlMode  = params.get("mode");
+  const urlGlId  = params.get("glId") || "";
+  const urlCatId = params.get("catId") || "";
+  const urlFrom  = params.get("from") || "";
 
-  const [view, setView] = useState<"list" | "add" | "edit">(
-    urlMode === "new" ? "add" : "list"
-  );
+  const [view, setView]         = useState<"list" | "add" | "edit">(urlMode === "new" ? "add" : "list");
   const [editItem, setEditItem] = useState<any>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch]     = useState("");
+  const [rowEdits, setRowEdits] = useState<Record<string, RowEdit>>({});
+  const { toast } = useToast();
 
-  // Back handler: if came from GL tree, navigate back there
   function handleBack() {
-    if (urlFrom === "gl-tree") {
-      setLocation("/accounts/general-ledger");
-    } else {
-      setEditItem(null);
-      setView("list");
-    }
+    if (urlFrom === "gl-tree") setLocation("/accounts/general-ledger");
+    else { setEditItem(null); setView("list"); }
   }
 
   const { data: ledgers = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
-  const { data: glList = [] } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
-  const { data: catList = [] } = useQuery<any[]>({ queryKey: ["/api/ledger-categories"] });
-
+  const { data: glList  = [] }            = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
+  const { data: catList = [] }            = useQuery<any[]>({ queryKey: ["/api/ledger-categories"] });
   const qc = useQueryClient();
 
-  const glMap: Record<string, string> = {};
+  const glMap:  Record<string, string> = {};
   glList.forEach((g: any) => { glMap[g.id] = g.name; });
   const catMap: Record<string, string> = {};
   catList.forEach((c: any) => { catMap[c.id] = c.name; });
+  const glCatMap: Record<string, string> = {};
+  glList.forEach((g: any) => { if (g.categoryId) glCatMap[g.id] = g.categoryId; });
+
+  // Sync row edits from server (only non-dirty rows)
+  useEffect(() => {
+    setRowEdits(prev => {
+      const next: Record<string, RowEdit> = {};
+      (ledgers as any[]).forEach((r: any) => {
+        if (prev[r.id]?.dirty) { next[r.id] = prev[r.id]; return; }
+        next[r.id] = {
+          name: r.name || "", glId: r.generalLedgerId || "",
+          levelType: r.levelType || "Same", paymentType: r.paymentType || "BillToBill",
+          obAmount: r.openingBalance || "0", obType: r.openingBalanceType || "Credit",
+          dirty: false,
+        };
+      });
+      return next;
+    });
+  }, [ledgers]);
+
+  function updateRow(id: string, field: keyof Omit<RowEdit, "dirty">, val: string) {
+    setRowEdits(prev => ({ ...prev, [id]: { ...prev[id], [field]: val, dirty: true } }));
+  }
+
+  const saveRowMut = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const res = await fetch(`/api/sub-ledgers/${id}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (_, { id }) => {
+      setRowEdits(prev => ({ ...prev, [id]: { ...prev[id], dirty: false } }));
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
+      toast({ title: "Saved" });
+    },
+    onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) =>
@@ -716,35 +755,24 @@ export default function SubLedgerMaster() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] }),
   });
 
-  async function handleEdit(r: any) {
-    const res = await fetch(`/api/sub-ledgers/${r.id}`, { credentials: "include" });
+  async function openBillsForm(r: any) {
+    const res  = await fetch(`/api/sub-ledgers/${r.id}`, { credentials: "include" });
     const data = await res.json();
-    setEditItem(data);
-    setView("edit");
+    setEditItem(data); setView("edit");
   }
 
-  const filtered = ledgers.filter(r =>
+  const filtered = (ledgers as any[]).filter(r =>
     r.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (view === "add") return (
-    <LedgerForm
-      onBack={handleBack}
-      initialGlId={urlGlId}
-      initialCatId={urlCatId}
-    />
-  );
-  if (view === "edit") return (
-    <LedgerForm
-      key={editItem?.id}
-      item={editItem}
-      onBack={handleBack}
-    />
-  );
+  if (view === "add") return <LedgerForm onBack={handleBack} initialGlId={urlGlId} initialCatId={urlCatId} />;
+  if (view === "edit") return <LedgerForm key={editItem?.id} item={editItem} onBack={handleBack} />;
+
+  const iCell = "w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] bg-white";
 
   return (
-    <div className="p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
-      <div className="max-w-5xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
+    <div className="p-4" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
+      <div className="max-w-full mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h1 className="font-semibold text-gray-800 text-base">Ledger</h1>
@@ -755,76 +783,152 @@ export default function SubLedgerMaster() {
               className="px-3 py-1.5 text-sm border border-gray-200 rounded w-56 outline-none focus:border-[#027fa5]"
               data-testid="input-search"
             />
+            <button onClick={() => setView("add")}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
         </div>
 
-        {/* Table */}
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: SC.tonal }}>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700 w-12">S.no</th>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Ledger Name</th>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Parent Ledger</th>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Category</th>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Level</th>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Payment</th>
-              <th className="px-5 py-2.5 text-right font-semibold text-gray-700">Opening Bal</th>
-              <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Status</th>
-              <th className="px-3 py-2.5 w-10"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr><td colSpan={9} className="px-5 py-8 text-center text-gray-400 text-sm">Loading...</td></tr>
-            )}
-            {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={9} className="px-5 py-8 text-center text-gray-400 text-sm">No ledgers found</td></tr>
-            )}
-            {filtered.map((r, i) => (
-              <tr key={r.id} className={`border-t border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
-                data-testid={`row-subledger-${r.id}`}>
-                <td className="px-5 py-2.5 text-gray-500">{i + 1}</td>
-                <td className="px-5 py-2.5 font-medium text-gray-800">{r.name}</td>
-                <td className="px-5 py-2.5 text-gray-600">{glMap[r.generalLedgerId] || <span className="text-gray-300">—</span>}</td>
-                <td className="px-5 py-2.5 text-gray-600">{catMap[r.categoryId] || <span className="text-gray-300">—</span>}</td>
-                <td className="px-5 py-2.5">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.levelType === "Next" ? "bg-orange-50 text-orange-700" : "bg-blue-50 text-blue-700"}`}>
-                    {r.levelType === "Next" ? "Next Level" : "Same Level"}
-                  </span>
-                </td>
-                <td className="px-5 py-2.5">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.paymentType === "BillToBill" ? "bg-purple-50 text-purple-700" : "bg-teal-50 text-teal-700"}`}>
-                    {r.paymentType === "BillToBill" ? "Bill to Bill" : "On Account"}
-                  </span>
-                </td>
-                <td className="px-5 py-2.5 text-right font-mono text-xs text-gray-700">
-                  {fmt(r.openingBalance)} <span className="text-gray-400">{r.openingBalanceType === "Credit" ? "Cr" : "Dr"}</span>
-                </td>
-                <td className="px-5 py-2.5">
-                  <span className={`text-xs font-semibold ${r.isActive ? "text-green-600" : "text-red-400"}`}>
-                    {r.isActive ? "Active" : "Inactive"}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5">
-                  <button onClick={() => handleEdit(r)}
-                    className="p-1.5 rounded hover:bg-blue-50" style={{ color: SC.primary }}
-                    data-testid={`btn-edit-${r.id}`}>
-                    <PencilLine size={14} />
-                  </button>
-                </td>
+        {/* Inline-editable table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr style={{ background: SC.tonal }}>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-10 text-xs">S.no</th>
+                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[160px]">Ledger Name</th>
+                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[160px]">Parent Ledger</th>
+                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[110px]">Category</th>
+                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[110px]">Level</th>
+                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[120px]">Payment</th>
+                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[160px]">Opening Bal</th>
+                <th className="px-2 py-2.5 text-center font-semibold text-gray-700 text-xs w-28">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400 text-sm">Loading...</td></tr>
+              )}
+              {!isLoading && filtered.length === 0 && (
+                <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400 text-sm">No ledgers found. Click Add to create one.</td></tr>
+              )}
+              {filtered.map((r, i) => {
+                const e = rowEdits[r.id];
+                if (!e) return null;
+                const catId = glCatMap[e.glId] || r.categoryId || "";
+                const isPending = saveRowMut.isPending && (saveRowMut.variables as any)?.id === r.id;
+                return (
+                  <tr key={r.id}
+                    className={`border-t border-gray-100 ${e.dirty ? "bg-blue-50/30" : i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
+                    data-testid={`row-subledger-${r.id}`}>
+                    {/* S.No */}
+                    <td className="px-3 py-1.5 text-gray-400 text-xs text-center">{i + 1}</td>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-          <button
-            className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-            style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-          <button onClick={() => setView("add")}
-            className="px-8 py-2 rounded text-sm font-semibold text-white"
-            style={{ background: SC.orange }} data-testid="btn-add">Add</button>
+                    {/* Ledger Name */}
+                    <td className="px-2 py-1.5">
+                      <input value={e.name} onChange={ev => updateRow(r.id, "name", ev.target.value)}
+                        className={iCell} placeholder="Ledger name"
+                        data-testid={`input-name-${r.id}`} />
+                    </td>
+
+                    {/* Parent GL */}
+                    <td className="px-2 py-1.5">
+                      <select value={e.glId} onChange={ev => updateRow(r.id, "glId", ev.target.value)}
+                        className={iCell} data-testid={`select-gl-${r.id}`}>
+                        <option value="">-- Select --</option>
+                        {glList.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </td>
+
+                    {/* Category (auto) */}
+                    <td className="px-2 py-1.5">
+                      <div className="text-xs text-gray-500 px-1">{catMap[catId] || <span className="text-gray-300">—</span>}</div>
+                    </td>
+
+                    {/* Level */}
+                    <td className="px-2 py-1.5">
+                      <select value={e.levelType} onChange={ev => updateRow(r.id, "levelType", ev.target.value)}
+                        className={iCell} data-testid={`select-level-${r.id}`}>
+                        <option value="Same">Same Level</option>
+                        <option value="Next">Next Level</option>
+                      </select>
+                    </td>
+
+                    {/* Payment */}
+                    <td className="px-2 py-1.5">
+                      <select value={e.paymentType} onChange={ev => updateRow(r.id, "paymentType", ev.target.value)}
+                        className={iCell} data-testid={`select-payment-${r.id}`}>
+                        <option value="OnAccount">On Account</option>
+                        <option value="BillToBill">Bill to Bill</option>
+                      </select>
+                    </td>
+
+                    {/* Opening Bal */}
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center gap-1">
+                        <input type="number" value={e.obAmount}
+                          onChange={ev => updateRow(r.id, "obAmount", ev.target.value)}
+                          className={`${iCell} text-right w-24`} placeholder="0.00"
+                          data-testid={`input-ob-${r.id}`} />
+                        <div className="flex border border-gray-200 rounded overflow-hidden text-[10px] font-semibold h-[26px] flex-shrink-0">
+                          <button type="button" onClick={() => updateRow(r.id, "obType", "Credit")}
+                            className="px-2 transition-colors"
+                            style={e.obType === "Credit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#9ca3af" }}>
+                            Cr
+                          </button>
+                          <button type="button" onClick={() => updateRow(r.id, "obType", "Debit")}
+                            className="px-2 transition-colors"
+                            style={e.obType === "Debit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#9ca3af" }}>
+                            Dr
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center justify-center gap-1">
+                        {/* Save */}
+                        <button
+                          onClick={() => saveRowMut.mutate({
+                            id: r.id,
+                            data: {
+                              name: e.name, generalLedgerId: e.glId || null,
+                              categoryId: catId || null,
+                              levelType: e.levelType, paymentType: e.paymentType,
+                              openingBalance: e.obAmount, openingBalanceType: e.obType,
+                              bills: [],
+                            },
+                          })}
+                          disabled={!e.dirty || isPending}
+                          className="px-2 py-1 rounded text-[10px] font-semibold text-white disabled:opacity-30 transition-opacity"
+                          style={{ background: SC.primary }}
+                          title="Save this row"
+                          data-testid={`btn-save-${r.id}`}>
+                          {isPending ? "…" : "Save"}
+                        </button>
+                        {/* Bills / Full Edit */}
+                        <button onClick={() => openBillsForm(r)}
+                          className="p-1 rounded hover:bg-blue-50 text-xs font-medium flex items-center gap-0.5"
+                          style={{ color: SC.primary }}
+                          title="Edit bills & full details"
+                          data-testid={`btn-bills-${r.id}`}>
+                          <PencilLine size={12} /> Bills
+                        </button>
+                        {/* Delete */}
+                        <button onClick={() => { if (confirm(`Delete "${r.name}"?`)) deleteMut.mutate(r.id); }}
+                          className="p-1 rounded hover:bg-red-50 text-red-400 hover:text-red-600"
+                          title="Delete" data-testid={`btn-delete-${r.id}`}>
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
