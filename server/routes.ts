@@ -1802,6 +1802,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const bills: any[] = [];
 
+      // Fetch sub-ledger name once — used for name-based fallback matching in sections 2, 3, 4
+      const slNameRes = await pool.query(`SELECT name FROM sub_ledgers WHERE id=$1`, [subLedgerId]);
+      const slName      = slNameRes.rows[0]?.name || "";
+      // Strip trailing type-suffix like (C), (S), (D), (Cr), (Dr) so the clean name
+      // matches supplier_name_manual / supplier.name / customer.name in the DB
+      const slNameClean = slName.replace(/\s*\([A-Za-z]+\)\s*$/, "").trim();
+
       // 1. Opening balance bills from sub_ledger_bills (Cr = supplier owes creditor balance)
       const slBills = await pool.query(`
         SELECT
@@ -1837,8 +1844,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // 2. Purchase invoices for the supplier linked to this sub-ledger (Sundry Creditors)
+      //    Primary: sub_ledger_id match; Fallback: name match (handles unlinked suppliers)
       const supplierRes = await pool.query(
-        `SELECT id FROM suppliers WHERE sub_ledger_id = $1 LIMIT 1`, [subLedgerId]
+        `SELECT id FROM suppliers WHERE sub_ledger_id = $1
+           OR LOWER(TRIM(name)) = LOWER(TRIM($2)) LIMIT 1`,
+        [subLedgerId, slNameClean]
       );
       if (supplierRes.rows.length > 0) {
         const supplierId = supplierRes.rows[0].id;
@@ -1872,8 +1882,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // 3. Sales invoices for the customer linked to this sub-ledger (Sundry Debtors)
+      //    Primary: sub_ledger_id match; Fallback: name match
       const customerRes = await pool.query(
-        `SELECT id FROM customers WHERE sub_ledger_id = $1 LIMIT 1`, [subLedgerId]
+        `SELECT id FROM customers WHERE sub_ledger_id = $1
+           OR LOWER(TRIM(name)) = LOWER(TRIM($2)) LIMIT 1`,
+        [subLedgerId, slNameClean]
       );
       if (customerRes.rows.length > 0) {
         const customerId = customerRes.rows[0].id;
@@ -1942,11 +1955,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // 4. GRNs for supplier linked to this sub-ledger (Sundry Creditors side)
-      //    Match by: supplier_id = subLedgerId (new GRNs store sub-ledger ID)
-      //              OR by name match (legacy GRNs stored only supplier_name_manual)
-      const slNameRes = await pool.query(`SELECT name FROM sub_ledgers WHERE id=$1`, [subLedgerId]);
-      const slName = slNameRes.rows[0]?.name || "";
-
+      //    Match by: sl_id (ID-based) OR supplier_name_manual (name-based, using clean name)
       const grns = await pool.query(`
         SELECT
           g.id,
@@ -1962,7 +1971,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND g.grand_total::numeric > COALESCE(g.paid_amount::numeric, 0)
           AND COALESCE(g.status,'Draft') NOT IN ('Cancelled','Paid')
         ORDER BY COALESCE(g.bill_date, g.grn_date)
-      `, [subLedgerId, slName]);
+      `, [subLedgerId, slNameClean]);
 
       const seenGrnIds = new Set<string>();
       for (const r of grns.rows) {
