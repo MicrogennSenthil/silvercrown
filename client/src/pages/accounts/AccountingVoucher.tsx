@@ -830,10 +830,10 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
             <table className="w-full">
               <thead>
                 <tr style={{ background: SC.tonal }}>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-600 w-10">#</th>
-                  <th className="px-2 py-2.5 text-left text-xs font-bold text-gray-600 w-12">Dr/Cr</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-600">Particulars / Account</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-bold text-gray-600 w-36">Amount (₹)</th>
+                  <th className="px-3 py-2.5 text-center text-xs font-bold text-gray-600 w-10">S.No</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-600">Description / Account</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-bold w-36" style={{ color: "#b91c1c" }}>Dr (₹)</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-bold w-36" style={{ color: "#15803d" }}>Cr (₹)</th>
                   <th className="w-7"></th>
                 </tr>
               </thead>
@@ -843,14 +843,12 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                   const filtSls    = applyFilter(allSubs, f);
                   const fhint      = filterLabel(f);
                   const isDr       = l.drCr === "DR";
-                  const label      = drCrLabel(l.drCr);
                   const hasAccount = !!(l.subLedgerId || l.generalLedgerId);
                   const suggested  = !l.amount && hasAccount ? suggestedAmount(l, i) : "";
                   const isEmpty    = !hasAccount && !l.amount;
                   const isLast     = i === lines.length - 1;
                   const canToggle  = nature === "journal";
                   const lineErr    = touched ? validationErrors.find(e => e.key === l._key) : null;
-                  // Per-row cap: detail (By) rows in non-journal vouchers
                   const rowMaxAllowed = (!l.isMain && nature !== "journal" && mainAmt > 0)
                     ? Math.max(0, mainAmt - lines.filter(x => !x.isMain && x._key !== l._key).reduce((s, x) => s + parseAmt(x.amount), 0))
                     : undefined;
@@ -867,38 +865,50 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                       }`}
                       data-testid={`row-voucher-line-${i}`}>
 
-                      {/* # */}
-                      <td className="px-3 py-2 text-center text-gray-400 text-xs font-mono">
-                        {String(i + 1).padStart(2, "0")}
-                      </td>
-
-                      {/* By / To badge */}
+                      {/* S.No — for journal: doubles as Dr/Cr toggle badge */}
                       <td className="px-2 py-2 text-center">
-                        <button type="button"
-                          onClick={() => canToggle && toggleJournalDrCr(l._key)}
-                          disabled={!canToggle}
-                          title={canToggle ? "Click to toggle Debit/Credit" : (isDr ? "Debit (By)" : "Credit (To)")}
-                          className="text-xs font-bold px-2 py-1 rounded w-10 transition-colors"
-                          style={isDr
-                            ? { background: "#fef2f2", color: "#b91c1c", border: "1px solid #fca5a5", cursor: canToggle ? "pointer" : "default" }
-                            : { background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac", cursor: canToggle ? "pointer" : "default" }}
-                          data-testid={`badge-dr-cr-${i}`}>
-                          {label}
-                        </button>
+                        {canToggle ? (
+                          <button type="button"
+                            onClick={() => toggleJournalDrCr(l._key)}
+                            title="Click to toggle Debit/Credit"
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded w-full transition-colors"
+                            style={isDr
+                              ? { background: "#fef2f2", color: "#b91c1c", border: "1px solid #fca5a5" }
+                              : { background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}
+                            data-testid={`badge-dr-cr-${i}`}>
+                            {isDr ? "Dr" : "Cr"}
+                          </button>
+                        ) : (
+                          <span className="text-gray-400 text-xs font-mono">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                        )}
                       </td>
 
-                      {/* Account */}
+                      {/* Description / Account */}
                       <td className="px-2 py-2">
-                        <SlPicker
-                          value={l.subLedgerId || l.generalLedgerId || ""} name={l.subLedgerName}
-                          onChange={(id, name, isGl) => selectAccount(l._key, id, name, isGl)}
-                          subLedgers={filtSls} hint={fhint}
-                          amountRef={{ current: amtRefs.current[l._key] }}
-                        />
-                        {/* Inline: split remaining hint */}
+                        <div className="flex items-center gap-1.5">
+                          {/* Dr/Cr label pill (non-journal) */}
+                          {!canToggle && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+                              style={isDr
+                                ? { background: "#fef2f2", color: "#b91c1c" }
+                                : { background: "#f0fdf4", color: "#15803d" }}>
+                              {isDr ? "Dr" : "Cr"}
+                            </span>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <SlPicker
+                              value={l.subLedgerId || l.generalLedgerId || ""} name={l.subLedgerName}
+                              onChange={(id, name, isGl) => selectAccount(l._key, id, name, isGl)}
+                              subLedgers={filtSls} hint={fhint}
+                              amountRef={{ current: amtRefs.current[l._key] }}
+                            />
+                          </div>
+                        </div>
                         {l.isMain && nature !== "journal" && mainAmt > 0 && splitRemaining > 0.005 && (
                           <div className="text-[11px] text-amber-600 mt-0.5 pl-1 flex items-center gap-1">
-                            <AlertCircle size={10} /> Remaining to split: ₹{fmtAmt(splitRemaining)}
+                            <AlertCircle size={10} /> Remaining: ₹{fmtAmt(splitRemaining)}
                           </div>
                         )}
                         {lineErr?.field === "account" && (
@@ -906,39 +916,88 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                         )}
                       </td>
 
-                      {/* Amount */}
-                      <td className="px-2 py-2">
-                        <div className="relative">
-                          <input
-                            ref={el => { amtRefs.current[l._key] = el; }}
-                            type="number" min={0}
-                            max={rowMaxAllowed !== undefined ? rowMaxAllowed : undefined}
-                            value={l.amount}
-                            onChange={e => setAmount(l._key, e.target.value)}
-                            onBlur={() => { if (!l.amount && suggested) setAmount(l._key, suggested); }}
-                            onKeyDown={e => handleAmountTab(l._key, e)}
-                            placeholder={isFullyAllocated ? "Fully allocated" : (suggested || "0.00")}
-                            disabled={isFullyAllocated}
-                            className={`w-full border rounded px-2 h-[32px] text-sm text-right outline-none transition-colors font-mono ${
-                              isFullyAllocated
-                                ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed"
-                                : lineErr?.field === "amount"
-                                  ? "border-red-400 bg-red-50 focus:border-red-500"
-                                  : "border-gray-200 focus:border-[#027fa5] bg-white"
-                            }`}
-                            data-testid={`input-amount-${i}`}
-                          />
-                          {suggested && !l.amount && !isFullyAllocated && (
-                            <span className="absolute right-7 top-1/2 -translate-y-1/2 text-[10px] text-amber-500 pointer-events-none">↑ suggested</span>
-                          )}
-                          {isFullyAllocated && (
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">✓ full</span>
-                          )}
-                        </div>
-                        {lineErr?.field === "amount" && (
+                      {/* Dr amount column */}
+                      <td className="px-2 py-2 w-36">
+                        {isDr ? (
+                          <div className="relative">
+                            <input
+                              ref={el => { amtRefs.current[l._key] = el; }}
+                              type="number" min={0}
+                              max={rowMaxAllowed !== undefined ? rowMaxAllowed : undefined}
+                              value={l.amount}
+                              onChange={e => setAmount(l._key, e.target.value)}
+                              onBlur={() => { if (!l.amount && suggested) setAmount(l._key, suggested); }}
+                              onKeyDown={e => handleAmountTab(l._key, e)}
+                              placeholder={isFullyAllocated ? "Fully allocated" : (suggested || "0.00")}
+                              disabled={isFullyAllocated}
+                              className={`w-full border rounded px-2 h-[32px] text-sm text-right outline-none transition-colors font-mono ${
+                                isFullyAllocated
+                                  ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed"
+                                  : lineErr?.field === "amount"
+                                    ? "border-red-400 bg-red-50 focus:border-red-500"
+                                    : "border-red-200 focus:border-red-400 bg-white"
+                              }`}
+                              data-testid={`input-amount-dr-${i}`}
+                            />
+                            {suggested && !l.amount && !isFullyAllocated && (
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-amber-500 pointer-events-none">↑</span>
+                            )}
+                            {isFullyAllocated && (
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">✓</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="h-[32px] flex items-center justify-end px-2 rounded text-sm font-mono text-gray-300 bg-gray-50/60 select-none border border-transparent">
+                            —
+                          </div>
+                        )}
+                        {isDr && lineErr?.field === "amount" && (
                           <div className="text-[11px] text-red-500 mt-0.5 text-right">{lineErr.msg}</div>
                         )}
-                        {rowMaxAllowed !== undefined && rowMaxAllowed > 0.005 && !l.amount && hasAccount && (
+                        {isDr && rowMaxAllowed !== undefined && rowMaxAllowed > 0.005 && !l.amount && hasAccount && (
+                          <div className="text-[10px] text-gray-400 mt-0.5 text-right">max ₹{fmtAmt(rowMaxAllowed)}</div>
+                        )}
+                      </td>
+
+                      {/* Cr amount column */}
+                      <td className="px-2 py-2 w-36">
+                        {!isDr ? (
+                          <div className="relative">
+                            <input
+                              ref={el => { amtRefs.current[l._key] = el; }}
+                              type="number" min={0}
+                              max={rowMaxAllowed !== undefined ? rowMaxAllowed : undefined}
+                              value={l.amount}
+                              onChange={e => setAmount(l._key, e.target.value)}
+                              onBlur={() => { if (!l.amount && suggested) setAmount(l._key, suggested); }}
+                              onKeyDown={e => handleAmountTab(l._key, e)}
+                              placeholder={isFullyAllocated ? "Fully allocated" : (suggested || "0.00")}
+                              disabled={isFullyAllocated}
+                              className={`w-full border rounded px-2 h-[32px] text-sm text-right outline-none transition-colors font-mono ${
+                                isFullyAllocated
+                                  ? "border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed"
+                                  : lineErr?.field === "amount"
+                                    ? "border-red-400 bg-red-50 focus:border-red-500"
+                                    : "border-green-200 focus:border-green-400 bg-white"
+                              }`}
+                              data-testid={`input-amount-cr-${i}`}
+                            />
+                            {suggested && !l.amount && !isFullyAllocated && (
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-amber-500 pointer-events-none">↑</span>
+                            )}
+                            {isFullyAllocated && (
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">✓</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="h-[32px] flex items-center justify-end px-2 rounded text-sm font-mono text-gray-300 bg-gray-50/60 select-none border border-transparent">
+                            —
+                          </div>
+                        )}
+                        {!isDr && lineErr?.field === "amount" && (
+                          <div className="text-[11px] text-red-500 mt-0.5 text-right">{lineErr.msg}</div>
+                        )}
+                        {!isDr && rowMaxAllowed !== undefined && rowMaxAllowed > 0.005 && !l.amount && hasAccount && (
                           <div className="text-[10px] text-gray-400 mt-0.5 text-right">max ₹{fmtAmt(rowMaxAllowed)}</div>
                         )}
                       </td>
@@ -961,20 +1020,23 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               {/* Totals footer */}
               <tfoot>
                 <tr className="border-t-2 border-gray-200" style={{ background: "#f8fafc" }}>
-                  <td colSpan={3} className="px-4 py-2.5 text-sm font-bold text-gray-700">Grand Total</td>
+                  <td colSpan={2} className="px-4 py-2.5 text-sm font-bold text-gray-700">
+                    Grand Total
+                    {!balanced && totalDr + totalCr > 0 && (
+                      <span className="ml-3 text-[11px] font-semibold text-amber-600">
+                        Diff: ₹{fmtAmt(Math.abs(diff))} {diff > 0 ? "(Dr excess)" : "(Cr excess)"}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 text-right">
-                    <div className="flex flex-col items-end gap-0.5">
-                      <div className="flex items-center gap-3 text-xs">
-                        <span className="text-red-700 font-mono font-bold">Dr ₹{fmtAmt(totalDr)}</span>
-                        <span className="text-gray-300">|</span>
-                        <span className="text-green-700 font-mono font-bold">Cr ₹{fmtAmt(totalCr)}</span>
-                      </div>
-                      {!balanced && totalDr + totalCr > 0 && (
-                        <div className="text-[11px] font-semibold text-amber-600">
-                          Diff: ₹{fmtAmt(Math.abs(diff))} {diff > 0 ? "(Dr excess)" : "(Cr excess)"}
-                        </div>
-                      )}
-                    </div>
+                    <span className="font-mono font-bold text-sm" style={{ color: "#b91c1c" }}>
+                      ₹{fmtAmt(totalDr)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right">
+                    <span className="font-mono font-bold text-sm" style={{ color: "#15803d" }}>
+                      ₹{fmtAmt(totalCr)}
+                    </span>
                   </td>
                   <td></td>
                 </tr>
