@@ -5004,7 +5004,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         SELECT
           po.id, po.voucher_no, po.po_date, po.status, po.payment_mode, po.priority,
           po.supplier_id, po.supplier_name_manual,
-          c.name AS supplier_name_db,
+          COALESCE(s.name, po.supplier_name_manual, '') AS supplier_name,
           COALESCE(
             (SELECT SUM(poi.total) FROM purchase_order_items poi WHERE poi.po_id = po.id), 0
           ) +
@@ -5030,7 +5030,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             (SELECT string_agg(poi.rate::text, ' ') FROM purchase_order_items poi WHERE poi.po_id = po.id), ''
           ) AS item_rates
         FROM purchase_orders po
-        LEFT JOIN customers c ON c.id = po.supplier_id
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
         WHERE po.status != 'Cancelled'
         ORDER BY po.created_at DESC
       `);
