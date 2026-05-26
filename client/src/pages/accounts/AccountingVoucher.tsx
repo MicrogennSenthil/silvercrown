@@ -424,7 +424,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   const { data: voucherTypes = [] } = useQuery<any[]>({ queryKey: ["/api/voucher-types"] });
   const { data: allSubs = [] }      = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/with-gl"] });
 
-  const [vtId,      setVtId]      = useState(editData?.voucherTypeId || "");
+  const [vtId,      setVtId]      = useState(editData?.voucher_type_id || "");
   const [vtCode,    setVtCode]    = useState(editData?.voucher_type || "");
   const [vtName,    setVtName]    = useState(editData?.voucher_type_name || editData?.voucher_type || "");
   const [voucherNo, setVoucherNo] = useState(editData?.voucher_no || "");

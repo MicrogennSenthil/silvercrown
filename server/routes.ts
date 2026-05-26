@@ -1761,7 +1761,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { pool } = await import("./db");
       const [hdr, det] = await Promise.all([
-        pool.query(`SELECT vm.*, vt.name AS voucher_type_name FROM voucher_mas vm LEFT JOIN voucher_types vt ON vt.code=vm.voucher_type WHERE vm.id=$1`, [req.params.id]),
+        pool.query(`SELECT vm.*, vt.id AS voucher_type_id, vt.name AS voucher_type_name FROM voucher_mas vm LEFT JOIN voucher_types vt ON vt.code=vm.voucher_type WHERE vm.id=$1`, [req.params.id]),
         pool.query(`
           SELECT vd.*, sl.name AS sl_name, sl.code AS sl_code, gl.name AS gl_name
           FROM voucher_det vd
