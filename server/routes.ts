@@ -1431,38 +1431,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const obAmt = parseFloat(sl?.opening_balance || "0");
       const obType = sl?.opening_balance_type || "Credit";
 
-      // Merge and sort all rows
-      const rows = [
-        ...billsRes.rows,
-        ...voucherRes.rows,
-      ].sort((a, b) => {
-        const da = new Date(a.txn_date || "1900-01-01").getTime();
-        const db2 = new Date(b.txn_date || "1900-01-01").getTime();
-        return da - db2;
-      });
-
-      // Compute running balance (Credit positive, Debit negative from opening)
+      // Running balance starts at the stored opening balance.
+      // Opening bills (sub_ledger_bills) are the BREAKDOWN of that opening balance —
+      // they are shown in the statement for reference but do NOT move the balance.
+      // Only posted voucher entries (purchases, sales, payments, receipts) change it.
       let balance = obType === "Credit" ? obAmt : -obAmt;
-      const statement = rows.map(r => {
-        const amt = parseFloat(r.amount || "0");
+
+      // Bill rows — shown but balance is frozen at OB for each row
+      const billRows = billsRes.rows.map((r: any) => {
+        const amt  = parseFloat(r.amount || "0");
         const drCr = (r.dr_cr || "CR").toUpperCase();
-        if (drCr === "CR") balance += amt;
-        else balance -= amt;
         return {
-          billId: r.bill_id || "",
-          refNo: r.ref_no || "",
-          txnDate: r.txn_date ? String(r.txn_date).slice(0, 10) : "",
-          voucherNo: r.voucher_no || "",
+          billId:      r.bill_id || "",
+          refNo:       r.ref_no  || "",
+          txnDate:     r.txn_date     ? String(r.txn_date).slice(0, 10)     : "",
+          voucherNo:   r.voucher_no   || "",
           voucherDate: r.voucher_date ? String(r.voucher_date).slice(0, 10) : "",
-          billType: r.bill_type || "",
-          narration: r.narration || "",
-          sourceType: r.source_type || "",
-          debit: drCr === "DR" ? amt : 0,
+          billType:    r.bill_type    || "",
+          narration:   "",
+          sourceType:  r.source_type  || "Opening Bill",
+          debit:  drCr === "DR" ? amt : 0,
           credit: drCr === "CR" ? amt : 0,
-          balance: Math.abs(balance),
+          balance:     Math.abs(balance),          // OB — not changed by bill rows
           balanceType: balance >= 0 ? "Cr" : "Dr",
         };
       });
+
+      // Voucher rows — each one updates the running balance
+      const voucherRows = voucherRes.rows
+        .sort((a: any, b: any) =>
+          new Date(a.txn_date || "1900-01-01").getTime() -
+          new Date(b.txn_date || "1900-01-01").getTime()
+        )
+        .map((r: any) => {
+          const amt  = parseFloat(r.amount || "0");
+          const drCr = (r.dr_cr || "DR").toUpperCase();
+          if (drCr === "CR") balance += amt; else balance -= amt;
+          return {
+            billId:      "",
+            refNo:       r.ref_no     || "",
+            txnDate:     r.txn_date   ? String(r.txn_date).slice(0, 10)   : "",
+            voucherNo:   r.voucher_no || "",
+            voucherDate: r.voucher_date ? String(r.voucher_date).slice(0, 10) : "",
+            billType:    "",
+            narration:   r.narration  || "",
+            sourceType:  r.source_type || "",
+            debit:  drCr === "DR" ? amt : 0,
+            credit: drCr === "CR" ? amt : 0,
+            balance:     Math.abs(balance),
+            balanceType: balance >= 0 ? "Cr" : "Dr",
+          };
+        });
+
+      // Opening bills first (by ref_date), then voucher transactions (by voucher_date)
+      const statement = [...billRows, ...voucherRows];
 
       res.json({
         openingBalance: obAmt,
