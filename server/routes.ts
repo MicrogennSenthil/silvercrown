@@ -5093,7 +5093,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       res.json(rows.map((r: any) => ({
         id: r.id, voucher_no: r.voucher_no, po_date: r.po_date,
         status: r.status, payment_mode: r.payment_mode, priority: r.priority,
-        supplier_name: r.supplier_name_db || r.supplier_name_manual || "",
+        supplier_name: r.supplier_name || r.supplier_name_manual || "",
         bill_value: parseFloat(r.bill_value)||0,
         decisions: r.decisions || [],
         approver_user_id: r.approver_user_id || null,
