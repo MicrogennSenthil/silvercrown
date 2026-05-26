@@ -810,7 +810,7 @@ function LedgerForm({
 // ── Sub Ledger List ──────────────────────────────────────────────────────────
 type RowEdit = {
   name: string; glId: string; levelType: string;
-  paymentType: string; obAmount: string; obType: string; dirty: boolean;
+  paymentType: string; obAmount: string; obType: string;
 };
 
 export default function SubLedgerMaster() {
@@ -824,10 +824,11 @@ export default function SubLedgerMaster() {
   const urlCatId = params.get("catId") || "";
   const urlFrom  = params.get("from") || "";
 
-  const [view, setView]         = useState<"list" | "add" | "edit">(urlMode === "new" ? "add" : "list");
-  const [editItem, setEditItem] = useState<any>(null);
-  const [search, setSearch]     = useState("");
-  const [rowEdits, setRowEdits] = useState<Record<string, RowEdit>>({});
+  const [view, setView]           = useState<"list" | "add" | "edit">(urlMode === "new" ? "add" : "list");
+  const [editItem, setEditItem]   = useState<any>(null);
+  const [search, setSearch]       = useState("");
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [rowDraft, setRowDraft]   = useState<RowEdit | null>(null);
   const { toast } = useToast();
 
   function handleBack() {
@@ -847,26 +848,19 @@ export default function SubLedgerMaster() {
   const glCatMap: Record<string, string> = {};
   glList.forEach((g: any) => { if (g.categoryId) glCatMap[g.id] = g.categoryId; });
 
-  // Sync row edits from server (only non-dirty rows)
-  useEffect(() => {
-    setRowEdits(prev => {
-      const next: Record<string, RowEdit> = {};
-      (ledgers as any[]).forEach((r: any) => {
-        if (prev[r.id]?.dirty) { next[r.id] = prev[r.id]; return; }
-        next[r.id] = {
-          name: r.name || "", glId: r.generalLedgerId || "",
-          levelType: r.levelType || "Same", paymentType: r.paymentType || "BillToBill",
-          obAmount: r.openingBalance || "0", obType: r.openingBalanceType || "Credit",
-          dirty: false,
-        };
-      });
-      return next;
+  function startEditRow(r: any) {
+    setEditingRowId(r.id);
+    setRowDraft({
+      name: r.name || "",
+      glId: r.generalLedgerId || "",
+      levelType: r.levelType || "Same",
+      paymentType: r.paymentType || "BillToBill",
+      obAmount: r.openingBalance || "0",
+      obType: r.openingBalanceType || "Credit",
     });
-  }, [ledgers]);
-
-  function updateRow(id: string, field: keyof Omit<RowEdit, "dirty">, val: string) {
-    setRowEdits(prev => ({ ...prev, [id]: { ...prev[id], [field]: val, dirty: true } }));
   }
+
+  function cancelEdit() { setEditingRowId(null); setRowDraft(null); }
 
   const saveRowMut = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: any }) => {
@@ -878,8 +872,8 @@ export default function SubLedgerMaster() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
-    onSuccess: (_, { id }) => {
-      setRowEdits(prev => ({ ...prev, [id]: { ...prev[id], dirty: false } }));
+    onSuccess: () => {
+      setEditingRowId(null); setRowDraft(null);
       qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
       toast({ title: "Saved" });
     },
@@ -928,19 +922,19 @@ export default function SubLedgerMaster() {
           </div>
         </div>
 
-        {/* Inline-editable table */}
+        {/* Read-only table — one row editable at a time */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr style={{ background: SC.tonal }}>
                 <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-10 text-xs">S.no</th>
-                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[160px]">Ledger Name</th>
-                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[160px]">Parent Ledger</th>
-                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[110px]">Category</th>
-                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[110px]">Level</th>
-                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[120px]">Payment</th>
-                <th className="px-2 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[160px]">Opening Bal</th>
-                <th className="px-2 py-2.5 text-center font-semibold text-gray-700 text-xs w-28">Actions</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[160px]">Ledger Name</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[160px]">Parent Ledger</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[110px]">Category</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[110px]">Level</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[120px]">Payment</th>
+                <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs min-w-[140px]">Opening Bal</th>
+                <th className="px-3 py-2.5 text-center font-semibold text-gray-700 text-xs w-32">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -951,114 +945,150 @@ export default function SubLedgerMaster() {
                 <tr><td colSpan={8} className="px-5 py-8 text-center text-gray-400 text-sm">No ledgers found. Click Add to create one.</td></tr>
               )}
               {filtered.map((r, i) => {
-                const e = rowEdits[r.id];
-                if (!e) return null;
-                const catId = glCatMap[e.glId] || r.categoryId || "";
+                const isEditing = editingRowId === r.id;
+                const d = isEditing ? rowDraft! : null;
+                const catId = isEditing
+                  ? (glCatMap[d!.glId] || r.categoryId || "")
+                  : (r.categoryId || glCatMap[r.generalLedgerId] || "");
                 const isPending = saveRowMut.isPending && (saveRowMut.variables as any)?.id === r.id;
+                const rowBg = isEditing ? "bg-[#d2f1fa]/40" : i % 2 === 0 ? "bg-white" : "bg-gray-50/30";
+
                 return (
-                  <tr key={r.id}
-                    className={`border-t border-gray-100 ${e.dirty ? "bg-blue-50/30" : i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
+                  <tr key={r.id} className={`border-t border-gray-100 ${rowBg}`}
                     data-testid={`row-subledger-${r.id}`}>
+
                     {/* S.No */}
-                    <td className="px-3 py-1.5 text-gray-400 text-xs text-center">{i + 1}</td>
+                    <td className="px-3 py-2 text-gray-400 text-xs text-center">{i + 1}</td>
 
                     {/* Ledger Name */}
-                    <td className="px-2 py-1.5">
-                      <input value={e.name} onChange={ev => updateRow(r.id, "name", ev.target.value)}
-                        className={iCell} placeholder="Ledger name"
-                        data-testid={`input-name-${r.id}`} />
+                    <td className="px-3 py-2">
+                      {isEditing
+                        ? <input value={d!.name} onChange={ev => setRowDraft(p => p ? { ...p, name: ev.target.value } : p)}
+                            className={iCell} data-testid={`input-name-${r.id}`} />
+                        : <span className="text-xs text-gray-800 font-medium">{r.name}</span>
+                      }
                     </td>
 
                     {/* Parent GL */}
-                    <td className="px-2 py-1.5">
-                      <select value={e.glId} onChange={ev => updateRow(r.id, "glId", ev.target.value)}
-                        className={iCell} data-testid={`select-gl-${r.id}`}>
-                        <option value="">-- Select --</option>
-                        {glList.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
+                    <td className="px-3 py-2">
+                      {isEditing
+                        ? <select value={d!.glId} onChange={ev => setRowDraft(p => p ? { ...p, glId: ev.target.value } : p)}
+                            className={iCell} data-testid={`select-gl-${r.id}`}>
+                            <option value="">-- Select --</option>
+                            {glList.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          </select>
+                        : <span className="text-xs text-gray-600">{glMap[r.generalLedgerId] || "—"}</span>
+                      }
                     </td>
 
-                    {/* Category (auto) */}
-                    <td className="px-2 py-1.5">
-                      <div className="text-xs text-gray-500 px-1">{catMap[catId] || <span className="text-gray-300">—</span>}</div>
+                    {/* Category (always read-only, auto from GL) */}
+                    <td className="px-3 py-2">
+                      <span className="text-xs text-gray-500">{catMap[catId] || "—"}</span>
                     </td>
 
                     {/* Level */}
-                    <td className="px-2 py-1.5">
-                      <select value={e.levelType} onChange={ev => updateRow(r.id, "levelType", ev.target.value)}
-                        className={iCell} data-testid={`select-level-${r.id}`}>
-                        <option value="Same">Same Level</option>
-                        <option value="Next">Next Level</option>
-                      </select>
+                    <td className="px-3 py-2">
+                      {isEditing
+                        ? <select value={d!.levelType} onChange={ev => setRowDraft(p => p ? { ...p, levelType: ev.target.value } : p)}
+                            className={iCell} data-testid={`select-level-${r.id}`}>
+                            <option value="Same">Same Level</option>
+                            <option value="Next">Next Level</option>
+                          </select>
+                        : <span className="text-xs text-gray-600">{r.levelType === "Next" ? "Next Level" : "Same Level"}</span>
+                      }
                     </td>
 
                     {/* Payment */}
-                    <td className="px-2 py-1.5">
-                      <select value={e.paymentType} onChange={ev => updateRow(r.id, "paymentType", ev.target.value)}
-                        className={iCell} data-testid={`select-payment-${r.id}`}>
-                        <option value="OnAccount">On Account</option>
-                        <option value="BillToBill">Bill to Bill</option>
-                      </select>
+                    <td className="px-3 py-2">
+                      {isEditing
+                        ? <select value={d!.paymentType} onChange={ev => setRowDraft(p => p ? { ...p, paymentType: ev.target.value } : p)}
+                            className={iCell} data-testid={`select-payment-${r.id}`}>
+                            <option value="OnAccount">On Account</option>
+                            <option value="BillToBill">Bill to Bill</option>
+                          </select>
+                        : <span className="text-xs text-gray-600">{r.paymentType === "BillToBill" ? "Bill to Bill" : "On Account"}</span>
+                      }
                     </td>
 
                     {/* Opening Bal */}
-                    <td className="px-2 py-1.5">
-                      <div className="flex items-center gap-1">
-                        <input type="number" value={e.obAmount}
-                          onChange={ev => updateRow(r.id, "obAmount", ev.target.value)}
-                          className={`${iCell} text-right w-24`} placeholder="0.00"
-                          data-testid={`input-ob-${r.id}`} />
-                        <div className="flex border border-gray-200 rounded overflow-hidden text-[10px] font-semibold h-[26px] flex-shrink-0">
-                          <button type="button" onClick={() => updateRow(r.id, "obType", "Credit")}
-                            className="px-2 transition-colors"
-                            style={e.obType === "Credit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#9ca3af" }}>
-                            Cr
-                          </button>
-                          <button type="button" onClick={() => updateRow(r.id, "obType", "Debit")}
-                            className="px-2 transition-colors"
-                            style={e.obType === "Debit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#9ca3af" }}>
-                            Dr
-                          </button>
-                        </div>
-                      </div>
+                    <td className="px-3 py-2">
+                      {isEditing
+                        ? <div className="flex items-center gap-1">
+                            <input type="number" value={d!.obAmount}
+                              onChange={ev => setRowDraft(p => p ? { ...p, obAmount: ev.target.value } : p)}
+                              className={`${iCell} text-right w-24`} placeholder="0.00"
+                              data-testid={`input-ob-${r.id}`} />
+                            <div className="flex border border-gray-200 rounded overflow-hidden text-[10px] font-semibold h-[26px] flex-shrink-0">
+                              <button type="button" onClick={() => setRowDraft(p => p ? { ...p, obType: "Credit" } : p)}
+                                className="px-2 transition-colors"
+                                style={d!.obType === "Credit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#9ca3af" }}>
+                                Cr
+                              </button>
+                              <button type="button" onClick={() => setRowDraft(p => p ? { ...p, obType: "Debit" } : p)}
+                                className="px-2 transition-colors"
+                                style={d!.obType === "Debit" ? { background: SC.primary, color: "#fff" } : { background: "#fff", color: "#9ca3af" }}>
+                                Dr
+                              </button>
+                            </div>
+                          </div>
+                        : <span className="text-xs text-gray-700 font-mono">
+                            {parseFloat(r.openingBalance || "0").toFixed(2)}
+                            <span className="ml-1 text-[10px] text-gray-400">{r.openingBalanceType === "Debit" ? "Dr" : "Cr"}</span>
+                          </span>
+                      }
                     </td>
 
                     {/* Actions */}
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       <div className="flex items-center justify-center gap-1">
-                        {/* Save */}
-                        <button
-                          onClick={() => saveRowMut.mutate({
-                            id: r.id,
-                            data: {
-                              name: e.name, generalLedgerId: e.glId || null,
-                              categoryId: catId || null,
-                              levelType: e.levelType, paymentType: e.paymentType,
-                              openingBalance: e.obAmount, openingBalanceType: e.obType,
-                              bills: [],
-                            },
-                          })}
-                          disabled={!e.dirty || isPending}
-                          className="px-2 py-1 rounded text-[10px] font-semibold text-white disabled:opacity-30 transition-opacity"
-                          style={{ background: SC.primary }}
-                          title="Save this row"
-                          data-testid={`btn-save-${r.id}`}>
-                          {isPending ? "…" : "Save"}
-                        </button>
-                        {/* Bills / Full Edit */}
-                        <button onClick={() => openBillsForm(r)}
-                          className="p-1 rounded hover:bg-blue-50 text-xs font-medium flex items-center gap-0.5"
-                          style={{ color: SC.primary }}
-                          title="Edit bills & full details"
-                          data-testid={`btn-bills-${r.id}`}>
-                          <PencilLine size={12} /> Bills
-                        </button>
-                        {/* Delete */}
-                        <button onClick={() => { if (confirm(`Delete "${r.name}"?`)) deleteMut.mutate(r.id); }}
-                          className="p-1 rounded hover:bg-red-50 text-red-400 hover:text-red-600"
-                          title="Delete" data-testid={`btn-delete-${r.id}`}>
-                          <Trash2 size={12} />
-                        </button>
+                        {isEditing ? (
+                          <>
+                            <button
+                              onClick={() => saveRowMut.mutate({
+                                id: r.id,
+                                data: {
+                                  name: d!.name, generalLedgerId: d!.glId || null,
+                                  categoryId: catId || null,
+                                  levelType: d!.levelType, paymentType: d!.paymentType,
+                                  openingBalance: d!.obAmount, openingBalanceType: d!.obType,
+                                  bills: r.bills || [],
+                                },
+                              })}
+                              disabled={isPending}
+                              className="px-2.5 py-1 rounded text-[10px] font-semibold text-white disabled:opacity-50 transition-opacity"
+                              style={{ background: SC.primary }}
+                              data-testid={`btn-save-${r.id}`}>
+                              {isPending ? "…" : "Save"}
+                            </button>
+                            <button onClick={cancelEdit}
+                              className="px-2.5 py-1 rounded text-[10px] font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50"
+                              data-testid={`btn-cancel-${r.id}`}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => startEditRow(r)}
+                              className="p-1.5 rounded hover:bg-blue-50 transition-colors"
+                              style={{ color: SC.primary }}
+                              title="Edit this ledger"
+                              data-testid={`btn-edit-${r.id}`}>
+                              <PencilLine size={13} />
+                            </button>
+                            <button onClick={() => openBillsForm(r)}
+                              className="px-2 py-1 rounded text-[10px] font-semibold border transition-colors hover:bg-[#027fa5] hover:text-white"
+                              style={{ borderColor: SC.primary, color: SC.primary }}
+                              title="Open full ledger form with bills & statement"
+                              data-testid={`btn-bills-${r.id}`}>
+                              Bills
+                            </button>
+                            <button onClick={() => { if (confirm(`Delete "${r.name}"?`)) deleteMut.mutate(r.id); }}
+                              className="p-1.5 rounded hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors"
+                              title="Delete" data-testid={`btn-delete-${r.id}`}>
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
