@@ -395,7 +395,7 @@ export default function GoodsReceiptNote() {
     setForm(f => {
       // Preserve supplier — only set from PO if not already chosen
       const suppId   = f.supplier_id   || full.supplier_id   || "";
-      const suppName = f.supplier_name_manual || full.supplier_name || full.supplier_name_manual || "";
+      const suppName = f.supplier_name_manual || full.supplier_name_db || full.supplier_name_manual || "";
       // Remove any blank placeholder row before merging
       const existing = f.items.filter(it => it.item_code || it._poId);
       const merged = [...existing, ...newItems];

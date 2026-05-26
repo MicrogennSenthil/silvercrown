@@ -152,8 +152,11 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
     try {
       const res = await fetch(`/api/purchase-orders/${po.id}`, { credentials: "include" });
       const data = await res.json();
-      setSuppId(data.supplier_id || "");
-      setSuppSearch(data.supplier_name_db || data.supplier_name_manual || "");
+      // Prefer PO's supplier data; fall back to what the user already selected so it is never cleared
+      const newSuppId   = data.supplier_id || "";
+      const newSuppName = data.supplier_name_db || data.supplier_name_manual || "";
+      setSuppId(newSuppId || suppId);
+      setSuppSearch(newSuppName || suppSearch);
       setPoType(data.po_type || "Purchase Order");
       setSchedDate(data.schedule_date?.split("T")[0] || "");
       setPriority(data.priority || "Medium");
