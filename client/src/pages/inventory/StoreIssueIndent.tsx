@@ -153,9 +153,14 @@ export default function StoreIssueIndent() {
   // For Goods Request mode: SRNs filtered by selected store
   const selectedStoreName = (warehouses as any[]).find((w: any) => w.id === form.store_id)?.name || "";
   const availableSrns = (allSrns as any[]).filter((s: any) => s.status !== "Issued");
+  // Match SRNs by store name case-insensitively (SRN uses `stores` table, SII uses `warehouses` — different IDs)
   const storeSrns = form.store_id
-    ? availableSrns.filter((s: any) => s.store_id === form.store_id || s.store_name === selectedStoreName)
-    : [];
+    ? availableSrns.filter((s: any) => {
+        const srnStore = (s.store_name || "").trim().toLowerCase();
+        const selStore = selectedStoreName.trim().toLowerCase();
+        return s.store_id === form.store_id || (selStore && srnStore === selStore);
+      })
+    : availableSrns;
 
   const closeDropdown = useCallback(() => { setOpenDropIdx(null); setDropAnchor(null); }, []);
 
