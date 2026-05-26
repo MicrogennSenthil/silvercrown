@@ -1164,6 +1164,15 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               l._key === billAdjPartyLineKey ? { ...l, amount: total.toFixed(2) } : l
             ));
           }
+          // Auto-fill narration with adjusted bill nos and dates
+          if (rows.length > 0) {
+            const parts = rows.map(r => {
+              const no   = r.billNo   ? `Bill No : ${r.billNo}`   : "";
+              const dt   = r.billDate ? ` Dt : ${r.billDate}`     : "";
+              return (no + dt).trim();
+            }).filter(Boolean);
+            if (parts.length > 0) setNarration(parts.join(" | "));
+          }
         }}
         onClose={() => setShowBillAdj(false)}
       />
