@@ -7140,5 +7140,113 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Data Purge Endpoints ─────────────────────────────────────────────────────
+
+  // Purge all TRANSACTION data — keeps masters intact
+  app.post("/api/purge/transactions", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const tables = [
+          "bill_adjustments",
+          "voucher_det",
+          "voucher_mas",
+          "purchase_invoice_items",
+          "purchase_invoices",
+          "sales_invoice_items",
+          "sales_invoices",
+          "goods_receipt_note_items",
+          "goods_receipt_notes",
+          "job_work_inward_items",
+          "job_work_inward",
+          "journal_entry_lines",
+          "journal_entries",
+          "tally_sync_logs",
+          "tasks",
+          "sub_ledger_bills",
+          "store_request_note_items",
+          "store_request_notes",
+          "store_openings",
+          "goods_receipt_returns",
+          "phy_reconciliations",
+        ];
+        for (const t of tables) {
+          await client.query(`DELETE FROM ${t}`).catch(() => {});
+        }
+        // Reset sub-ledger closing balances back to opening balance
+        await client.query(`UPDATE sub_ledgers SET closing_balance = COALESCE(opening_balance, 0), closing_balance_type = COALESCE(opening_balance_type, 'Dr')`).catch(() => {});
+        await client.query("COMMIT");
+        res.json({ ok: true, message: "All transaction data purged successfully." });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Purge all MASTER data — also deletes transactions first
+  app.post("/api/purge/masters", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        // First: purge transactions
+        const txTables = [
+          "bill_adjustments",
+          "voucher_det",
+          "voucher_mas",
+          "purchase_invoice_items",
+          "purchase_invoices",
+          "sales_invoice_items",
+          "sales_invoices",
+          "goods_receipt_note_items",
+          "goods_receipt_notes",
+          "job_work_inward_items",
+          "job_work_inward",
+          "journal_entry_lines",
+          "journal_entries",
+          "tally_sync_logs",
+          "tasks",
+          "sub_ledger_bills",
+          "store_request_note_items",
+          "store_request_notes",
+          "store_openings",
+          "goods_receipt_returns",
+          "phy_reconciliations",
+        ];
+        for (const t of txTables) {
+          await client.query(`DELETE FROM ${t}`).catch(() => {});
+        }
+        // Then: purge masters
+        const masterTables = [
+          "inventory_items",
+          "inventory_categories",
+          "suppliers",
+          "customers",
+          "sub_ledgers",
+          "warehouses",
+          "units_of_measure",
+          "tax_rates",
+          "employees",
+          "purchase_store_items",
+          "store_item_sub_groups",
+          "store_item_groups",
+          "machine_master",
+          "products",
+          "sub_categories",
+          "categories",
+          "contact_roles",
+        ];
+        for (const t of masterTables) {
+          await client.query(`DELETE FROM ${t}`).catch(() => {});
+        }
+        await client.query("COMMIT");
+        res.json({ ok: true, message: "All master and transaction data purged successfully." });
+      } catch (e) { await client.query("ROLLBACK"); throw e; }
+      finally { client.release(); }
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   return httpServer;
 }

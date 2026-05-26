@@ -3,8 +3,9 @@ import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bot, Building2, Hash, Plug, CheckCircle2, Eye, EyeOff,
-  Save, RefreshCw, AlertCircle, ExternalLink
+  Save, RefreshCw, AlertCircle, ExternalLink, Trash2, ShieldAlert, X
 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -22,6 +23,7 @@ const CATEGORY_ICONS: Record<string, any> = {
   "Company": Building2,
   "Voucher Numbering": Hash,
   "Tally Integration": Plug,
+  "Data Purging": Trash2,
 };
 
 const AI_PROVIDER_OPTIONS = [
@@ -146,6 +148,188 @@ function SettingInput({
       className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
       data-testid={`input-${setting.key}`}
     />
+  );
+}
+
+// ── Data Purge Section ────────────────────────────────────────────────────────
+const TX_ITEMS = [
+  "Accounting vouchers (payment, receipt, journal, contra)",
+  "Purchase invoices & purchase invoice items",
+  "Sales invoices & sales invoice items",
+  "Goods Receipt Notes (GRNs) & GRN items",
+  "Job Work Inward entries",
+  "Bill adjustments & outstanding allocations",
+  "Journal entries & journal lines",
+  "Tasks & reminders",
+  "Tally sync logs",
+  "Sub-ledger bills (opening balance adjustments reset)",
+  "Store request notes, store openings, physical reconciliations",
+];
+
+const MASTER_ITEMS = [
+  "Everything in Transactions (purged first)",
+  "Suppliers & supplier sub-ledgers",
+  "Customers & customer sub-ledgers",
+  "Inventory items & item categories",
+  "Warehouses",
+  "Units of measure",
+  "Tax rates",
+  "Employees",
+  "Store item groups & sub-groups",
+  "Products, categories & sub-categories",
+  "Machines, contact roles",
+];
+
+function PurgeCard({
+  title, subtitle, color, items, endpoint, buttonLabel, confirmWord,
+}: {
+  title: string;
+  subtitle: string;
+  color: string;
+  items: string[];
+  endpoint: string;
+  buttonLabel: string;
+  confirmWord: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+
+  const mut = useMutation({
+    mutationFn: () => apiRequest("POST", endpoint),
+    onSuccess: () => { setDone(true); setOpen(false); setInput(""); setErr(""); },
+    onError: (e: any) => setErr(e.message || "Purge failed"),
+  });
+
+  function handleConfirm() {
+    if (input.trim() !== confirmWord) { setErr(`Type "${confirmWord}" exactly to confirm.`); return; }
+    setErr(""); mut.mutate();
+  }
+
+  return (
+    <>
+      <div className="border border-red-200 rounded-xl overflow-hidden bg-white">
+        <div className="px-5 py-4 border-b border-red-100" style={{ background: "#fff5f5" }}>
+          <div className="flex items-center gap-2">
+            <ShieldAlert size={18} style={{ color }} />
+            <h3 className="font-semibold text-base" style={{ color }}>{title}</h3>
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+        </div>
+        <div className="px-5 py-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">What will be deleted:</p>
+          <ul className="space-y-1">
+            {items.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
+                <span className="mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color, marginTop: 5 }} />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="px-5 py-4 border-t border-red-50 flex justify-end" style={{ background: "#fff5f5" }}>
+          {done ? (
+            <span className="flex items-center gap-1.5 text-green-600 text-sm font-semibold">
+              <CheckCircle2 size={15} /> Purged successfully
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setOpen(true); setInput(""); setErr(""); }}
+              className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ background: color }}
+              data-testid={`btn-purge-${endpoint.split("/").pop()}`}
+            >
+              <Trash2 size={14} /> {buttonLabel}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Confirmation Dialog */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100" style={{ background: "#fff5f5" }}>
+              <div className="flex items-center gap-2">
+                <ShieldAlert size={18} style={{ color }} />
+                <h3 className="font-bold text-base" style={{ color }}>Confirm {title}</h3>
+              </div>
+              <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-5 py-5">
+              <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-red-50 border border-red-200 mb-4">
+                <AlertCircle size={16} style={{ color, flexShrink: 0, marginTop: 1 }} />
+                <p className="text-sm text-red-700">
+                  <strong>This action is irreversible.</strong> All data listed above will be permanently deleted. This cannot be undone.
+                </p>
+              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Type <span className="font-bold font-mono" style={{ color }}>{confirmWord}</span> to confirm:
+              </label>
+              <input
+                type="text"
+                value={input}
+                onChange={e => { setInput(e.target.value); setErr(""); }}
+                placeholder={confirmWord}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-red-400 font-mono"
+                data-testid="input-purge-confirm"
+                autoFocus
+              />
+              {err && <p className="text-xs text-red-600 mt-1.5">{err}</p>}
+            </div>
+            <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50">
+              <button type="button" onClick={() => setOpen(false)}
+                className="px-5 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50"
+                data-testid="btn-purge-cancel">
+                Cancel
+              </button>
+              <button type="button" onClick={handleConfirm} disabled={mut.isPending}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: color }}
+                data-testid="btn-purge-confirm">
+                <Trash2 size={13} />
+                {mut.isPending ? "Purging..." : "Yes, Purge Now"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function DataPurgingPanel() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-100">
+        <h2 className="font-semibold text-gray-800 text-base">Data Purging</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Permanently delete transaction or master data from the system. Use with extreme caution.</p>
+      </div>
+      <div className="p-6 space-y-5">
+        <PurgeCard
+          title="Purge Transactions"
+          subtitle="Deletes all vouchers, invoices, GRNs, and related entries. Master data (parties, items, accounts) is preserved."
+          color="#b91c1c"
+          items={TX_ITEMS}
+          endpoint="/api/purge/transactions"
+          buttonLabel="Purge All Transactions"
+          confirmWord="PURGE TRANSACTIONS"
+        />
+        <PurgeCard
+          title="Purge Masters + Transactions"
+          subtitle="Deletes everything — all transactions and all master records. The system will be like a fresh install."
+          color="#7c2d12"
+          items={MASTER_ITEMS}
+          endpoint="/api/purge/masters"
+          buttonLabel="Purge Masters & Transactions"
+          confirmWord="PURGE ALL DATA"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -282,7 +466,7 @@ export default function SoftwareSetup() {
   }, [rawSettings.length]);
 
   // Group by category
-  const categories = Array.from(new Set(rawSettings.map(s => s.category)));
+  const categories = [...Array.from(new Set(rawSettings.map(s => s.category))), "Data Purging"];
   const byCategory: Record<string, Setting[]> = {};
   rawSettings.forEach(s => {
     if (!byCategory[s.category]) byCategory[s.category] = [];
@@ -349,7 +533,8 @@ export default function SoftwareSetup() {
 
         {/* Settings panel */}
         <div className="flex-1 min-w-0">
-          {categories.map(cat => cat === activeTab && (
+          {activeTab === "Data Purging" && <DataPurgingPanel />}
+          {categories.map(cat => cat !== "Data Purging" && cat === activeTab && (
             <div key={cat} className="bg-white rounded-xl shadow-sm overflow-hidden">
               {/* Card header */}
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
