@@ -253,9 +253,9 @@ function getLineFilter(vtName: string, idx: number): FilterType {
   const nature = getNature(vtName);
   if (n.includes("contra")) return "bank_cash";
   if (nature === "payment") {
-    // Row 0 = party (Sundry Creditors — supplier), Row 1+ = Bank or Cash
-    if (idx === 0) return "sundry_creditors";
-    return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+    // Row 0 = Bank or Cash (To — where payment goes from), Row 1+ = party (By — who receives)
+    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+    return "party";
   }
   if (nature === "receipt") {
     // Row 0 = party (supplier / customer who paid), Row 1+ = Bank or Cash (where received)
@@ -805,7 +805,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               {nature === "payment" && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
                 <span className="px-2 py-0.5 rounded font-bold bg-orange-50 text-orange-700">Payment</span>
-                <span className="text-gray-400">·  <b className="text-green-700">To</b> Party (Credit)  ·  <b className="text-red-700">By</b> Cash/Bank (Debit)</span>
+                <span className="text-gray-400">·  <b className="text-green-700">To</b> Cash/Bank (Debit)  ·  <b className="text-red-700">By</b> Party (Credit)</span>
               </>}
               {nature === "receipt" && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
