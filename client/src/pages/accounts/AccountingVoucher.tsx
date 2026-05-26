@@ -18,7 +18,7 @@ function uuid() { return crypto.randomUUID(); }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Nature     = "payment" | "receipt" | "contra" | "journal";
-type FilterType = "bank" | "cash" | "bank_cash" | "sundry_creditors" | "sundry_debtors" | "all";
+type FilterType = "bank" | "cash" | "bank_cash" | "sundry_creditors" | "sundry_debtors" | "party" | "all";
 
 type VLine = {
   _key: string;
@@ -258,9 +258,9 @@ function getLineFilter(vtName: string, idx: number): FilterType {
     return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   if (nature === "receipt") {
-    // Row 0 = Bank or Cash, Row 1+ = party (Sundry Debtors — customer)
-    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
-    return "sundry_debtors";
+    // Row 0 = party (supplier / customer who paid), Row 1+ = Bank or Cash (where received)
+    if (idx === 0) return "party";
+    return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   return "all";
 }
@@ -275,6 +275,7 @@ function applyFilter(sls: any[], f: FilterType) {
     // party filters: only sub-ledgers (not direct GL entries)
     if (f === "sundry_creditors") return !s.is_gl && t === "sundry_creditor";
     if (f === "sundry_debtors")   return !s.is_gl && t === "sundry_debtor";
+    if (f === "party")            return !s.is_gl && (t === "sundry_creditor" || t === "sundry_debtor");
     return true;
   });
 }
@@ -285,6 +286,7 @@ function filterLabel(f: FilterType): string | undefined {
   if (f === "bank_cash")        return "Bank / Cash";
   if (f === "sundry_creditors") return "Sundry Creditors";
   if (f === "sundry_debtors")   return "Sundry Debtors";
+  if (f === "party")            return "Party";
   return undefined;
 }
 
@@ -513,7 +515,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
     if (id && vtName) {
       const idx = lines.findIndex(l => l._key === key);
       const f = getLineFilter(vtName, idx);
-      if (f === "sundry_creditors" || f === "sundry_debtors") {
+      if (f === "sundry_creditors" || f === "sundry_debtors" || f === "party") {
         setBillAdjSlId(id);
         setBillAdjPartyLineKey(key);
         setBillAdjRows([]); // reset previous for new party
@@ -808,7 +810,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
               {nature === "receipt" && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
                 <span className="px-2 py-0.5 rounded font-bold bg-green-50 text-green-700">Receipt</span>
-                <span className="text-gray-400">·  <b className="text-red-700">By</b> Cash/Bank (Debit)  ·  <b className="text-green-700">To</b> Party (Credit)</span>
+                <span className="text-gray-400">·  <b className="text-red-700">By</b> Party (Credit)  ·  <b className="text-green-700">To</b> Cash/Bank (Debit)</span>
               </>}
               {nature === "contra"  && <>
                 <span className="font-semibold text-gray-500">Nature:</span>
