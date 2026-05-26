@@ -3230,7 +3230,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // GET /api/reports/po-pending — purchase order lines where pending qty > 0
+  // GET /api/reports/po-pending — all PO lines in date range with received vs ordered status
   app.get("/api/reports/po-pending", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
@@ -3238,28 +3238,30 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const to   = (req.query.to   as string) || "2099-12-31";
       const rows = (await pool.query(`
         SELECT
-          po.voucher_no                                       AS po_no,
+          po.voucher_no                                                         AS po_no,
           po.po_date,
-          COALESCE(c.name, po.supplier_name_manual, '')       AS supplier_name,
-          poi.item_name                                       AS product_details,
-          COALESCE(poi.unit, '')                              AS unit,
-          COALESCE(poi.qty::numeric, 0)                       AS ord_qty,
-          COALESCE(rec.rec_qty, 0)                            AS rec_qty,
-          COALESCE(poi.qty::numeric, 0) - COALESCE(rec.rec_qty, 0) AS pend_qty,
-          ''                                                  AS user_name
+          COALESCE(s.name, po.supplier_name_manual, '')                         AS supplier_name,
+          poi.item_name                                                         AS product_details,
+          COALESCE(poi.unit, '')                                                AS unit,
+          COALESCE(poi.qty::numeric, 0)                                         AS ord_qty,
+          COALESCE(rec.rec_qty, 0)                                              AS rec_qty,
+          GREATEST(0, COALESCE(poi.qty::numeric, 0) - COALESCE(rec.rec_qty, 0)) AS pend_qty,
+          COALESCE(u.username, '')                                              AS user_name
         FROM purchase_orders po
         JOIN purchase_order_items poi ON poi.po_id = po.id
-        LEFT JOIN customers c ON c.id = po.supplier_id
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
+        LEFT JOIN users     u ON u.id = po.created_by
         LEFT JOIN (
           SELECT grn.po_id, grni.item_code,
                  SUM(COALESCE(grni.qty::numeric, 0)) AS rec_qty
           FROM goods_receipt_notes grn
           JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
+          WHERE grn.po_id IS NOT NULL
           GROUP BY grn.po_id, grni.item_code
         ) rec ON rec.po_id = po.id AND rec.item_code = poi.item_code
         WHERE po.po_date BETWEEN $1 AND $2
           AND COALESCE(po.status,'') <> 'Cancelled'
-          AND COALESCE(poi.qty::numeric, 0) - COALESCE(rec.rec_qty, 0) > 0
+          AND COALESCE(poi.qty::numeric, 0) > 0
         ORDER BY po.po_date DESC, po.voucher_no, poi.seq_no
       `, [from, to])).rows;
       res.json(rows);
