@@ -64,6 +64,16 @@ function LedgerForm({
     enabled: isEdit && !!item?.id,
   });
 
+  // Auto-sync Closing Bal field from live statement whenever statement data loads/changes
+  useEffect(() => {
+    if (!stmtData) return;
+    const rows: any[] = stmtData.statement || [];
+    const calcBal  = rows.length > 0 ? rows[rows.length - 1].balance       : parseFloat(stmtData.openingBalance || "0");
+    const calcType = rows.length > 0 ? rows[rows.length - 1].balanceType   : (stmtData.openingBalanceType === "Credit" ? "Cr" : "Dr");
+    setCbAmount(String(calcBal));
+    setCbType(calcType === "Cr" ? "Credit" : "Debit");
+  }, [stmtData]);
+
   // Financial year max date for "Opening" bills: last day of previous FY
   // India FY: April 1 – March 31. If today >= April 1, current FY started this year.
   const prevFYEndDate = (() => {
