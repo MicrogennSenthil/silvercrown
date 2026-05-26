@@ -16,6 +16,7 @@ type GrnItem = {
   qty: number; unit: string; rate: number; taxable_amt: number;
   cgst_pct: number; cgst_amt: number; sgst_pct: number; sgst_amt: number;
   igst_pct: number; igst_amt: number; total: number;
+  _poId?: string; // which PO this item came from (for multi-PO untick support)
 };
 type GrnForm = {
   grn_date: string; store_id: string; store_name: string;
@@ -86,11 +87,13 @@ function SupplierSelect({ value, name, onChange, error }: { value: string; name:
   );
 }
 
-// PO Selection panel
-function PoSelectorPanel({ supplierId, selectedPoId, onSelect }: { supplierId: string; selectedPoId: string; onSelect: (po: any) => void }) {
-  const { data: pos = [] } = useQuery<any[]>({
-    queryKey: ["/api/purchase-orders"],
-  });
+// PO Selection panel — multi-select, filtered by supplier
+function PoSelectorPanel({ supplierId, selectedPoIds, onSelect }: {
+  supplierId: string;
+  selectedPoIds: string[];
+  onSelect: (po: any) => void;
+}) {
+  const { data: pos = [] } = useQuery<any[]>({ queryKey: ["/api/purchase-orders"] });
   const approvedPos = (pos as any[]).filter((p: any) =>
     ["Approved","Draft"].includes(p.status) &&
     (!supplierId || p.supplier_id === supplierId));
@@ -100,22 +103,29 @@ function PoSelectorPanel({ supplierId, selectedPoId, onSelect }: { supplierId: s
         {["PO No","PO Date","PO Type","Select"].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
       </div>
       <div className="max-h-40 overflow-y-auto">
-        {approvedPos.length === 0 && (
-          <div className="px-3 py-4 text-center text-gray-400">No approved POs available</div>
+        {!supplierId && (
+          <div className="px-3 py-4 text-center text-gray-400 italic">Select a supplier first to see POs</div>
         )}
-        {approvedPos.map((po: any) => (
-          <div key={po.id} className={`grid border-b last:border-0 items-center ${selectedPoId===po.id?"bg-[#d2f1fa]":""}`}
-            style={{ gridTemplateColumns: "1fr 1fr 1fr 50px" }}>
-            <div className="px-2 py-2 font-semibold" style={{ color: SC.primary }}>{po.voucher_no}</div>
-            <div className="px-2 py-2 text-gray-600">{fmt(po.po_date)}</div>
-            <div className="px-2 py-2 text-gray-500">Purchase Order</div>
-            <div className="px-2 py-2">
-              <input type="checkbox" checked={selectedPoId===po.id}
-                onChange={() => onSelect(po)}
-                className="accent-[#d74700] w-4 h-4"/>
+        {supplierId && approvedPos.length === 0 && (
+          <div className="px-3 py-4 text-center text-gray-400">No approved POs for this supplier</div>
+        )}
+        {supplierId && approvedPos.map((po: any) => {
+          const checked = selectedPoIds.includes(po.id);
+          return (
+            <div key={po.id}
+              className={`grid border-b last:border-0 items-center cursor-pointer transition-colors ${checked ? "bg-[#d2f1fa]" : "hover:bg-gray-50"}`}
+              style={{ gridTemplateColumns: "1fr 1fr 1fr 50px" }}
+              onClick={() => onSelect(po)}>
+              <div className="px-2 py-2 font-semibold" style={{ color: SC.primary }}>{po.voucher_no}</div>
+              <div className="px-2 py-2 text-gray-600">{fmt(po.po_date)}</div>
+              <div className="px-2 py-2 text-gray-500">Purchase Order</div>
+              <div className="px-2 py-2">
+                <input type="checkbox" checked={checked} readOnly
+                  className="accent-[#d74700] w-4 h-4 pointer-events-none"/>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -196,6 +206,7 @@ export default function GoodsReceiptNote() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [grnNo, setGrnNo] = useState("");
+  const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
   const [grnInterState, setGrnInterState] = useState(false); // Within State by default
   const [itemSearch, setItemSearch] = useState<Record<number, string>>({});
   const [itemDropOpen, setItemDropOpen] = useState<number | null>(null);
@@ -294,12 +305,14 @@ export default function GoodsReceiptNote() {
   const computedRoundOff = +(grandRounded - grandTotal).toFixed(2);
 
   function openNew() {
-    setForm(blankForm()); setEditId(null); setErr(""); setGrnNo(""); setMode("form");
+    setForm(blankForm()); setEditId(null); setErr(""); setGrnNo("");
+    setSelectedPoIds([]); setMode("form");
     fetch("/api/voucher-series/next/purchase_receipt", { credentials: "include" })
       .then(r => r.json()).then(d => { if (d.voucher_no) setGrnNo(d.voucher_no); });
   }
   function openEdit(grn: any) {
     setGrnNo(grn.voucher_no || "");
+    setSelectedPoIds(grn.po_id ? [grn.po_id] : []);
     setForm({
       grn_date: grn.grn_date?.slice(0,10)||"", store_id: grn.store_id||"", store_name: grn.store_name||"",
       supplier_id: grn.supplier_id||"", supplier_name_manual: grn.supplier_name||grn.supplier_name_manual||"",
@@ -330,28 +343,64 @@ export default function GoodsReceiptNote() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/goods-receipt-notes"] }),
   });
 
-  // Handle PO selection — prefill items from PO
+  // Handle PO selection — multi-select, preserves existing supplier
   async function handlePoSelect(po: any) {
-    if (form.po_id === po.id) {
-      setForm(f => ({ ...f, po_id:"", po_no:"", items: [blankItem()] }));
+    const alreadySelected = selectedPoIds.includes(po.id);
+
+    if (alreadySelected) {
+      // Untick: remove this PO's items from the grid
+      const newIds = selectedPoIds.filter(id => id !== po.id);
+      setSelectedPoIds(newIds);
+      setForm(f => {
+        // Keep items that did NOT come from this PO (manually added or other POs)
+        const remaining = f.items.filter(it => it._poId !== po.id);
+        // Re-number
+        const renumbered = remaining.length > 0
+          ? remaining.map((it, i) => ({ ...it, sno: i + 1 }))
+          : [blankItem()];
+        return {
+          ...f,
+          po_id: newIds.length > 0 ? newIds[0] : "",
+          po_no: "", // will be refreshed below
+          items: renumbered,
+        };
+      });
       return;
     }
+
+    // Tick: fetch PO details and add its items
     const full = await fetch(`/api/purchase-orders/${po.id}`, { credentials:"include" }).then(r=>r.json());
-    const items: GrnItem[] = (full.items||[]).map((it: any, i: number) => calcItem({
-      sno: i+1, item_code: it.item_code||"", item_name: it.item_name||"", batch_no:"", expiry_date:"",
+    const newItems: GrnItem[] = (full.items||[]).map((it: any) => calcItem({
+      sno: 0, // will be recalculated
+      item_code: it.item_code||"", item_name: it.item_name||"", batch_no:"", expiry_date:"",
       expiry_required: lookupExpiry(it.item_code||""),
       qty: p2(it.qty), unit: it.unit||"Nos", rate: p2(it.rate), taxable_amt:0,
-      cgst_pct: p2(it.cgst_pct||it.cgst_pct), cgst_amt:0,
+      cgst_pct: p2(it.cgst_pct), cgst_amt:0,
       sgst_pct: p2(it.sgst_pct), sgst_amt:0, igst_pct: p2(it.igst_pct||0), igst_amt:0, total:0,
+      _poId: po.id,
     }));
-    setForm(f => ({
-      ...f,
-      po_id: po.id, po_no: po.voucher_no,
-      supplier_id: full.supplier_id||"",
-      supplier_name_manual: full.supplier_name||full.supplier_name_manual||"",
-      payment_mode: full.payment_mode||"Cash",
-      items: items.length > 0 ? items : [blankItem()],
-    }));
+
+    const newIds = [...selectedPoIds, po.id];
+    setSelectedPoIds(newIds);
+
+    setForm(f => {
+      // Preserve supplier — only set from PO if not already chosen
+      const suppId   = f.supplier_id   || full.supplier_id   || "";
+      const suppName = f.supplier_name_manual || full.supplier_name || full.supplier_name_manual || "";
+      // Remove any blank placeholder row before merging
+      const existing = f.items.filter(it => it.item_code || it._poId);
+      const merged = [...existing, ...newItems];
+      // Re-number all
+      const renumbered = merged.map((it, i) => ({ ...it, sno: i + 1 }));
+      return {
+        ...f,
+        supplier_id: suppId,
+        supplier_name_manual: suppName,
+        po_id: newIds[0],
+        po_no: po.voucher_no,
+        items: renumbered.length > 0 ? renumbered : [blankItem()],
+      };
+    });
   }
 
   // Handle AI extracted data
@@ -443,7 +492,8 @@ export default function GoodsReceiptNote() {
       ...form,
       round_off: computedRoundOff,
       grand_total: grandRounded,
-      items: form.items,
+      // strip internal tracking field before sending to server
+      items: form.items.map(({ _poId, ...rest }) => rest),
     };
     const url = editId ? `/api/goods-receipt-notes/${editId}` : "/api/goods-receipt-notes";
     const method = editId ? "PATCH" : "POST";
@@ -661,15 +711,19 @@ export default function GoodsReceiptNote() {
                 ))}
               </div>
               {form.purchase_type === "PO" ? (
-                <PoSelectorPanel supplierId={form.supplier_id} selectedPoId={form.po_id} onSelect={handlePoSelect}/>
+                <PoSelectorPanel supplierId={form.supplier_id} selectedPoIds={selectedPoIds} onSelect={handlePoSelect}/>
               ) : (
                 <div className="flex items-center justify-center h-24 text-sm text-gray-400 border border-dashed border-gray-200 rounded-lg">
                   Direct purchase — no PO required
                 </div>
               )}
-              {form.po_no && (
+              {selectedPoIds.length > 0 && (
                 <div className="mt-2 flex items-center gap-2 text-xs text-green-700">
-                  <CheckCircle size={12}/> PO <span className="font-semibold">{form.po_no}</span> selected — items loaded
+                  <CheckCircle size={12}/>
+                  {selectedPoIds.length === 1
+                    ? <><span>PO</span> <span className="font-semibold">{form.po_no}</span> <span>selected — items loaded</span></>
+                    : <span className="font-semibold">{selectedPoIds.length} POs selected — items merged</span>
+                  }
                 </div>
               )}
 
