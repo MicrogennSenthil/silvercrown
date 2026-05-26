@@ -62,6 +62,8 @@ function LedgerForm({
     queryKey: ["/api/sub-ledgers", item?.id, "statement"],
     queryFn: () => fetch(`/api/sub-ledgers/${item.id}/statement`, { credentials: "include" }).then(r => r.json()),
     enabled: isEdit && !!item?.id,
+    staleTime: 0,          // always treat as stale so every form-open fetches fresh data
+    refetchOnMount: true,
   });
 
   // Auto-sync Closing Bal field from live statement whenever statement data loads/changes
