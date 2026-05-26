@@ -3266,31 +3266,31 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // GET /api/reports/bank-stock-report — purchase store items grouped by group/sub-group
+  // GET /api/reports/bank-stock-report — batch-wise stock from item_batch_stock
   app.get("/api/reports/bank-stock-report", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
       const rows = (await pool.query(`
         SELECT
-          COALESCE(sig.name, 'Uncategorized')   AS group_name,
-          COALESCE(sig.id,   'zzz')              AS group_id,
-          COALESCE(sisg.name, 'General')         AS sub_group_name,
-          COALESCE(sisg.id,  'zzz')              AS sub_group_id,
-          psi.code        AS item_code,
-          psi.name        AS item_name,
-          COALESCE(psi.qty::numeric,  0)         AS qty,
-          COALESCE(psi.uom, 'Nos')               AS unit,
-          COALESCE(ii.purchase_price::numeric, 0) AS rate,
-          COALESCE(psi.qty::numeric,0) * COALESCE(ii.purchase_price::numeric,0) AS amount,
-          psi.batch_no,
-          psi.exp_date    AS expiry_date
-        FROM purchase_store_items psi
-        LEFT JOIN store_item_groups    sig  ON sig.id  = psi.item_group_id
-        LEFT JOIN store_item_sub_groups sisg ON sisg.id = psi.item_sub_group_id
-        LEFT JOIN inventory_items      ii   ON ii.code  = psi.code
-        WHERE COALESCE(psi.is_active, true) = true
-          AND COALESCE(psi.qty::numeric, 0) > 0
-        ORDER BY COALESCE(sig.name,'zzz'), COALESCE(sisg.name,'zzz'), psi.name
+          COALESCE(c.name, 'Uncategorized')  AS group_name,
+          COALESCE(c.id,   'zzz')            AS group_id,
+          COALESCE(sc.name, 'General')       AS sub_group_name,
+          COALESCE(sc.id,  'zzz')            AS sub_group_id,
+          ibs.item_code,
+          ibs.item_name,
+          ibs.closing_qty                    AS qty,
+          COALESCE(ibs.unit, 'Nos')          AS unit,
+          COALESCE(ibs.rate, 0)              AS rate,
+          ibs.closing_qty * COALESCE(ibs.rate, 0) AS amount,
+          COALESCE(ibs.batch_no, '')         AS batch_no,
+          TO_CHAR(ibs.expiry_date, 'YYYY-MM-DD') AS expiry_date
+        FROM item_batch_stock ibs
+        LEFT JOIN inventory_items ii  ON ii.code = ibs.item_code
+        LEFT JOIN products        p   ON p.code  = ibs.item_code
+        LEFT JOIN categories      c   ON c.id    = COALESCE(ii.category_id, p.category_id)
+        LEFT JOIN sub_categories  sc  ON sc.id   = p.sub_category_id
+        WHERE ibs.closing_qty > 0
+        ORDER BY COALESCE(c.name,'zzz'), COALESCE(sc.name,'zzz'), ibs.item_name, ibs.batch_no
       `)).rows;
       res.json(rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
