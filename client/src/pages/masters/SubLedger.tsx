@@ -33,6 +33,7 @@ function CrDrToggle({ value, onChange }: { value: string; onChange: (v: string) 
 // ── Bill row ────────────────────────────────────────────────────────────────
 type BillRow = {
   _key: string;
+  id?: string;           // DB primary-key (present for saved rows)
   billType: "Opening" | "Bills";
   refNo: string;
   refDate: string;
@@ -94,6 +95,7 @@ function LedgerForm({
     item?.bills?.length
       ? item.bills.map((b: any) => ({
           _key: crypto.randomUUID(),
+          id: b.id || undefined,          // preserve DB id for inline-edit sync
           billType: (b.billType || "Opening") as "Opening" | "Bills",
           refNo: b.refNo || "",
           refDate: b.refDate || "",
@@ -121,7 +123,22 @@ function LedgerForm({
         amount: data.amount,
         crDr: data.crDr,
       }),
-    onSuccess: () => {
+    onSuccess: (_res, variables) => {
+      // Sync the edited bill back into local bills state so opening balance recalculates
+      setBills(prev => prev.map(b =>
+        b.id === variables.id
+          ? {
+              ...b,
+              billType: variables.billType as "Opening" | "Bills",
+              refNo: variables.refNo,
+              refDate: variables.refDate,
+              voucherNo: variables.voucherNo,
+              voucherDate: variables.voucherDate,
+              amount: variables.amount,
+              crDr: variables.crDr,
+            }
+          : b
+      ));
       qc.invalidateQueries({ queryKey: ["/api/sub-ledgers", item?.id, "statement"] });
       qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
       setEditingBill(null);
@@ -661,9 +678,10 @@ function LedgerForm({
                                   {/* Ref Date */}
                                   <div className="flex flex-col gap-0.5">
                                     <span className="text-gray-500 font-medium">Ref Date</span>
-                                    <input type="date" value={editingBill.refDate}
-                                      onChange={e => setEditingBill(prev => prev ? { ...prev, refDate: e.target.value } : prev)}
-                                      className="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] w-34" />
+                                    <DatePicker value={editingBill.refDate}
+                                      onChange={v => setEditingBill(prev => prev ? { ...prev, refDate: v } : prev)}
+                                      max={editingBill.billType === "Opening" ? prevFYEndDate : undefined}
+                                      openUp data-testid="edit-ref-date"/>
                                   </div>
                                   {/* Voucher No */}
                                   <div className="flex flex-col gap-0.5">
@@ -675,9 +693,10 @@ function LedgerForm({
                                   {/* Voucher Date */}
                                   <div className="flex flex-col gap-0.5">
                                     <span className="text-gray-500 font-medium">Voucher Date</span>
-                                    <input type="date" value={editingBill.voucherDate}
-                                      onChange={e => setEditingBill(prev => prev ? { ...prev, voucherDate: e.target.value } : prev)}
-                                      className="border border-gray-300 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] w-34" />
+                                    <DatePicker value={editingBill.voucherDate}
+                                      onChange={v => setEditingBill(prev => prev ? { ...prev, voucherDate: v } : prev)}
+                                      max={editingBill.billType === "Opening" ? prevFYEndDate : undefined}
+                                      openUp data-testid="edit-voucher-date"/>
                                   </div>
                                   {/* Amount */}
                                   <div className="flex flex-col gap-0.5">
