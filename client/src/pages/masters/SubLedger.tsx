@@ -113,17 +113,25 @@ function LedgerForm({
   const [editingBill, setEditingBill] = useState<EditingBill | null>(null);
 
   const updateBillMutation = useMutation({
-    mutationFn: (data: { id: string } & Omit<EditingBill, "id">) =>
-      apiRequest("PUT", `/api/sub-ledger-bills/${data.id}`, {
-        billType: data.billType,
-        refNo: data.refNo,
-        refDate: data.refDate || null,
-        voucherNo: data.voucherNo,
-        voucherDate: data.voucherDate || null,
-        amount: data.amount,
-        crDr: data.crDr,
-      }),
-    onSuccess: (_res, variables) => {
+    mutationFn: async (data: { id: string } & Omit<EditingBill, "id">) => {
+      const res = await fetch(`/api/sub-ledger-bills/${data.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          billType: data.billType,
+          refNo: data.refNo,
+          refDate: data.refDate || null,
+          voucherNo: data.voucherNo,
+          voucherDate: data.voucherDate || null,
+          amount: data.amount,
+          crDr: data.crDr,
+        }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Update failed"); }
+      return res.json();
+    },
+    onSuccess: (_updated, variables) => {
       // Sync the edited bill back into local bills state so opening balance recalculates
       setBills(prev => prev.map(b =>
         b.id === variables.id
@@ -139,10 +147,11 @@ function LedgerForm({
             }
           : b
       ));
-      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers", item?.id, "statement"] });
-      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
       setEditingBill(null);
       toast({ title: "Bill updated" });
+      // Force immediate refetch so statement shows fresh data
+      qc.refetchQueries({ queryKey: ["/api/sub-ledgers", item?.id, "statement"] });
+      qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
     },
     onError: (e: any) => toast({ title: "Failed to update bill", description: e.message, variant: "destructive" }),
   });

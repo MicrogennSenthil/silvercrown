@@ -1489,8 +1489,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.put("/api/sub-ledger-bills/:id", requireAuth, async (req, res) => {
     try {
-      const updated = await storage.updateSubLedgerBill(req.params.id, req.body);
-      res.json(updated);
+      const { pool } = await import("./db");
+      const { billType, refNo, refDate, voucherNo, voucherDate, amount, crDr } = req.body;
+      await pool.query(
+        `UPDATE sub_ledger_bills
+         SET bill_type=$1, ref_no=$2, ref_date=$3, voucher_no=$4, voucher_date=$5, amount=$6, cr_dr=$7
+         WHERE id=$8`,
+        [billType || "Opening", refNo || "", refDate || null, voucherNo || "", voucherDate || null, amount || "0", crDr || "Cr", req.params.id]
+      );
+      const r = await pool.query(`SELECT * FROM sub_ledger_bills WHERE id=$1`, [req.params.id]);
+      res.json(r.rows[0] || {});
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
   app.delete("/api/sub-ledgers/:id", requireAuth, async (req, res) => {
