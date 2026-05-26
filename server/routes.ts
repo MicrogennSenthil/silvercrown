@@ -2368,7 +2368,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(pr.qty,0)                                                                        AS receipt,
           COALESCE(pi.qty,0)                                                                        AS issue,
           COALESCE(ops.qty,0)+COALESCE(br.qty,0)-COALESCE(bi.qty,0)+COALESCE(pr.qty,0)-COALESCE(pi.qty,0) AS closing
-        FROM inventory_items ii
+        FROM products ii
         LEFT JOIN op_stock       ops ON ops.item_code = ii.code
         LEFT JOIN before_receipt br  ON br.item_code  = ii.code
         LEFT JOIN before_issue   bi  ON bi.item_code  = ii.code
@@ -2418,7 +2418,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         SELECT ii.code AS item_code, ii.name AS item_name, ii.unit,
           COALESCE(op.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0) AS opening_qty,
           COALESCE(op.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0) AS opening_val
-        FROM inventory_items ii
+        FROM products ii
         LEFT JOIN op  ON op.item_code =ii.code
         LEFT JOIN bgn ON bgn.item_code=ii.code
         LEFT JOIN bgr ON bgr.item_code=ii.code
@@ -3363,7 +3363,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           +COALESCE(pgn.qty,0)-COALESCE(pgr.qty,0)-COALESCE(pi.qty,0)+COALESCE(pir.qty,0)+COALESCE(padj.qty,0) AS closing_qty,
           COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0)+COALESCE(badj.val,0)
           +COALESCE(pgn.val,0)-COALESCE(pgr.val,0)-COALESCE(pi.val,0)+COALESCE(pir.val,0)+COALESCE(padj.val,0) AS closing_val
-        FROM inventory_items ii
+        FROM products ii
         LEFT JOIN op_stock       ops  ON ops.item_code  = ii.code
         LEFT JOIN before_grn     bgn  ON bgn.item_code  = ii.code
         LEFT JOIN before_grn_ret bgr  ON bgr.item_code  = ii.code
