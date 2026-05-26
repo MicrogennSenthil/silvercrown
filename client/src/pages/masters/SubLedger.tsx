@@ -129,10 +129,17 @@ function LedgerForm({
 
   const catName = categoriesList.find((c: any) => c.id === catId)?.name || "";
 
+  // Current FY start: April 1 of FY start year
+  const fyStartDate = prevFYEndDate.slice(0, 4) + "-04-01";
+
   function updateBill(key: string, field: keyof BillRow, val: string) {
     setBills(prev => prev.map(b => {
       if (b._key !== key) return b;
       const updated = { ...b, [field]: val };
+      // Auto-classify: if refDate or voucherDate is before current FY start → Opening
+      if ((field === "refDate" || field === "voucherDate") && val && val < fyStartDate) {
+        updated.billType = "Opening";
+      }
       // When switching type to "Opening", clear dates that exceed the prev FY end
       if (field === "billType" && val === "Opening") {
         if (updated.refDate && updated.refDate > prevFYEndDate) updated.refDate = "";
@@ -493,6 +500,8 @@ function LedgerForm({
                       <th className="px-3 py-2 text-left text-gray-500 font-semibold w-8">#</th>
                       <th className="px-3 py-2 text-left text-gray-500 font-semibold">Date</th>
                       <th className="px-3 py-2 text-left text-gray-500 font-semibold">Voucher / Ref No</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">Voucher Date</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-semibold">Type</th>
                       <th className="px-3 py-2 text-left text-gray-500 font-semibold">Narration / Source</th>
                       <th className="px-3 py-2 text-right text-gray-500 font-semibold">Debit ₹</th>
                       <th className="px-3 py-2 text-right text-gray-500 font-semibold">Credit ₹</th>
@@ -506,6 +515,8 @@ function LedgerForm({
                         <td className="px-3 py-1.5 text-gray-400">—</td>
                         <td className="px-3 py-1.5 text-gray-500 italic">Opening</td>
                         <td className="px-3 py-1.5 text-gray-500 italic" colSpan={2}>Opening Balance</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-400 font-medium">—</td>
+                        <td className="px-3 py-1.5 text-gray-500 italic">—</td>
                         <td className="px-3 py-1.5 text-right font-mono text-gray-600">
                           {stmtData.openingBalanceType !== "Credit" ? fmt(stmtData.openingBalance) : "—"}
                         </td>
@@ -519,12 +530,12 @@ function LedgerForm({
                     )}
 
                     {stmtLoading && (
-                      <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">Loading statement…</td></tr>
+                      <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">Loading statement…</td></tr>
                     )}
 
                     {!stmtLoading && stmtData?.statement?.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-3 py-5 text-center text-gray-400">
+                        <td colSpan={9} className="px-3 py-5 text-center text-gray-400">
                           No transactions posted yet. Purchases, sales, payments and receipts will appear here.
                         </td>
                       </tr>
@@ -541,25 +552,34 @@ function LedgerForm({
                           <div className="font-semibold text-gray-700">{r.voucherNo || r.refNo || "—"}</div>
                           {r.refNo && r.refNo !== r.voucherNo && <div className="text-gray-400 text-[10px]">Ref: {r.refNo}</div>}
                         </td>
+                        {/* Voucher Date */}
+                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
+                          {r.voucherDate ? new Date(r.voucherDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        </td>
+                        {/* Voucher Type */}
                         <td className="px-3 py-1.5">
-                          <div className="text-gray-600 truncate max-w-[200px]">{r.narration || "—"}</div>
-                          {r.sourceType && (
-                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium"
-                                style={r.sourceType === "Bills"
-                                  ? { background: "#fde8dc", color: "#d74700" }
-                                  : { background: SC.tonal, color: SC.primary }}>
-                                {r.sourceType === "grn" ? "Purchase" : r.sourceType}
-                              </span>
-                              {(r.sourceType === "Opening Bill" || r.sourceType === "Bills") && isEdit && (
-                                <button type="button" onClick={scrollToBillGrid}
-                                  className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium border transition-colors hover:bg-[#027fa5] hover:text-white"
-                                  style={{ borderColor: SC.primary, color: SC.primary }}
-                                  title="Click to scroll up and edit this bill entry">
-                                  <PencilLine size={9} /> Edit
-                                </button>
-                              )}
-                            </div>
+                          {r.billType ? (
+                            <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium"
+                              style={r.billType === "Bills"
+                                ? { background: "#fde8dc", color: "#d74700" }
+                                : { background: SC.tonal, color: SC.primary }}>
+                              {r.billType}
+                            </span>
+                          ) : r.sourceType ? (
+                            <span className="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-100 text-gray-500">
+                              {r.sourceType === "grn" ? "Purchase" : r.sourceType}
+                            </span>
+                          ) : "—"}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <div className="text-gray-600 truncate max-w-[160px]">{r.narration || "—"}</div>
+                          {(r.sourceType === "Opening Bill" || r.sourceType === "Bills") && isEdit && (
+                            <button type="button" onClick={scrollToBillGrid}
+                              className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium border transition-colors hover:bg-[#027fa5] hover:text-white mt-0.5"
+                              style={{ borderColor: SC.primary, color: SC.primary }}
+                              title="Click to scroll up and edit this bill entry">
+                              <PencilLine size={9} /> Edit
+                            </button>
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-right font-mono text-red-600">
@@ -577,7 +597,7 @@ function LedgerForm({
                   {stmtData?.statement?.length > 0 && (
                     <tfoot>
                       <tr className="border-t-2 border-gray-200 bg-gray-50">
-                        <td colSpan={4} className="px-3 py-2 text-xs font-semibold text-gray-600">Closing Balance</td>
+                        <td colSpan={6} className="px-3 py-2 text-xs font-semibold text-gray-600">Closing Balance</td>
                         <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-red-600">
                           {fmt(stmtData.statement.reduce((s: number, r: any) => s + r.debit, 0))}
                         </td>

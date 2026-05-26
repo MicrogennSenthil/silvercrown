@@ -1451,6 +1451,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           refNo: r.ref_no || "",
           txnDate: r.txn_date ? String(r.txn_date).slice(0, 10) : "",
           voucherNo: r.voucher_no || "",
+          voucherDate: r.voucher_date ? String(r.voucher_date).slice(0, 10) : "",
+          billType: r.bill_type || "",
           narration: r.narration || "",
           sourceType: r.source_type || "",
           debit: drCr === "DR" ? amt : 0,
