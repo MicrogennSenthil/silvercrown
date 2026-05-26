@@ -119,4 +119,5 @@ client/public/
 - **GitHub repo**: https://github.com/MicrogennSenthil/silvercrown
 
 ## User Preferences
+- **Auto-deploy after every change**: Project is in continuous testing mode. After every set of code changes, deploy to production automatically without asking — push to GitHub (handled by checkpoint), `git stash && git pull` on VPS, `npm run build`, then `pm2 restart silvercrown-element`.
 - **ID/type-based filtering always**: Never use name-based string matching (ILIKE, `.includes()`, `.toLowerCase()`) to identify GL accounts or sub-ledger categories. Always use the `gl_type` column on `general_ledgers` (values: `bank`, `cash`, `sundry_debtor`, `sundry_creditor`, `purchase`, `expense`, `tax`, `roundoff`, `liability`, `other`). Apply this to all SQL WHERE clauses, frontend filter functions, and any logic that distinguishes account types. When creating new GLs or features that need account-type awareness, wire through `gl_type` from day one.
