@@ -339,6 +339,7 @@ export default function GoodsReceiptNote() {
           ...it, qty: p2(it.qty), rate: p2(it.rate), taxable_amt: p2(it.taxable_amt),
           cgst_pct: p2(it.cgst_pct), cgst_amt: p2(it.cgst_amt), sgst_pct: p2(it.sgst_pct),
           sgst_amt: p2(it.sgst_amt), igst_pct: p2(it.igst_pct), igst_amt: p2(it.igst_amt), total: p2(it.total),
+          expiry_date: it.expiry_date ? String(it.expiry_date).slice(0,10) : "",
           expiry_required: lookupExpiry(it.item_code||""),
         })) }));
       });
