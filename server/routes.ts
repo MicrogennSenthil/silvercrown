@@ -1807,7 +1807,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT
           slb.id,
           slb.ref_no AS bill_no,
-          slb.ref_date AS bill_date,
+          TO_CHAR(slb.ref_date, 'YYYY-MM-DD') AS bill_date,
           slb.amount::numeric AS bill_amount,
           slb.cr_dr,
           COALESCE((
@@ -1846,7 +1846,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           SELECT
             pi.id,
             pi.invoice_number AS bill_no,
-            pi.invoice_date  AS bill_date,
+            TO_CHAR(pi.invoice_date, 'YYYY-MM-DD') AS bill_date,
             pi.total_amount::numeric  AS bill_amount,
             COALESCE(pi.paid_amount::numeric, 0) AS paid_amount
           FROM purchase_invoices pi
@@ -1882,7 +1882,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           SELECT
             slb.id,
             slb.ref_no AS bill_no,
-            slb.ref_date AS bill_date,
+            TO_CHAR(slb.ref_date, 'YYYY-MM-DD') AS bill_date,
             slb.amount::numeric AS bill_amount,
             slb.cr_dr,
             COALESCE((
@@ -1916,7 +1916,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           SELECT
             si.id,
             si.invoice_number AS bill_no,
-            si.invoice_date   AS bill_date,
+            TO_CHAR(si.invoice_date, 'YYYY-MM-DD') AS bill_date,
             si.total_amount::numeric  AS bill_amount,
             COALESCE(si.paid_amount::numeric, 0) AS paid_amount
           FROM sales_invoices si
