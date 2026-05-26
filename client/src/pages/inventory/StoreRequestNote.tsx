@@ -117,9 +117,11 @@ export default function StoreRequestNote() {
   const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  // Live closing stock per item_code from item_batch_stock
+  const { data: liveStockMap = {} }   = useQuery<Record<string, number>>({ queryKey: ["/api/item-stock-summary"] });
   const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
 
-  // Merge store inventory items + engineering products — same approach as GRN
+  // Merge store inventory items + engineering products — normalise all to snake_case
   const products = [
     ...(allInvItems as any[]).map((it: any) => ({
       id: it.id,
@@ -127,15 +129,22 @@ export default function StoreRequestNote() {
       name: it.name,
       uom: it.unit,
       unit: it.unit,
-      purchase_price: it.purchasePrice ?? it.purchase_price ?? "0",
-      cost_price: it.purchasePrice ?? it.purchase_price ?? "0",
-      current_stock: it.currentStock ?? it.current_stock ?? 0,
+      purchase_price: String(it.purchasePrice ?? it.purchase_price ?? "0"),
+      cost_price:     String(it.purchasePrice ?? it.purchase_price ?? "0"),
+      current_stock:  liveStockMap[it.code] ?? it.currentStock ?? it.current_stock ?? 0,
       isActive: it.isActive ?? it.is_active ?? true,
       _source: "inventory",
     })),
     ...(allProducts as any[])
-      .filter((p: any) => p.isActive !== false && (!rawMatCatId || p.categoryId === rawMatCatId))
-      .map((p: any) => ({ ...p, _source: "product" })),
+      .filter((p: any) => p.isActive !== false)
+      .map((p: any) => ({
+        ...p,
+        _source: "product",
+        purchase_price: String(p.purchasePrice ?? p.purchase_price ?? p.rate ?? "0"),
+        cost_price:     String(p.costPrice     ?? p.cost_price     ?? "0"),
+        current_stock:  liveStockMap[p.code] ?? p.currentStock ?? p.current_stock ?? 0,
+        uom: p.uom || p.unit || "Nos",
+      })),
   ];
 
   const totalQty = form.items.reduce((s, it) => s + (+it.qty || 0), 0);

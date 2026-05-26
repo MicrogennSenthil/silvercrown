@@ -1039,6 +1039,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/sub-categories/:id", requireAuth, async (req, res) => { await storage.deleteSubCategory(req.params.id); res.json({ ok: true }); });
 
   // ── Stores ─────────────────────────────────────────────────────────────────
+  // GET /api/item-stock-summary — live closing stock per item_code from item_batch_stock
+  app.get("/api/item-stock-summary", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const r = await pool.query(`
+        SELECT item_code, SUM(closing_qty::numeric) AS total_qty
+        FROM item_batch_stock
+        GROUP BY item_code
+      `);
+      const map: Record<string, number> = {};
+      for (const row of r.rows) map[row.item_code] = parseFloat(row.total_qty) || 0;
+      res.json(map);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/stores", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
