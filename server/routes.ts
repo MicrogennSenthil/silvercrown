@@ -1824,7 +1824,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ), 0) AS paid_amount
         FROM sub_ledger_bills slb
         WHERE slb.sub_ledger_id = $1
-          AND slb.cr_dr = 'Cr'
+          AND UPPER(slb.cr_dr) = 'CR'
           AND slb.amount::numeric > 0
         ORDER BY slb.ref_date NULLS LAST, slb.id
       `, [subLedgerId]);
@@ -1905,7 +1905,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             ), 0) AS paid_amount
           FROM sub_ledger_bills slb
           WHERE slb.sub_ledger_id = $1
-            AND slb.cr_dr = 'Dr'
+            AND UPPER(slb.cr_dr) = 'DR'
             AND slb.amount::numeric > 0
           ORDER BY slb.ref_date NULLS LAST, slb.id
         `, [subLedgerId]);
