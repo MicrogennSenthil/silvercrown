@@ -1225,7 +1225,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const vRes = await pool.query(`
           SELECT
             vm.ref_no,
-            vm.voucher_date   AS txn_date,
+            vm.voucher_date::text   AS txn_date,
             vm.voucher_no,
             vd.amount,
             vd.dr_cr,
@@ -1268,7 +1268,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       } else {
         // Sub-ledger statement: same logic as existing /api/sub-ledgers/:id/statement
         const billsRes = await pool.query(`
-          SELECT ref_no, ref_date AS txn_date, voucher_no, voucher_date,
+          SELECT ref_no, ref_date::text AS txn_date, voucher_no, voucher_date::text,
                  amount, cr_dr AS dr_cr, 'Opening Bill' AS source_type, '' AS narration
           FROM sub_ledger_bills WHERE sub_ledger_id = $1
             AND NOT EXISTS (
@@ -1278,8 +1278,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `, [id]);
 
         const voucherRes = await pool.query(`
-          SELECT vm.ref_no, vm.voucher_date AS txn_date, vm.voucher_no,
-                 vm.voucher_date, vd.amount, vd.dr_cr, vm.source_type, vm.narration
+          SELECT vm.ref_no, vm.voucher_date::text AS txn_date, vm.voucher_no,
+                 vm.voucher_date::text AS voucher_date, vd.amount, vd.dr_cr, vm.source_type, vm.narration
           FROM voucher_det vd
           JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
           WHERE vd.sub_ledger_id = $1
@@ -1405,9 +1405,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SELECT
           id            AS bill_id,
           ref_no        AS ref_no,
-          ref_date      AS txn_date,
+          ref_date::text      AS txn_date,
           voucher_no    AS voucher_no,
-          voucher_date  AS voucher_date,
+          voucher_date::text  AS voucher_date,
           amount        AS amount,
           cr_dr         AS dr_cr,
           COALESCE(bill_type, 'Opening') AS bill_type,
@@ -1425,9 +1425,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const voucherRes = await pool.query(`
         SELECT
           vm.ref_no,
-          vm.voucher_date AS txn_date,
+          vm.voucher_date::text AS txn_date,
           vm.voucher_no,
-          vm.voucher_date,
+          vm.voucher_date::text AS voucher_date,
           vd.amount,
           vd.dr_cr,
           vm.source_type,

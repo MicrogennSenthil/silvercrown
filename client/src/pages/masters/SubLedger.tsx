@@ -12,6 +12,16 @@ function fmt(v: string | number) {
   return parseFloat(String(v) || "0").toFixed(2);
 }
 
+// Safe date formatter — parses YYYY-MM-DD in LOCAL time to avoid UTC timezone year shifts
+function fmtD(s: string | null | undefined) {
+  if (!s) return "—";
+  const parts = String(s).slice(0, 10).split("-");
+  if (parts.length !== 3) return s;
+  const [y, m, d] = parts.map(Number);
+  if (!y || !m || !d) return s;
+  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 // ── Inline toggle (Credit/Debit selector) ────────────────────────────────────
 function CrDrToggle({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
@@ -698,7 +708,7 @@ function LedgerForm({
                           <tr className={`border-b border-gray-50 ${rowBg}`} data-testid={`stmt-row-${i}`}>
                             <td className="px-3 py-1.5 text-gray-400 text-center">{i + 1}</td>
                             <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
-                              {r.txnDate ? new Date(r.txnDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                              {fmtD(r.txnDate)}
                             </td>
                             <td className="px-3 py-1.5">
                               <div className="font-semibold text-gray-700">{r.voucherNo || r.refNo || "—"}</div>
@@ -706,7 +716,7 @@ function LedgerForm({
                             </td>
                             {/* Voucher Date */}
                             <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">
-                              {r.voucherDate ? new Date(r.voucherDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                              {fmtD(r.voucherDate)}
                             </td>
                             {/* Voucher Type */}
                             <td className="px-3 py-1.5">
