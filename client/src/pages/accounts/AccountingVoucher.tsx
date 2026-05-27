@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Trash2, Info, ChevronDown, ArrowLeft, Send, Search,
-  CheckCircle2, Plus, AlertCircle, X, FileText,
+  CheckCircle2, Plus, AlertCircle, X, FileText, AlertTriangle,
+  BookOpen, FileX, ArrowRight,
 } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
 
@@ -466,6 +467,10 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
   const [billAdjSlId,       setBillAdjSlId]       = useState("");
   const [billAdjPartyLineKey, setBillAdjPartyLineKey] = useState("");
 
+  // Voucher-type mismatch guard state
+  type VoucherWarn = { nature: "payment" | "receipt"; partyType: "customer" | "supplier" };
+  const [voucherWarn, setVoucherWarn] = useState<VoucherWarn | null>(null);
+
   // Amount input refs for keyboard jump
   const amtRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -495,6 +500,22 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
   // ── Line operations ────────────────────────────────────────────────────────
   function selectAccount(key: string, id: string, name: string, isGl: boolean) {
+    // ── Tally-aligned voucher-type guard ────────────────────────────────────
+    // Payment Voucher  → only Suppliers (sundry_creditor) allowed as party
+    // Receipt Voucher  → only Customers (sundry_debtor)  allowed as party
+    if (!isGl && (nature === "payment" || nature === "receipt")) {
+      const sl = (allSubs as any[]).find((s: any) => String(s.id) === String(id) || String(s.sl_id) === String(id));
+      const glType = sl?.gl_type || "";
+      if (nature === "payment" && glType === "sundry_debtor") {
+        setVoucherWarn({ nature: "payment", partyType: "customer" });
+        return; // block — don't update lines
+      }
+      if (nature === "receipt" && glType === "sundry_creditor") {
+        setVoucherWarn({ nature: "receipt", partyType: "supplier" });
+        return; // block — don't update lines
+      }
+    }
+    // ── Normal line update ───────────────────────────────────────────────────
     setLines(prev => {
       const updated = prev.map(l => l._key === key
         ? { ...l,
@@ -1210,6 +1231,112 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
           </div>
         </div>
       </div>
+
+      {/* ── Voucher-Type Mismatch Guard Modal ─────────────────────────────── */}
+      {voucherWarn && (() => {
+        const isPayment = voucherWarn.nature === "payment";
+        const wrongParty  = isPayment ? "Customer (Debtor)"   : "Supplier (Creditor)";
+        const rightParty  = isPayment ? "Supplier (Creditor)" : "Customer (Debtor)";
+        const rightVoucher = isPayment ? "Receipt Voucher"    : "Payment Voucher";
+
+        const alternatives = isPayment
+          ? [
+              { icon: <BookOpen size={15}/>, label: "Journal Entry", desc: "Dr Customer A/c  →  Cr Bank / Cash — for refunds or advance payments to customers" },
+              { icon: <FileText  size={15}/>, label: "Credit Note",   desc: "Issue a Credit Note against the customer's sales invoice to reduce their outstanding balance" },
+            ]
+          : [
+              { icon: <BookOpen size={15}/>, label: "Journal Entry", desc: "Dr Bank / Cash  →  Cr Supplier A/c — for advances received or adjustments from suppliers" },
+              { icon: <FileText  size={15}/>, label: "Debit Note",    desc: "Issue a Debit Note against the supplier's purchase invoice to reduce what you owe them" },
+            ];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+               data-testid="voucher-type-warn-overlay">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+
+              {/* Header */}
+              <div className="flex items-center gap-3 px-6 py-4 bg-red-50 border-b border-red-100">
+                <span className="flex items-center justify-center w-9 h-9 rounded-full bg-red-100">
+                  <AlertTriangle size={20} className="text-red-600"/>
+                </span>
+                <div className="flex-1">
+                  <p className="font-bold text-red-700 text-sm leading-tight">Wrong Account Type</p>
+                  <p className="text-red-500 text-xs mt-0.5">
+                    {voucherWarn.nature === "payment" ? "Payment" : "Receipt"} Voucher · {wrongParty} selected
+                  </p>
+                </div>
+                <button onClick={() => setVoucherWarn(null)}
+                  className="p-1.5 rounded-full hover:bg-red-100 text-red-400 transition-colors"
+                  data-testid="btn-voucher-warn-close">
+                  <X size={16}/>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-5 space-y-4 text-sm">
+
+                {/* Rule explanation */}
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 space-y-1.5">
+                  <p className="font-semibold text-amber-800 flex items-center gap-1.5">
+                    <FileX size={14}/> This entry is not allowed
+                  </p>
+                  <p className="text-amber-700 leading-relaxed">
+                    A <strong>{voucherWarn.nature === "payment" ? "Payment" : "Receipt"} Voucher</strong> can
+                    only have a <strong>{rightParty}</strong> as the party account.
+                    You selected a <strong>{wrongParty}</strong>.
+                  </p>
+                  <p className="text-amber-600 text-xs mt-1">
+                    This rule follows standard accounting practice (Tally, SAP, QuickBooks). Using the wrong
+                    voucher type will misrepresent your books and corrupt bill-to-bill reconciliation.
+                  </p>
+                </div>
+
+                {/* What they should do instead */}
+                <div>
+                  <p className="font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                    <ArrowRight size={14} className="text-green-600"/> Use one of these instead:
+                  </p>
+                  <div className="space-y-2">
+                    {alternatives.map((alt, i) => (
+                      <div key={i} className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                        <span className="mt-0.5 flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 text-gray-600 shrink-0">
+                          {alt.icon}
+                        </span>
+                        <div>
+                          <p className="font-semibold text-gray-800 text-sm">{alt.label}</p>
+                          <p className="text-gray-500 text-xs leading-relaxed mt-0.5">{alt.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+                      <span className="mt-0.5 flex items-center justify-center w-6 h-6 rounded-full bg-white border border-blue-200 text-blue-500 shrink-0">
+                        <BookOpen size={15}/>
+                      </span>
+                      <div>
+                        <p className="font-semibold text-blue-700 text-sm">{rightVoucher}</p>
+                        <p className="text-blue-500 text-xs leading-relaxed mt-0.5">
+                          If you intended to {isPayment ? "receive from" : "pay"} a {isPayment ? "customer" : "supplier"}, switch to a <strong>{rightVoucher}</strong> which supports {rightParty} accounts.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 pb-5 flex justify-end gap-3">
+                <button onClick={() => setVoucherWarn(null)}
+                  className="px-6 py-2 rounded-lg text-sm font-semibold text-white transition-opacity"
+                  style={{ background: SC.orange }}
+                  data-testid="btn-voucher-warn-ok">
+                  OK, I understand
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Bill to Bill Adjustment Dialog */}
       <BillAdjustmentDialog
