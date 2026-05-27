@@ -218,6 +218,11 @@ export default function StoreRequestNote() {
 
   async function handleSave() {
     setErr(""); setSaving(true);
+    if (!form.store_id) {
+      setErr("Please select a Store before saving the request.");
+      setSaving(false);
+      return;
+    }
     const payload = { ...form, total_qty: totalQty, grand_total: grandTotal, items: form.items };
     const url = editId ? `/api/store-request-notes/${editId}` : "/api/store-request-notes";
     const method = editId ? "PATCH" : "POST";

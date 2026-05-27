@@ -7243,8 +7243,9 @@ Return ONLY valid JSON (no markdown, no explanation):
   app.post("/api/store-request-notes", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
-      const { generateVoucherNo } = await import("./voucher");
       const b = req.body;
+      if (!b.store_id) return res.status(400).json({ message: "Store is required. Please select a Store before saving." });
+      const { generateVoucherNo } = await import("./voucher");
       const voucherNo = await generateVoucherNo("store_request", pool);
       const client = await pool.connect();
       try {
@@ -7273,6 +7274,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       const { pool } = await import("./db");
       const b = req.body;
+      if (!b.store_id) return res.status(400).json({ message: "Store is required. Please select a Store before saving." });
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
