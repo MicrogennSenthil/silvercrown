@@ -475,6 +475,11 @@ export default function StoreOpening() {
   async function handleSave(status?: "Draft"|"Posted") {
     const finalStatus = status || form.status;
     setErr(""); setSaving(true);
+    if (!form.store_id) {
+      setErr("Please select a Store before saving the opening stock.");
+      setSaving(false);
+      return;
+    }
     const payload = { ...form, status: finalStatus, total_qty: totalQty, total_amount: totalAmount };
     const url = editId ? `/api/store-openings/${editId}` : "/api/store-openings";
     const method = editId ? "PATCH" : "POST";
