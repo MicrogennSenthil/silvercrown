@@ -2190,8 +2190,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               UPDATE purchase_invoices
               SET paid_amount = LEAST(total_amount::numeric, COALESCE(paid_amount::numeric, 0) + $1),
                   status = CASE
-                    WHEN COALESCE(paid_amount::numeric, 0) + $1 >= total_amount::numeric THEN 'paid'
-                    ELSE 'partial'
+                    WHEN COALESCE(paid_amount::numeric, 0) + $1 >= total_amount::numeric THEN 'paid'::invoice_status
+                    ELSE status
                   END
               WHERE id = $2
             `, [adjAmt, b.sourceId]);
@@ -2203,11 +2203,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               UPDATE sales_invoices
               SET paid_amount = LEAST(total_amount::numeric, COALESCE(paid_amount::numeric, 0) + $1),
                   status = CASE
-                    WHEN COALESCE(paid_amount::numeric, 0) + $1 >= total_amount::numeric THEN 'paid'
-                    ELSE 'partial'
+                    WHEN COALESCE(paid_amount::numeric, 0) + $1 >= total_amount::numeric THEN 'paid'::invoice_status
+                    ELSE status
                   END
               WHERE id = $2
-            `, [adjAmt, b.sourceId]).catch(() => {});
+            `, [adjAmt, b.sourceId]);
           }
 
           // For job work invoices: update paid_amount and status
