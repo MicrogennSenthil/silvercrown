@@ -581,13 +581,20 @@ export default function GoodsReceiptNote() {
                       <span className="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">{g.status}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button onClick={() => openEdit(g)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#027fa5]"
-                          data-testid={`btn-edit-${g.id}`}><Edit2 size={13}/></button>
-                        <button onClick={() => { if (confirm("Delete this GRN?")) deleteMut.mutate(g.id); }}
-                          className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
-                          data-testid={`btn-delete-${g.id}`}><Trash2 size={13}/></button>
-                      </div>
+                      {g.status === "Draft" ? (
+                        <div className="flex gap-2">
+                          <button onClick={() => openEdit(g)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#027fa5]"
+                            title="Edit GRN" data-testid={`btn-edit-${g.id}`}><Edit2 size={13}/></button>
+                          <button onClick={() => { if (confirm("Delete this GRN?")) deleteMut.mutate(g.id); }}
+                            className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                            title="Delete GRN" data-testid={`btn-delete-${g.id}`}><Trash2 size={13}/></button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2" title={`GRN is ${g.status} — cannot edit or delete`}>
+                          <span className="p-1.5 rounded text-gray-200 cursor-not-allowed"><Edit2 size={13}/></span>
+                          <span className="p-1.5 rounded text-gray-200 cursor-not-allowed"><Trash2 size={13}/></span>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

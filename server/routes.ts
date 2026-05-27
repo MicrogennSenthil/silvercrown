@@ -5880,6 +5880,11 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Update GRN
   app.patch("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
+    // Block edit if GRN has been issued against (status is not Draft)
+    const statusCheck = await pool.query(`SELECT status FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
+    if (statusCheck.rows[0] && statusCheck.rows[0].status !== "Draft") {
+      return res.status(400).json({ message: `GRN cannot be edited — it has been ${statusCheck.rows[0].status.toLowerCase()} against. Only Draft GRNs can be modified.` });
+    }
     // Validate PO approval before acquiring transaction client
     if (req.body.purchase_type === "PO") {
       if (!req.body.po_id) {
@@ -5971,6 +5976,11 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Delete GRN
   app.delete("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
+    // Block delete if GRN has been issued against (status is not Draft)
+    const statusCheck = await pool.query(`SELECT status FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
+    if (statusCheck.rows[0] && statusCheck.rows[0].status !== "Draft") {
+      return res.status(400).json({ message: `GRN cannot be deleted — it has been ${statusCheck.rows[0].status.toLowerCase()} against. Only Draft GRNs can be deleted.` });
+    }
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
