@@ -213,6 +213,9 @@ function LedgerForm({
     if (gl?.categoryId) setCatId(gl.categoryId);
   }, [glId, generalLedgersList]);
 
+  // Current FY start: April 1 of FY start year (declared before the useEffect that depends on it)
+  const fyStartDate = prevFYEndDate.slice(0, 4) + "-04-01";
+
   // When bills change and obEntry is on + BillToBill, sum only valid "Opening" type amounts
   // A bill counts as Opening only if: billType=Opening AND (no refDate OR refDate is before current FY start)
   useEffect(() => {
@@ -231,9 +234,6 @@ function LedgerForm({
   }, [paymentType]);
 
   const catName = categoriesList.find((c: any) => c.id === catId)?.name || "";
-
-  // Current FY start: April 1 of FY start year
-  const fyStartDate = prevFYEndDate.slice(0, 4) + "-04-01";
 
   function updateBill(key: string, field: keyof BillRow, val: string) {
     setBills(prev => prev.map(b => {

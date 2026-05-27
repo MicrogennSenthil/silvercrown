@@ -1,1 +1,2 @@
 - [Auto-deploy preference](auto-deploy.md) — always deploy to production after every change, no need to ask the user first.
+- [TDZ blank-page pattern](tdz-blank-page.md) — const declared after a useEffect that uses it in the dependency array causes a Temporal Dead Zone ReferenceError → blank white React page.
