@@ -1809,7 +1809,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // matches supplier_name_manual / supplier.name / customer.name in the DB
       const slNameClean = slName.replace(/\s*\([A-Za-z]+\)\s*$/, "").trim();
 
+      // Back-fill sl_id on unlinked GRNs by name FIRST — so sections 1 & 4 see correct sl_id
+      await pool.query(`
+        UPDATE goods_receipt_notes g
+        SET sl_id = $1
+        WHERE sl_id IS NULL
+          AND ($2 != '')
+          AND LOWER(TRIM(g.supplier_name_manual)) = LOWER(TRIM($2))
+      `, [subLedgerId, slNameClean]).catch(() => {});
+
       // 1. Opening balance bills from sub_ledger_bills (Cr = supplier owes creditor balance)
+      //    Skip any sub_ledger_bill whose ref_no matches a GRN — the GRN section (4) will
+      //    show those with the authoritative paid_amount from goods_receipt_notes.
       const slBills = await pool.query(`
         SELECT
           slb.id,
@@ -1826,6 +1837,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE slb.sub_ledger_id = $1
           AND UPPER(slb.cr_dr) = 'CR'
           AND slb.amount::numeric > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM goods_receipt_notes g
+            WHERE g.sl_id = slb.sub_ledger_id
+              AND slb.ref_no IS NOT NULL AND slb.ref_no != ''
+              AND (g.voucher_no = slb.ref_no OR COALESCE(NULLIF(g.bill_no,''), '') = slb.ref_no)
+          )
         ORDER BY slb.ref_date NULLS LAST, slb.id
       `, [subLedgerId]);
 
@@ -1891,6 +1908,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (customerRes.rows.length > 0) {
         const customerId = customerRes.rows[0].id;
         // Also check sub_ledger_bills with Dr balance (debtor owes us)
+        // Skip any DR bill whose ref_no matches a sales invoice — sales section handles those.
         const slBillsDr = await pool.query(`
           SELECT
             slb.id,
@@ -1907,8 +1925,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           WHERE slb.sub_ledger_id = $1
             AND UPPER(slb.cr_dr) = 'DR'
             AND slb.amount::numeric > 0
+            AND NOT EXISTS (
+              SELECT 1 FROM sales_invoices si
+              WHERE si.customer_id = $2
+                AND slb.ref_no IS NOT NULL AND slb.ref_no != ''
+                AND si.invoice_number = slb.ref_no
+            )
           ORDER BY slb.ref_date NULLS LAST, slb.id
-        `, [subLedgerId]);
+        `, [subLedgerId, customerRes.rows[0].id]);
 
         for (const r of slBillsDr.rows) {
           const billAmt = parseFloat(r.bill_amount || "0");
@@ -1955,17 +1979,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // 4. GRNs for supplier linked to this sub-ledger (Sundry Creditors side)
-      //    Match by: sl_id (ID-based) OR supplier_name_manual (name-based, using clean name)
-      //    Exclude GRNs that are already represented as a sub_ledger_bill (section 1)
-      //    to avoid double-counting. Also back-fill sl_id on unlinked GRNs by name.
-      await pool.query(`
-        UPDATE goods_receipt_notes g
-        SET sl_id = $1
-        WHERE sl_id IS NULL
-          AND ($2 != '')
-          AND LOWER(TRIM(g.supplier_name_manual)) = LOWER(TRIM($2))
-      `, [subLedgerId, slNameClean]).catch(() => {});
-
+      //    sl_id backfill already done above. GRNs whose ref matches a sub_ledger_bill
+      //    are now EXCLUDED from section 1 instead of here, so we always use the GRN's
+      //    authoritative paid_amount (correctly updated by payments).
       const grns = await pool.query(`
         SELECT
           g.id,
@@ -1980,12 +1996,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         )
           AND g.grand_total::numeric > COALESCE(g.paid_amount::numeric, 0)
           AND COALESCE(g.status,'Draft') NOT IN ('Cancelled','Paid')
-          AND NOT EXISTS (
-            SELECT 1 FROM sub_ledger_bills slb2
-            WHERE slb2.sub_ledger_id = $1
-              AND UPPER(slb2.cr_dr) = 'CR'
-              AND slb2.ref_no = COALESCE(NULLIF(g.bill_no,''), g.voucher_no)
-          )
         ORDER BY COALESCE(g.bill_date, g.grn_date)
       `, [subLedgerId, slNameClean]);
 

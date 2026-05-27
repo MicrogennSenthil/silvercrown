@@ -511,7 +511,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       return updated;
     });
 
-    // Set party info for bill adjustment (manual open via button — no auto-popup)
+    // Trigger bill adjustment dialog when a party ledger is selected
     if (id && vtName) {
       const idx = lines.findIndex(l => l._key === key);
       const f = getLineFilter(vtName, idx);
@@ -519,6 +519,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
         setBillAdjSlId(id);
         setBillAdjPartyLineKey(key);
         setBillAdjRows([]); // reset previous for new party
+        setTimeout(() => setShowBillAdj(true), 80);
       }
     }
   }
