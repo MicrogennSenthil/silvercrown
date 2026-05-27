@@ -96,7 +96,7 @@ function PoSelectorPanel({ supplierId, selectedPoIds, onSelect }: {
 }) {
   const { data: pos = [] } = useQuery<any[]>({ queryKey: ["/api/purchase-orders"] });
   const approvedPos = (pos as any[]).filter((p: any) =>
-    ["Approved","Draft"].includes(p.status) &&
+    p.status === "Approved" &&
     (!supplierId || p.supplier_id === supplierId));
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden text-xs">
@@ -484,17 +484,19 @@ export default function GoodsReceiptNote() {
     // ── Validation ──────────────────────────────────────────────────────────
     const errStore    = !form.store_id;
     const errSupplier = !form.supplier_id && !form.supplier_name_manual;
+    const errPO       = form.purchase_type === "PO" && !form.po_id;
     const badRows     = new Set<number>();
     form.items.forEach((it, i) => {
       if (!it.item_code || it.qty <= 0 || it.rate <= 0) badRows.add(i);
       if (it.batch_required  && !it.batch_no)   badRows.add(i);
       if (it.expiry_required && !it.expiry_date) badRows.add(i);
     });
-    if (errStore || errSupplier || badRows.size > 0) {
+    if (errStore || errSupplier || errPO || badRows.size > 0) {
       setValErrs({ store: errStore, supplier: errSupplier, rows: badRows });
       const msgs: string[] = [];
       if (errStore)    msgs.push("Store is required");
       if (errSupplier) msgs.push("Supplier is required");
+      if (errPO)       msgs.push("An approved Purchase Order must be selected before creating a GRN");
       if (badRows.size > 0) msgs.push(`Row${badRows.size > 1 ? "s" : ""} ${[...badRows].map(r => r + 1).join(", ")}: check Item, Qty, Rate, Batch No and Expiry Date`);
       setErr(msgs.join(" · "));
       return;

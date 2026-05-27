@@ -5793,6 +5793,20 @@ Return ONLY valid JSON (no markdown, no explanation):
         PRIMARY KEY (item_code, batch_no, expiry_date_key)
       )
     `).catch(()=>{});
+    // Validate PO approval before acquiring transaction client
+    if (req.body.purchase_type === "PO") {
+      if (!req.body.po_id) {
+        return res.status(400).json({ message: "An approved Purchase Order must be selected before creating a GRN" });
+      }
+      const poCheck = await pool.query(`SELECT status FROM purchase_orders WHERE id=$1`, [req.body.po_id]);
+      if (!poCheck.rows[0]) {
+        return res.status(400).json({ message: "Selected Purchase Order not found" });
+      }
+      if (poCheck.rows[0].status !== "Approved") {
+        return res.status(400).json({ message: `GRN cannot be created — Purchase Order is "${poCheck.rows[0].status}". Only Approved POs are allowed.` });
+      }
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -5866,6 +5880,19 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Update GRN
   app.patch("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
+    // Validate PO approval before acquiring transaction client
+    if (req.body.purchase_type === "PO") {
+      if (!req.body.po_id) {
+        return res.status(400).json({ message: "An approved Purchase Order must be selected before saving a GRN" });
+      }
+      const poCheck = await pool.query(`SELECT status FROM purchase_orders WHERE id=$1`, [req.body.po_id]);
+      if (!poCheck.rows[0]) {
+        return res.status(400).json({ message: "Selected Purchase Order not found" });
+      }
+      if (poCheck.rows[0].status !== "Approved") {
+        return res.status(400).json({ message: `GRN cannot be saved — Purchase Order is "${poCheck.rows[0].status}". Only Approved POs are allowed.` });
+      }
+    }
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
