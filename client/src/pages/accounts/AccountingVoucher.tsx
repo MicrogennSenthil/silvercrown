@@ -1320,7 +1320,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
                       <div>
                         <p className="font-semibold text-blue-700 text-sm">{rightVoucher}</p>
                         <p className="text-blue-500 text-xs leading-relaxed mt-0.5">
-                          If you intended to {isPayment ? "receive from" : "pay"} a {isPayment ? "customer" : "supplier"}, switch to a <strong>{rightVoucher}</strong> which supports {rightParty} accounts.
+                          If you intended to {isPayment ? "receive from" : "pay"} a {isPayment ? "customer" : "supplier"}, switch to a <strong>{rightVoucher}</strong> which supports {wrongParty} accounts.
                         </p>
                       </div>
                     </div>
