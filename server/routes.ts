@@ -6806,6 +6806,25 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  app.get("/api/store-openings/lock-status", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [grnRes, siiRes] = await Promise.all([
+        pool.query(`SELECT COUNT(*) FROM goods_receipt_notes`),
+        pool.query(`SELECT COUNT(*) FROM store_issue_indents`),
+      ]);
+      const grnCount = parseInt(grnRes.rows[0].count, 10);
+      const siiCount = parseInt(siiRes.rows[0].count, 10);
+      if (grnCount > 0 || siiCount > 0) {
+        const reasons: string[] = [];
+        if (grnCount > 0) reasons.push(`${grnCount} Goods Receipt Note${grnCount > 1 ? "s" : ""}`);
+        if (siiCount > 0) reasons.push(`${siiCount} Store Issue Indent${siiCount > 1 ? "s" : ""}`);
+        return res.json({ locked: true, reason: `Opening Stock cannot be created or edited because transactions already exist in the system (${reasons.join(", ")}).` });
+      }
+      res.json({ locked: false, reason: "" });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/store-openings/:id", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
@@ -6824,6 +6843,19 @@ Return ONLY valid JSON (no markdown, no explanation):
       const { pool } = await import("./db");
       const b = req.body;
       if (!b.store_id) return res.status(400).json({ message: "Store is required. Please select a Store before saving." });
+      // Block if any GRN or SII transactions already exist
+      const [grnChk, siiChk] = await Promise.all([
+        pool.query(`SELECT COUNT(*) FROM goods_receipt_notes`),
+        pool.query(`SELECT COUNT(*) FROM store_issue_indents`),
+      ]);
+      if (parseInt(grnChk.rows[0].count,10) > 0 || parseInt(siiChk.rows[0].count,10) > 0) {
+        return res.status(400).json({ message: "Opening Stock cannot be created because Goods Receipt Notes or Store Issue Indents already exist in the system. Opening stock must be entered before any transactions." });
+      }
+      // Block duplicate opening stock for same store
+      const dupChk = await pool.query(`SELECT id FROM store_openings WHERE store_id=$1 LIMIT 1`, [b.store_id]);
+      if (dupChk.rows[0]) {
+        return res.status(400).json({ message: "An Opening Stock entry already exists for this Store. Opening stock can only be entered once per store." });
+      }
       const { generateVoucherNo } = await import("./voucher");
       const voucherNo = await generateVoucherNo("store_opening", pool);
       const client = await pool.connect();
@@ -6893,6 +6925,14 @@ Return ONLY valid JSON (no markdown, no explanation):
       const { pool } = await import("./db");
       const b = req.body;
       if (!b.store_id) return res.status(400).json({ message: "Store is required. Please select a Store before saving." });
+      // Block edit if any GRN or SII transactions already exist
+      const [grnChk2, siiChk2] = await Promise.all([
+        pool.query(`SELECT COUNT(*) FROM goods_receipt_notes`),
+        pool.query(`SELECT COUNT(*) FROM store_issue_indents`),
+      ]);
+      if (parseInt(grnChk2.rows[0].count,10) > 0 || parseInt(siiChk2.rows[0].count,10) > 0) {
+        return res.status(400).json({ message: "Opening Stock cannot be edited because Goods Receipt Notes or Store Issue Indents already exist in the system." });
+      }
       const client = await pool.connect();
       try {
         await client.query("BEGIN");

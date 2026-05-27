@@ -180,6 +180,8 @@ export default function StoreOpening() {
   const closeDropdown = useCallback(() => { setOpenDropIdx(null); setDropAnchor(null); }, []);
 
   const { data: sops = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-openings"] });
+  const { data: lockStatus }           = useQuery<{ locked: boolean; reason: string }>({ queryKey: ["/api/store-openings/lock-status"] });
+  const isLocked = lockStatus?.locked ?? false;
   const { data: stores = [] }          = useQuery<any[]>({ queryKey: ["/api/stores"] });
   const { data: allInvItems = [] }     = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
@@ -215,6 +217,10 @@ export default function StoreOpening() {
   });
 
   function openNew() {
+    if (isLocked) {
+      setErr(lockStatus?.reason || "Opening Stock is locked because transactions already exist.");
+      return;
+    }
     const fyLabel = currentFY?.label || "";
     setForm({ ...blankForm(), financial_year: fyLabel });
     setEditId(null); setErr(""); setImportErr(""); setImportOk("");
@@ -224,6 +230,11 @@ export default function StoreOpening() {
   }
 
   async function openEdit(sop: any) {
+    if (isLocked) {
+      setErr(lockStatus?.reason || "Opening Stock is locked because transactions already exist.");
+      setMode("list");
+      return;
+    }
     setSopNo(sop.voucher_no || ""); setImportErr(""); setImportOk("");
     const r = await fetch(`/api/store-openings/${sop.id}`, { credentials: "include" });
     const data = await r.json();
@@ -512,11 +523,20 @@ export default function StoreOpening() {
           <p className="text-sm text-gray-500">Set opening stock balances per store</p>
         </div>
         <button onClick={openNew}
-          className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg text-white"
-          style={{ background: SC.primary }} data-testid="btn-new-sop">
+          className={`flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg text-white ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
+          style={{ background: isLocked ? "#9ca3af" : SC.primary }}
+          title={isLocked ? (lockStatus?.reason || "Locked — transactions already exist") : ""}
+          data-testid="btn-new-sop">
           <Plus size={15}/> New Store Opening
         </button>
       </div>
+
+      {isLocked && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg">
+          <span className="mt-0.5 shrink-0">⚠️</span>
+          <span>{lockStatus?.reason}</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -561,10 +581,17 @@ export default function StoreOpening() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => openEdit(s)} className="text-[#027fa5] hover:text-[#025f80]" data-testid={`btn-edit-${s.id}`}><Edit2 size={14}/></button>
-                      <button onClick={() => handleDelete(s.id, s.status)} className="text-red-400 hover:text-red-600" data-testid={`btn-del-${s.id}`}><Trash2 size={14}/></button>
-                    </div>
+                    {isLocked ? (
+                      <div className="flex items-center gap-2" title={lockStatus?.reason || "Locked — transactions already exist"}>
+                        <span className="text-gray-200 cursor-not-allowed"><Edit2 size={14}/></span>
+                        <span className="text-gray-200 cursor-not-allowed"><Trash2 size={14}/></span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => openEdit(s)} className="text-[#027fa5] hover:text-[#025f80]" data-testid={`btn-edit-${s.id}`}><Edit2 size={14}/></button>
+                        <button onClick={() => handleDelete(s.id, s.status)} className="text-red-400 hover:text-red-600" data-testid={`btn-del-${s.id}`}><Trash2 size={14}/></button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
