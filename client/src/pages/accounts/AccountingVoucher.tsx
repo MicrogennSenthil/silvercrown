@@ -244,8 +244,9 @@ function drCrLabel(drCr: "DR" | "CR") {
 }
 
 function getMainDrCr(nature: Nature): "DR" | "CR" {
-  // Payment → Party Debited (To = DR)  Receipt → Party Credited (By = CR)
-  return nature === "receipt" ? "CR" : "DR";
+  // Payment → Party Debited (To = DR)
+  // Receipt → Bank/Cash Debited (To = DR) — money comes IN to bank first
+  return "DR";
 }
 
 // ── Per-line ledger filter (by row index) ─────────────────────────────────────
@@ -254,14 +255,18 @@ function getLineFilter(vtName: string, idx: number): FilterType {
   const nature = getNature(vtName);
   if (n.includes("contra")) return "bank_cash";
   if (nature === "payment") {
-    // Row 0 = party (To — Debit: supplier/party being paid), Row 1+ = Bank or Cash (By — Credit: source)
+    // Tally standard Payment Voucher:
+    //   Row 0  = Supplier/Party (To — Dr: their payable cleared)
+    //   Row 1+ = Bank or Cash  (By — Cr: source of funds)
     if (idx === 0) return "party";
     return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   if (nature === "receipt") {
-    // Row 0 = party (By — Credit: who paid), Row 1+ = Bank or Cash (To — Debit: where money received)
-    if (idx === 0) return "party";
-    return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+    // Tally standard Receipt Voucher:
+    //   Row 0  = Bank or Cash   (To — Dr: money received into bank)
+    //   Row 1+ = Customer/Party (By — Cr: customer liability cleared)
+    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+    return "sundry_debtors";
   }
   return "all";
 }

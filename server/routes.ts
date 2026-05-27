@@ -1898,8 +1898,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // 3. Sales invoices for the customer linked to this sub-ledger (Sundry Debtors)
-      //    Primary: sub_ledger_id match; Fallback: name match
+      // Ensure paid_amount column exists on job_work_invoices
+      await pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0`).catch(() => {});
+
+      // 3. Customer outstanding bills (Sundry Debtors — money owed TO us)
+      //    Standard Receipt Voucher: Dr Bank/Cash, Cr Customer (liability cleared)
+      //    Sources in priority order:
+      //      3a. Job Work Invoices (primary sales document in this system)
+      //      3b. Sub-ledger DR bills (opening balances not in JWI)
+      //      3c. Sales Invoices (standard module, if used)
       const customerRes = await pool.query(
         `SELECT id FROM customers WHERE sub_ledger_id = $1
            OR LOWER(TRIM(name)) = LOWER(TRIM($2)) LIMIT 1`,
@@ -1907,8 +1914,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       );
       if (customerRes.rows.length > 0) {
         const customerId = customerRes.rows[0].id;
-        // Also check sub_ledger_bills with Dr balance (debtor owes us)
-        // Skip any DR bill whose ref_no matches a sales invoice — sales section handles those.
+        // Track voucher nos already added so we never double-count
+        const seenDrBillNos = new Set<string>();
+
+        // 3a. Job Work Invoices — direct lookup, authoritative paid_amount
+        const jwiRes = await pool.query(`
+          SELECT
+            jwi.id,
+            jwi.voucher_no AS bill_no,
+            TO_CHAR(jwi.invoice_date, 'YYYY-MM-DD') AS bill_date,
+            (
+              COALESCE((
+                SELECT SUM(ii.amount + COALESCE(ii.cgst_amt,0) + COALESCE(ii.sgst_amt,0) + COALESCE(ii.igst_amt,0))
+                FROM job_work_invoice_items ii WHERE ii.invoice_id = jwi.id
+              ), 0)
+              + COALESCE((
+                SELECT SUM(ch.amount) FROM job_work_invoice_charges ch WHERE ch.invoice_id = jwi.id
+              ), 0)
+            )::numeric AS bill_amount,
+            COALESCE(jwi.paid_amount::numeric, 0) AS paid_amount
+          FROM job_work_invoices jwi
+          WHERE jwi.party_id = $1
+            AND COALESCE(jwi.status,'') NOT IN ('cancelled','Cancelled')
+          ORDER BY jwi.invoice_date
+        `, [customerId]);
+
+        for (const r of jwiRes.rows) {
+          const billAmt = parseFloat(r.bill_amount || "0");
+          const paidAmt = parseFloat(r.paid_amount || "0");
+          const balance = parseFloat((billAmt - paidAmt).toFixed(2));
+          if (balance > 0.005) {
+            seenDrBillNos.add(r.bill_no || "");
+            bills.push({
+              id: r.id, source: "job_work_invoice", sourceId: r.id,
+              billDate: r.bill_date ? String(r.bill_date).slice(0, 10) : "",
+              billNo: r.bill_no || "", billAmount: billAmt,
+              paidAmount: paidAmt, balanceAmount: balance, crDr: "Dr",
+            });
+          }
+        }
+
+        // 3b. Sub-ledger DR bills (opening balances not already covered by JWI)
         const slBillsDr = await pool.query(`
           SELECT
             slb.id,
@@ -1919,26 +1965,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             COALESCE((
               SELECT SUM(ba.adjusted_amount::numeric)
               FROM bill_adjustments ba
-              WHERE ba.bill_source = 'opening_bill' AND ba.bill_source_id = slb.id
+              WHERE ba.bill_source_id = slb.id
             ), 0) AS paid_amount
           FROM sub_ledger_bills slb
           WHERE slb.sub_ledger_id = $1
             AND UPPER(slb.cr_dr) = 'DR'
             AND slb.amount::numeric > 0
-            AND NOT EXISTS (
-              SELECT 1 FROM sales_invoices si
-              WHERE si.customer_id = $2
-                AND slb.ref_no IS NOT NULL AND slb.ref_no != ''
-                AND si.invoice_number = slb.ref_no
-            )
           ORDER BY slb.ref_date NULLS LAST, slb.id
-        `, [subLedgerId, customerRes.rows[0].id]);
+        `, [subLedgerId]);
 
         for (const r of slBillsDr.rows) {
+          // Skip if JWI already covers this bill (same voucher no)
+          if (r.bill_no && seenDrBillNos.has(r.bill_no)) continue;
           const billAmt = parseFloat(r.bill_amount || "0");
           const paidAmt = parseFloat(r.paid_amount || "0");
           const balance = parseFloat((billAmt - paidAmt).toFixed(2));
           if (balance > 0.005) {
+            seenDrBillNos.add(r.bill_no || "");
             bills.push({
               id: r.id, source: "opening_bill", sourceId: r.id,
               billDate: r.bill_date ? String(r.bill_date).slice(0, 10) : "",
@@ -1948,7 +1991,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
 
-        // Sales invoices with outstanding balance
+        // 3c. Sales Invoices (standard module)
         const salesInvoices = await pool.query(`
           SELECT
             si.id,
@@ -1959,11 +2002,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           FROM sales_invoices si
           WHERE si.customer_id = $1
             AND si.total_amount::numeric > COALESCE(si.paid_amount::numeric, 0)
-            AND (si.status IS NULL OR si.status != 'cancelled')
+            AND (si.status IS NULL OR si.status NOT IN ('cancelled','Cancelled'))
           ORDER BY si.invoice_date
         `, [customerId]);
 
         for (const r of salesInvoices.rows) {
+          if (r.bill_no && seenDrBillNos.has(r.bill_no)) continue;
           const billAmt = parseFloat(r.bill_amount || "0");
           const paidAmt = parseFloat(r.paid_amount || "0");
           const balance = parseFloat((billAmt - paidAmt).toFixed(2));
@@ -2156,6 +2200,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                     WHEN COALESCE(paid_amount::numeric, 0) + $1 >= total_amount::numeric THEN 'paid'
                     ELSE 'partial'
                   END
+              WHERE id = $2
+            `, [adjAmt, b.sourceId]).catch(() => {});
+          }
+
+          // For job work invoices: update paid_amount and status
+          if (b.source === "job_work_invoice" && b.sourceId) {
+            await client.query(`
+              ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0
+            `).catch(() => {});
+            await client.query(`
+              UPDATE job_work_invoices
+              SET paid_amount = LEAST(
+                (
+                  SELECT COALESCE(SUM(ii.amount + COALESCE(ii.cgst_amt,0) + COALESCE(ii.sgst_amt,0) + COALESCE(ii.igst_amt,0)), 0)
+                  FROM job_work_invoice_items ii WHERE ii.invoice_id = job_work_invoices.id
+                )
+                + (
+                  SELECT COALESCE(SUM(ch.amount), 0)
+                  FROM job_work_invoice_charges ch WHERE ch.invoice_id = job_work_invoices.id
+                ),
+                COALESCE(paid_amount::numeric, 0) + $1
+              )
               WHERE id = $2
             `, [adjAmt, b.sourceId]).catch(() => {});
           }
