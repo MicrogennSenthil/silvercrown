@@ -2008,7 +2008,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           FROM sales_invoices si
           WHERE si.customer_id = $1
             AND si.total_amount::numeric > COALESCE(si.paid_amount::numeric, 0)
-            AND (si.status IS NULL OR si.status NOT IN ('cancelled','Cancelled'))
+            AND (si.status IS NULL OR si.status::text NOT IN ('cancelled','paid'))
           ORDER BY si.invoice_date
         `, [customerId]);
 
