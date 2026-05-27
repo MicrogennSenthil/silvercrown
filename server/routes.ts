@@ -18,6 +18,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const { pool: _pool } = await import("./db");
     await _pool.query(`UPDATE general_ledgers SET gl_type='sundry_creditor' WHERE id='20845da1-6847-43ce-98d5-7e3e3e44b86b' AND gl_type!='sundry_creditor'`);
     await _pool.query(`UPDATE general_ledgers SET gl_type='sundry_debtor'   WHERE id='29379a58-5e96-4c71-9074-8193877bcfb5' AND gl_type!='sundry_debtor'`);
+    // Idempotent column additions — safe to run every startup
+    await _pool.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS batch_required  boolean DEFAULT false`).catch(()=>{});
+    await _pool.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS expiry_required boolean DEFAULT false`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS batch_required  boolean DEFAULT false`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS expiry_required boolean DEFAULT false`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0`).catch(()=>{});
   } catch (_) {}
 
   // Auth routes
@@ -1922,7 +1928,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           SELECT
             jwi.id,
             jwi.voucher_no AS bill_no,
-            TO_CHAR(jwi.invoice_date, 'YYYY-MM-DD') AS bill_date,
+            LEFT(jwi.invoice_date::text, 10) AS bill_date,
             (
               COALESCE((
                 SELECT SUM(ii.amount + COALESCE(ii.cgst_amt,0) + COALESCE(ii.sgst_amt,0) + COALESCE(ii.igst_amt,0))
