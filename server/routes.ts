@@ -7294,6 +7294,85 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   // ── Data Purge Endpoints ─────────────────────────────────────────────────────
 
+  // Helper: delete a table inside the current transaction using a SAVEPOINT so a
+  // failure (missing table, FK violation) rolls back only that one statement and
+  // does NOT abort the whole transaction.
+  async function safeDelete(client: any, table: string) {
+    const sp = `sp_purge_${table}`;
+    await client.query(`SAVEPOINT ${sp}`);
+    try {
+      await client.query(`DELETE FROM ${table}`);
+      await client.query(`RELEASE SAVEPOINT ${sp}`);
+    } catch {
+      await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+    }
+  }
+
+  // Full ordered list of TRANSACTION tables — children before parents so FK constraints are satisfied.
+  const TX_TABLES_ORDERED = [
+    // Voucher detail lines first, then headers
+    "bill_adjustments",
+    "voucher_det",
+    "voucher_mas",
+    "sub_ledger_bills",
+    // Purchase cycle: items → invoices
+    "purchase_invoice_items",
+    "purchase_invoices",
+    // Sales cycle
+    "sales_invoice_items",
+    "sales_invoices",
+    // GRN returns (child) before GRN returns (header) before GRN items before GRN headers
+    "goods_receipt_return_items",
+    "goods_receipt_returns",
+    "goods_receipt_note_items",
+    // Gate pass & returnable: grandchildren before children before parents
+    "gate_pass_items",
+    "gate_pass",
+    "returnable_inward_items",
+    "returnable_outward_items",
+    "returnable_inward",
+    "returnable_outward",
+    // Purchase orders: all dependants before the PO header
+    "po_approval_decisions",
+    "purchase_order_amendment_charges",
+    "purchase_order_amendment_items",
+    "purchase_order_amendment_terms",
+    "purchase_order_amendments",
+    "purchase_order_charges",
+    "purchase_order_items",
+    "purchase_order_terms",
+    "goods_receipt_notes",   // FK → purchase_orders
+    "purchase_orders",
+    // Job work cycle
+    "job_work_despatch_items",
+    "job_work_despatch",
+    "job_work_inward_items",
+    "job_work_inward",
+    "job_work_invoice_charges",
+    "job_work_invoice_items",
+    "job_work_invoices",
+    // Issue / store cycles
+    "store_issue_indent_items",
+    "store_issue_indent_srns",
+    "store_issue_indents",
+    "issue_indent_return_items",
+    "issue_indent_returns",
+    "store_request_note_items",
+    "store_request_notes",
+    "store_opening_items",
+    "store_openings",
+    // Reconciliation
+    "phy_reconciliation_items",
+    "phy_reconciliations",
+    // Journals & misc
+    "journal_entry_lines",
+    "journal_entries",
+    "tally_sync_logs",
+    "tasks",
+    // Batch stock ledger
+    "item_batch_stock",
+  ];
+
   // Purge all TRANSACTION data — keeps masters intact
   app.post("/api/purge/transactions", requireAuth, async (req, res) => {
     try {
@@ -7301,34 +7380,17 @@ Return ONLY valid JSON (no markdown, no explanation):
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        const tables = [
-          "bill_adjustments",
-          "voucher_det",
-          "voucher_mas",
-          "purchase_invoice_items",
-          "purchase_invoices",
-          "sales_invoice_items",
-          "sales_invoices",
-          "goods_receipt_note_items",
-          "goods_receipt_notes",
-          "job_work_inward_items",
-          "job_work_inward",
-          "journal_entry_lines",
-          "journal_entries",
-          "tally_sync_logs",
-          "tasks",
-          "sub_ledger_bills",
-          "store_request_note_items",
-          "store_request_notes",
-          "store_openings",
-          "goods_receipt_returns",
-          "phy_reconciliations",
-        ];
-        for (const t of tables) {
-          await client.query(`DELETE FROM ${t}`).catch(() => {});
+        for (const t of TX_TABLES_ORDERED) {
+          await safeDelete(client, t);
         }
         // Reset sub-ledger closing balances back to opening balance
-        await client.query(`UPDATE sub_ledgers SET closing_balance = COALESCE(opening_balance, 0), closing_balance_type = COALESCE(opening_balance_type, 'Dr')`).catch(() => {});
+        await client.query(`
+          UPDATE sub_ledgers
+          SET closing_balance      = COALESCE(opening_balance, 0),
+              closing_balance_type = COALESCE(opening_balance_type, 'Credit')
+        `).catch(() => {});
+        // Reset voucher series counters
+        await client.query(`UPDATE voucher_series SET last_no = 0`).catch(() => {});
         await client.query("COMMIT");
         res.json({ ok: true, message: "All transaction data purged successfully." });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
@@ -7343,47 +7405,24 @@ Return ONLY valid JSON (no markdown, no explanation):
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        // First: purge transactions
-        const txTables = [
-          "bill_adjustments",
-          "voucher_det",
-          "voucher_mas",
-          "purchase_invoice_items",
-          "purchase_invoices",
-          "sales_invoice_items",
-          "sales_invoices",
-          "goods_receipt_note_items",
-          "goods_receipt_notes",
-          "job_work_inward_items",
-          "job_work_inward",
-          "journal_entry_lines",
-          "journal_entries",
-          "tally_sync_logs",
-          "tasks",
-          "sub_ledger_bills",
-          "store_request_note_items",
-          "store_request_notes",
-          "store_openings",
-          "goods_receipt_returns",
-          "phy_reconciliations",
-        ];
-        for (const t of txTables) {
-          await client.query(`DELETE FROM ${t}`).catch(() => {});
+        // Step 1: purge all transactions first (same ordered list)
+        for (const t of TX_TABLES_ORDERED) {
+          await safeDelete(client, t);
         }
-        // Then: purge masters
+        // Step 2: purge master tables — children before parents
         const masterTables = [
-          "inventory_items",
-          "inventory_categories",
-          "suppliers",
-          "customers",
-          "sub_ledgers",
-          "warehouses",
-          "units_of_measure",
-          "tax_rates",
-          "employees",
           "purchase_store_items",
           "store_item_sub_groups",
           "store_item_groups",
+          "inventory_items",
+          "inventory_categories",
+          "sub_ledgers",
+          "suppliers",
+          "customers",
+          "employees",
+          "warehouses",
+          "units_of_measure",
+          "tax_rates",
           "machine_master",
           "products",
           "sub_categories",
@@ -7391,8 +7430,10 @@ Return ONLY valid JSON (no markdown, no explanation):
           "contact_roles",
         ];
         for (const t of masterTables) {
-          await client.query(`DELETE FROM ${t}`).catch(() => {});
+          await safeDelete(client, t);
         }
+        // Reset voucher series counters
+        await client.query(`UPDATE voucher_series SET last_no = 0`).catch(() => {});
         await client.query("COMMIT");
         res.json({ ok: true, message: "All master and transaction data purged successfully." });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
