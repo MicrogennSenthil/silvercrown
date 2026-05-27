@@ -2066,6 +2066,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
+      // ── Fallback: party has a closing balance but no specific bill records ───
+      // Show the total outstanding balance as a single adjustable entry so the
+      // user can still do Bill-to-Bill adjustment even without invoice-level data.
+      if (bills.length === 0) {
+        const slBalRes = await pool.query(`
+          SELECT sl.closing_balance::numeric AS balance,
+                 gl.gl_type
+          FROM sub_ledgers sl
+          JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+          WHERE sl.id = $1
+        `, [subLedgerId]);
+        const slRow = slBalRes.rows[0];
+        const slBal = parseFloat(slRow?.balance || "0");
+        const glType = slRow?.gl_type || "";
+        if (slBal > 0.005) {
+          const crDr = glType === "sundry_creditor" ? "Cr" : "Dr";
+          bills.push({
+            id: subLedgerId,
+            source: "sub_ledger_balance",
+            sourceId: subLedgerId,
+            billDate: "",
+            billNo: "Outstanding Balance",
+            billAmount: slBal,
+            paidAmount: 0,
+            balanceAmount: slBal,
+            crDr,
+          });
+        }
+      }
+
       // Sort by bill date ascending
       bills.sort((a, b) =>
         new Date(a.billDate || "1900-01-01").getTime() - new Date(b.billDate || "1900-01-01").getTime()
