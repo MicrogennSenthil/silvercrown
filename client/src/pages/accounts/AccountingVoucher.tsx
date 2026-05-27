@@ -244,8 +244,9 @@ function drCrLabel(drCr: "DR" | "CR") {
 }
 
 function getMainDrCr(nature: Nature): "DR" | "CR" {
-  // Payment → Party Debited (To = DR)
-  // Receipt → Bank/Cash Debited (To = DR) — money comes IN to bank first
+  // Payment → Party Debited first (To = DR)
+  // Receipt → Party Credited first (By = CR) — party who paid comes first
+  if (nature === "receipt") return "CR";
   return "DR";
 }
 
@@ -262,11 +263,11 @@ function getLineFilter(vtName: string, idx: number): FilterType {
     return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   if (nature === "receipt") {
-    // Tally standard Receipt Voucher:
-    //   Row 0  = Bank or Cash   (To — Dr: money received into bank)
-    //   Row 1+ = Customer/Party (By — Cr: customer liability cleared)
-    if (idx === 0) return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
-    return "sundry_debtors";
+    // Receipt Voucher:
+    //   Row 0  = Customer/Party (By — Cr: who paid us) — party first
+    //   Row 1+ = Bank or Cash   (To — Dr: money received into bank)
+    if (idx === 0) return "sundry_debtors";
+    return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   return "all";
 }
