@@ -136,7 +136,7 @@ export default function StoreIssueIndent() {
       unit: it.unit,
       purchase_price: String(it.purchasePrice ?? it.purchase_price ?? "0"),
       cost_price:     String(it.purchasePrice ?? it.purchase_price ?? "0"),
-      current_stock:  (liveStockMap as Record<string, number>)[it.code] ?? it.currentStock ?? it.current_stock ?? 0,
+      current_stock:  (liveStockMap as Record<string, number>)[it.code] ?? Number(it.stockQuantity ?? 0),
       isActive: it.isActive ?? it.is_active ?? true,
     })),
     ...(allProducts as any[])
@@ -252,8 +252,8 @@ export default function StoreIssueIndent() {
   }
 
   function pickProduct(i: number, prod: any) {
-    const rate = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
-    const stock = parseFloat(prod.current_stock) || parseFloat(prod.opening_stock) || 0;
+    const rate  = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
+    const stock = Number(prod.current_stock ?? 0);
     setForm(f => {
       const items = [...f.items];
       items[i] = calcItem({ ...items[i], item_code: prod.code || "", item_name: prod.name || "", unit: prod.uom || prod.unit || "Nos", rate, stock });
