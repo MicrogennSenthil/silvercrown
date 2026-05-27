@@ -2213,9 +2213,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           // For job work invoices: update paid_amount and status
           if (b.source === "job_work_invoice" && b.sourceId) {
             await client.query(`
-              ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0
-            `).catch(() => {});
-            await client.query(`
               UPDATE job_work_invoices
               SET paid_amount = LEAST(
                 (
