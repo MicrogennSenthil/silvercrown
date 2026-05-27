@@ -258,7 +258,7 @@ function getLineFilter(vtName: string, idx: number): FilterType {
     // Tally standard Payment Voucher:
     //   Row 0  = Supplier/Party (To — Dr: their payable cleared)
     //   Row 1+ = Bank or Cash  (By — Cr: source of funds)
-    if (idx === 0) return "party";
+    if (idx === 0) return "sundry_creditors";
     return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   if (nature === "receipt") {
