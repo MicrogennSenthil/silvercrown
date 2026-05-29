@@ -1057,17 +1057,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/sub-categories/:id", requireAuth, async (req, res) => { await storage.deleteSubCategory(req.params.id); res.json({ ok: true }); });
 
   // ── Stores ─────────────────────────────────────────────────────────────────
-  // GET /api/item-stock-summary — live closing stock per item_code from item_batch_stock
+  // GET /api/item-stock-summary — live stock + weighted-avg SOP rate per item_code
+  // Stock source: products.current_stock (maintained by SOP/GRN/SII/returns)
+  // Rate source:  weighted average from posted store opening entries, fallback to product purchase_price
   app.get("/api/item-stock-summary", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT item_code, SUM(closing_qty::numeric) AS total_qty
-        FROM item_batch_stock
-        GROUP BY item_code
+        WITH sop_rates AS (
+          SELECT soi.item_code,
+            SUM(soi.opening_qty::numeric * soi.rate::numeric) / NULLIF(SUM(soi.opening_qty::numeric), 0) AS avg_rate
+          FROM store_opening_items soi
+          JOIN store_openings so ON so.id = soi.sop_id
+          WHERE so.status = 'Posted'
+          GROUP BY soi.item_code
+        )
+        SELECT p.code AS item_code,
+          COALESCE(p.current_stock, 0) AS stock,
+          COALESCE(sr.avg_rate, p.purchase_price::numeric, 0) AS rate
+        FROM products p
+        LEFT JOIN sop_rates sr ON sr.item_code = p.code
       `);
-      const map: Record<string, number> = {};
-      for (const row of r.rows) map[row.item_code] = parseFloat(row.total_qty) || 0;
+      const map: Record<string, { stock: number; rate: number }> = {};
+      for (const row of r.rows) {
+        map[row.item_code] = {
+          stock: parseFloat(row.stock) || 0,
+          rate:  parseFloat(row.rate)  || 0,
+        };
+      }
       res.json(map);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
