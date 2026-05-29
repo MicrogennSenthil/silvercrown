@@ -6924,21 +6924,15 @@ Return ONLY valid JSON (no markdown, no explanation):
             }
           }
 
-          // Snapshot current stock before update (for reversal)
-          let prevStock = 0;
-          if (it.item_code) {
-            const ps = await client.query(`SELECT COALESCE(current_stock,0) AS cs FROM products WHERE LOWER(code)=LOWER($1)`, [it.item_code]);
-            if (ps.rows[0]) prevStock = parseFloat(ps.rows[0].cs) || 0;
-          }
           await client.query(`
             INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,batch_no,expiry_date,opening_qty,rate,amount,previous_stock)
-            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0)
           `, [hdr.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos",
               it.batch_no||"", it.expiry_date||null,
-              +(it.opening_qty||0), +(it.rate||0), +(it.amount||0), prevStock]);
-          // Only update stock if Posted
+              +(it.opening_qty||0), +(it.rate||0), +(it.amount||0)]);
+          // Only update stock if Posted — accumulate (+=) so multiple store SOPs don't overwrite each other
           if (b.status === "Posted" && it.item_code) {
-            await client.query(`UPDATE products SET current_stock=$1 WHERE LOWER(code)=LOWER($2)`, [+(it.opening_qty||0), it.item_code]);
+            await client.query(`UPDATE products SET current_stock=COALESCE(current_stock,0)+$1 WHERE LOWER(code)=LOWER($2)`, [+(it.opening_qty||0), it.item_code]);
           }
         }
         await client.query("COMMIT");
@@ -6968,9 +6962,13 @@ Return ONLY valid JSON (no markdown, no explanation):
         const oldHdr = await client.query(`SELECT status FROM store_openings WHERE id=$1`, [req.params.id]);
         const wasPosted = oldHdr.rows[0]?.status === "Posted";
         if (wasPosted) {
-          const oldItems = await client.query(`SELECT item_code, previous_stock FROM store_opening_items WHERE sop_id=$1`, [req.params.id]);
+          // Subtract old opening qty from current_stock (delta reversal — works across multiple SOPs)
+          const oldItems = await client.query(`SELECT item_code, opening_qty FROM store_opening_items WHERE sop_id=$1`, [req.params.id]);
           for (const oi of oldItems.rows) {
-            if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.previous_stock||0), oi.item_code]);
+            if (oi.item_code) await client.query(
+              `UPDATE products SET current_stock=GREATEST(0, COALESCE(current_stock,0)-$1) WHERE code=$2`,
+              [+(oi.opening_qty||0), oi.item_code]
+            );
           }
         }
         await client.query(`UPDATE store_openings SET opening_date=$1,store_id=$2,financial_year=$3,status=$4,remark=$5,total_qty=$6,total_amount=$7,updated_at=NOW() WHERE id=$8`,
@@ -6996,19 +6994,15 @@ Return ONLY valid JSON (no markdown, no explanation):
             }
           }
 
-          let prevStock = 0;
-          if (it.item_code) {
-            const ps = await client.query(`SELECT COALESCE(current_stock,0) AS cs FROM products WHERE LOWER(code)=LOWER($1)`, [it.item_code]);
-            if (ps.rows[0]) prevStock = parseFloat(ps.rows[0].cs) || 0;
-          }
           await client.query(`
             INSERT INTO store_opening_items(id,sop_id,sno,item_code,item_name,uom,batch_no,expiry_date,opening_qty,rate,amount,previous_stock)
-            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0)
           `, [req.params.id, it.sno, it.item_code||"", it.item_name||"", it.uom||"Nos",
               it.batch_no||"", it.expiry_date||null,
-              +(it.opening_qty||0), +(it.rate||0), +(it.amount||0), prevStock]);
+              +(it.opening_qty||0), +(it.rate||0), +(it.amount||0)]);
+          // Accumulate (+=) so multiple store SOPs don't overwrite each other
           if (b.status === "Posted" && it.item_code)
-            await client.query(`UPDATE products SET current_stock=$1 WHERE LOWER(code)=LOWER($2)`, [+(it.opening_qty||0), it.item_code]);
+            await client.query(`UPDATE products SET current_stock=COALESCE(current_stock,0)+$1 WHERE LOWER(code)=LOWER($2)`, [+(it.opening_qty||0), it.item_code]);
         }
         await client.query("COMMIT");
         res.json({ ok: true });
