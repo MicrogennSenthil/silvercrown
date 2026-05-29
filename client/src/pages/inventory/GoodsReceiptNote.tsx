@@ -551,7 +551,7 @@ export default function GoodsReceiptNote() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b" style={{ background:"#e8f6fb" }}>
-                  {["GRN No","GRN Date","Supplier","Store","Bill No","Payment","Purchase Type","Grand Total ₹","Status","Actions"].map(h => (
+                  {["GRN No","GRN Date","Supplier","Store","Bill No","Purchase Type","Grand Total ₹","Actions"].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-700">{h}</th>
                   ))}
                 </tr>
@@ -569,17 +569,9 @@ export default function GoodsReceiptNote() {
                     <td className="px-4 py-3 text-gray-600">{g.store_name||"—"}</td>
                     <td className="px-4 py-3 text-gray-600">{g.bill_no||"—"}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${g.payment_mode==="Credit"?"bg-orange-50 text-orange-700":"bg-blue-50 text-blue-600"}`}>
-                        {g.payment_mode}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{g.purchase_type==="PO"?"Purchase Order":"Direct Purchase"}</span>
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-800">₹ {n2(p2(g.grand_total))}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">{g.status}</span>
-                    </td>
                     <td className="px-4 py-3">
                       {g.status === "Draft" ? (
                         <div className="flex gap-2">
