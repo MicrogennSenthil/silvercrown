@@ -7410,8 +7410,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         SET closing_balance      = COALESCE(opening_balance, 0),
             closing_balance_type = COALESCE(opening_balance_type, 'Credit')
       `).catch(() => {});
-      // Reset voucher series counters
-      await pool.query(`UPDATE voucher_series SET last_no = 0`).catch(() => {});
+      // Reset voucher series counters back to their configured starting number
+      await pool.query(`UPDATE voucher_series SET current_number = starting_number`);
       res.json({ ok: true, message: "All transaction data purged successfully." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
