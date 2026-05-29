@@ -195,10 +195,14 @@ function PurgeCard({
   const [input, setInput] = useState("");
   const [done, setDone] = useState(false);
   const [err, setErr] = useState("");
+  const qc = useQueryClient();
 
   const mut = useMutation({
     mutationFn: () => apiRequest("POST", endpoint),
-    onSuccess: () => { setDone(true); setOpen(false); setInput(""); setErr(""); },
+    onSuccess: () => {
+      setDone(true); setOpen(false); setInput(""); setErr("");
+      qc.clear();
+    },
     onError: (e: any) => setErr(e.message || "Purge failed"),
   });
 

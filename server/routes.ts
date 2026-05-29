@@ -7437,6 +7437,9 @@ Return ONLY valid JSON (no markdown, no explanation):
         for (const t of TX_TABLES_ORDERED) {
           await safeDelete(client, t);
         }
+        // Reset stock quantities to 0 on all product/item tables
+        await client.query(`UPDATE products SET current_stock = 0`).catch(() => {});
+        await client.query(`UPDATE inventory_items SET stock_quantity = 0`).catch(() => {});
         // Reset sub-ledger closing balances back to opening balance
         await client.query(`
           UPDATE sub_ledgers
@@ -7488,6 +7491,9 @@ Return ONLY valid JSON (no markdown, no explanation):
         }
         // Reset voucher series counters
         await client.query(`UPDATE voucher_series SET last_no = 0`).catch(() => {});
+        // Reset stock quantities (products are deleted in masters but inventory_items may remain edge cases)
+        await client.query(`UPDATE products SET current_stock = 0`).catch(() => {});
+        await client.query(`UPDATE inventory_items SET stock_quantity = 0`).catch(() => {});
         await client.query("COMMIT");
         res.json({ ok: true, message: "All master and transaction data purged successfully." });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
