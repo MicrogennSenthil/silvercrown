@@ -390,9 +390,13 @@ export class DatabaseStorage implements IStorage {
 
   // Users (extended)
   async updateUser(id: string, data: Partial<InsertUser> & { employeeId?: string; userRoleId?: string }) {
-    const updateData: any = { ...data };
+    const updateData: any = {};
+    if (data.name     !== undefined) updateData.name       = data.name;
+    if (data.email    !== undefined) updateData.email      = data.email;
+    if (data.role     !== undefined) updateData.role       = data.role;
+    if (data.employeeId !== undefined) updateData.employeeId = data.employeeId || null;
+    if (data.userRoleId !== undefined) updateData.userRoleId = data.userRoleId || null;
     if (data.password) updateData.password = await bcrypt.hash(data.password, 10);
-    else delete updateData.password;
     const [r] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
     return r;
   }
