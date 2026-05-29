@@ -116,7 +116,7 @@ export default function StoreIssueIndent() {
   // (tableRef removed — using fixed-position dropdown instead)
 
   const { data: siis = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-issue-indents"] });
-  const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
+  const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/stores"] });
   const { data: departments = [] } = useQuery<any[]>({ queryKey: ["/api/departments"] });
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });

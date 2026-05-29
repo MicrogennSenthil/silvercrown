@@ -429,7 +429,7 @@ export default function StoreOpening() {
             const result = await r.json();
             if (!r.ok) { setImportErr(result.message || "Bulk import failed."); return; }
             qc.invalidateQueries({ queryKey: ["/api/store-openings"] });
-            qc.invalidateQueries({ queryKey: ["/api/warehouses"] });
+            qc.invalidateQueries({ queryKey: ["/api/stores"] });
             const newStoreMsg = result.storesCreated?.length > 0
               ? ` New stores created: ${result.storesCreated.join(", ")}.`
               : "";

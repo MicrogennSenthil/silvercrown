@@ -218,7 +218,7 @@ export default function GoodsReceiptNote() {
   const [valErrs, setValErrs] = useState<{ store?: boolean; supplier?: boolean; rows?: Set<number> }>({});
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
-  const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/warehouses"] });
+  const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/stores"] });
   const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });

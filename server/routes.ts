@@ -2787,7 +2787,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             'Opening'                  AS source
           FROM store_opening_items soi
           JOIN store_openings so ON so.id = soi.sop_id
-          LEFT JOIN warehouses w ON w.id = so.store_id
+          LEFT JOIN stores w ON w.id = so.store_id
           WHERE soi.expiry_date IS NOT NULL
             AND so.status = 'Posted'
 
@@ -2806,7 +2806,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             'GRN'                      AS source
           FROM goods_receipt_note_items grni
           JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
-          LEFT JOIN warehouses w ON w.id = grn.store_id
+          LEFT JOIN stores w ON w.id = grn.store_id
           WHERE grni.expiry_date IS NOT NULL
             AND COALESCE(grn.status,'') <> 'Cancelled'
         ) t
@@ -5502,11 +5502,12 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message || "Scan failed" }); }
   });
 
-  // Get all warehouses (stores)
-  app.get("/api/warehouses", requireAuth, async (req, res) => {
+  // Get all stores for dropdowns (returns from stores table — same as Store Master)
+  // Note: /api/warehouses is handled earlier (line ~904); this override is kept for completeness
+  app.get("/api/warehouses-legacy", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
-      const r = await pool.query(`SELECT * FROM warehouses WHERE is_active=true ORDER BY name`);
+      const r = await pool.query(`SELECT * FROM stores WHERE is_active IS NULL OR is_active=true ORDER BY name`);
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -5519,7 +5520,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         SELECT g.*, c.name AS supplier_name_db, w.name AS store_name_db
         FROM goods_receipt_notes g
         LEFT JOIN customers c ON c.id = g.supplier_id
-        LEFT JOIN warehouses w ON w.id = g.store_id
+        LEFT JOIN stores w ON w.id = g.store_id
         ORDER BY g.created_at DESC
       `);
       res.json(r.rows.map((row: any) => ({
@@ -5538,7 +5539,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         pool.query(`SELECT g.*, c.name AS supplier_name_db, w.name AS store_name_db
           FROM goods_receipt_notes g
           LEFT JOIN customers c ON c.id = g.supplier_id
-          LEFT JOIN warehouses w ON w.id = g.store_id
+          LEFT JOIN stores w ON w.id = g.store_id
           WHERE g.id=$1`, [req.params.id]),
         pool.query(`SELECT * FROM goods_receipt_note_items WHERE grn_id=$1 ORDER BY sno`, [req.params.id]),
       ]);
@@ -6355,7 +6356,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const r = await pool.query(`
         SELECT s.*, w.name AS store_name_db, d.name AS dept_name_db
         FROM store_issue_indents s
-        LEFT JOIN warehouses w ON w.id = s.store_id
+        LEFT JOIN stores w ON w.id = s.store_id
         LEFT JOIN departments d ON d.id = s.department_id
         ORDER BY s.created_at DESC
       `);
@@ -6369,7 +6370,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const [hRes, iRes, sRes] = await Promise.all([
         pool.query(`SELECT s.*, w.name AS store_name_db, d.name AS dept_name_db
           FROM store_issue_indents s
-          LEFT JOIN warehouses w ON w.id=s.store_id
+          LEFT JOIN stores w ON w.id=s.store_id
           LEFT JOIN departments d ON d.id=s.department_id
           WHERE s.id=$1`, [req.params.id]),
         pool.query(`SELECT * FROM store_issue_indent_items WHERE sii_id=$1 ORDER BY sno`, [req.params.id]),
@@ -6545,7 +6546,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const r = await pool.query(`
         SELECT r.*, w.name AS store_name_db, d.name AS dept_name_db
         FROM issue_indent_returns r
-        LEFT JOIN warehouses w ON w.id=r.store_id
+        LEFT JOIN stores w ON w.id=r.store_id
         LEFT JOIN departments d ON d.id=r.department_id
         ORDER BY r.created_at DESC
       `);
@@ -6559,7 +6560,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const [hRes, iRes] = await Promise.all([
         pool.query(`SELECT r.*, w.name AS store_name_db, d.name AS dept_name_db
           FROM issue_indent_returns r
-          LEFT JOIN warehouses w ON w.id=r.store_id
+          LEFT JOIN stores w ON w.id=r.store_id
           LEFT JOIN departments d ON d.id=r.department_id
           WHERE r.id=$1`, [req.params.id]),
         pool.query(`SELECT * FROM issue_indent_return_items WHERE irr_id=$1 ORDER BY sno`, [req.params.id]),
@@ -6671,18 +6672,17 @@ Return ONLY valid JSON (no markdown, no explanation):
         for (const entry of (entries || [])) {
           const storeName = String(entry.store_name || "").trim();
           if (!storeName) continue;
-          // Find or create the warehouse
+          // Find or create the store (uses stores table — same as Store Master)
           let wRow = (await client.query(
-            `SELECT id, name FROM warehouses WHERE LOWER(name)=LOWER($1) AND is_active=true LIMIT 1`, [storeName]
+            `SELECT id, name FROM stores WHERE LOWER(name)=LOWER($1) AND (is_active IS NULL OR is_active=true) LIMIT 1`, [storeName]
           )).rows[0];
           if (!wRow) {
-            // Generate a unique code from the name
             let code = storeName.toUpperCase().replace(/[^A-Z0-9]/g, '_').replace(/_+/g, '_').substring(0, 20);
-            const existing = (await client.query(`SELECT 1 FROM warehouses WHERE code=$1`, [code])).rows;
+            const existing = (await client.query(`SELECT 1 FROM stores WHERE code=$1`, [code])).rows;
             if (existing.length > 0) code = code.substring(0, 17) + '_' + Date.now().toString().slice(-3);
             wRow = (await client.query(
-              `INSERT INTO warehouses(id,code,name,location,description,is_active,created_at)
-               VALUES(gen_random_uuid()::text,$1,$2,'','',true,NOW()) RETURNING id,name`,
+              `INSERT INTO stores(id,code,name,store_type,location,description,is_active)
+               VALUES(gen_random_uuid()::text,$1,$2,'Main Store','','',true) RETURNING id,name`,
               [code, storeName]
             )).rows[0];
             storesCreated.push(storeName);
@@ -7040,7 +7040,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const r = await pool.query(`
         SELECT g.*, w.name AS store_name_db
         FROM goods_receipt_returns g
-        LEFT JOIN warehouses w ON w.id = g.store_id
+        LEFT JOIN stores w ON w.id = g.store_id
         ORDER BY g.created_at DESC
       `);
       res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db || "" })));
@@ -7051,7 +7051,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       const { pool } = await import("./db");
       const [hRes, iRes] = await Promise.all([
-        pool.query(`SELECT g.*, w.name AS store_name_db FROM goods_receipt_returns g LEFT JOIN warehouses w ON w.id=g.store_id WHERE g.id=$1`, [req.params.id]),
+        pool.query(`SELECT g.*, w.name AS store_name_db FROM goods_receipt_returns g LEFT JOIN stores w ON w.id=g.store_id WHERE g.id=$1`, [req.params.id]),
         pool.query(`SELECT * FROM goods_receipt_return_items WHERE grr_id=$1 ORDER BY sno`, [req.params.id]),
       ]);
       if (!hRes.rows[0]) return res.status(404).json({ message: "Not found" });
@@ -7166,7 +7166,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const r = await pool.query(`
         SELECT p.*, w.name AS store_name_db
         FROM phy_reconciliations p
-        LEFT JOIN warehouses w ON w.id = p.store_id
+        LEFT JOIN stores w ON w.id = p.store_id
         ORDER BY p.created_at DESC
       `);
       res.json(r.rows.map((row: any) => ({ ...row, store_name: row.store_name_db || "" })));
@@ -7177,7 +7177,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       const { pool } = await import("./db");
       const [hRes, iRes] = await Promise.all([
-        pool.query(`SELECT p.*, w.name AS store_name_db FROM phy_reconciliations p LEFT JOIN warehouses w ON w.id=p.store_id WHERE p.id=$1`, [req.params.id]),
+        pool.query(`SELECT p.*, w.name AS store_name_db FROM phy_reconciliations p LEFT JOIN stores w ON w.id=p.store_id WHERE p.id=$1`, [req.params.id]),
         pool.query(`SELECT * FROM phy_reconciliation_items WHERE rec_id=$1 ORDER BY sno`, [req.params.id]),
       ]);
       if (!hRes.rows[0]) return res.status(404).json({ message: "Not found" });
