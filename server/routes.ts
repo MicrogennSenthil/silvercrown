@@ -2550,19 +2550,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const to   = (req.query.to   as string) || new Date().toISOString().slice(0, 10);
       const rows = (await pool.query(`
         WITH op_stock AS (
-          -- Store openings BEFORE the report period (status=Posted only)
+          -- ALL posted store openings up to the TO date are always Opening stock
           SELECT soi.item_code, SUM(soi.opening_qty) AS qty
           FROM store_opening_items soi
           JOIN store_openings so ON so.id = soi.sop_id
-          WHERE so.opening_date < $1 AND so.status = 'Posted'
-          GROUP BY soi.item_code
-        ),
-        sop_in_period AS (
-          -- Store openings WITHIN the report period count as receipt (inflow)
-          SELECT soi.item_code, SUM(soi.opening_qty) AS qty
-          FROM store_opening_items soi
-          JOIN store_openings so ON so.id = soi.sop_id
-          WHERE so.opening_date BETWEEN $1 AND $2 AND so.status = 'Posted'
+          WHERE so.opening_date <= $2 AND so.status = 'Posted'
           GROUP BY soi.item_code
         ),
         before_receipt AS (
@@ -2597,13 +2589,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           ii.code AS item_code,
           ii.name AS item_name,
           ii.unit,
-          COALESCE(ops.qty,0) + COALESCE(br.qty,0) - COALESCE(bi.qty,0)                                                          AS opening,
-          COALESCE(sip.qty,0) + COALESCE(pr.qty,0)                                                                                AS receipt,
-          COALESCE(pi.qty,0)                                                                                                       AS issue,
-          COALESCE(ops.qty,0)+COALESCE(br.qty,0)-COALESCE(bi.qty,0)+COALESCE(sip.qty,0)+COALESCE(pr.qty,0)-COALESCE(pi.qty,0)   AS closing
+          COALESCE(ops.qty,0) + COALESCE(br.qty,0) - COALESCE(bi.qty,0)                              AS opening,
+          COALESCE(pr.qty,0)                                                                         AS receipt,
+          COALESCE(pi.qty,0)                                                                         AS issue,
+          COALESCE(ops.qty,0)+COALESCE(br.qty,0)-COALESCE(bi.qty,0)+COALESCE(pr.qty,0)-COALESCE(pi.qty,0) AS closing
         FROM products ii
         LEFT JOIN op_stock       ops ON ops.item_code = ii.code
-        LEFT JOIN sop_in_period  sip ON sip.item_code = ii.code
         LEFT JOIN before_receipt br  ON br.item_code  = ii.code
         LEFT JOIN before_issue   bi  ON bi.item_code  = ii.code
         LEFT JOIN period_receipt pr  ON pr.item_code  = ii.code
@@ -2625,9 +2616,10 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       // Opening balance per item (all movement before fromDate)
       const openingQ = await pool.query(`
         WITH op AS (
+          -- ALL posted store openings up to TO date always count as opening (not as receipt)
           SELECT soi.item_code, SUM(soi.opening_qty) AS qty, SUM(soi.amount) AS val
           FROM store_opening_items soi JOIN store_openings so ON so.id=soi.sop_id
-          WHERE so.opening_date < $1 AND so.status = 'Posted' GROUP BY soi.item_code
+          WHERE so.opening_date <= $2 AND so.status = 'Posted' GROUP BY soi.item_code
         ),
         bgn AS (
           SELECT grni.item_code, SUM(grni.qty) AS qty, SUM(grni.total) AS val
@@ -2658,24 +2650,15 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN bgr ON bgr.item_code=ii.code
         LEFT JOIN bi  ON bi.item_code =ii.code
         LEFT JOIN bir ON bir.item_code=ii.code
-        ${itemCode ? "WHERE ii.code=$2" : ""}
+        ${itemCode ? "WHERE ii.code=$3" : ""}
         ORDER BY ii.name
-      `, itemCode ? [from, itemCode] : [from]);
+      `, itemCode ? [from, to, itemCode] : [from, to]);
 
-      // Period transactions: store openings, GRN receipts, GRN returns, store issues, issue returns
+      // Period transactions: GRN receipts, GRN returns, store issues, issue returns
+      // Note: Store Openings are always in the opening balance (never shown as period transactions)
       const txnQ = await pool.query(`
         SELECT item_code, txn_type, ref_no, ref_date, stock_date, from_to, rate, receipt_qty, issue_qty, amount
         FROM (
-          SELECT soi.item_code, 'opening_stock' AS txn_type,
-            so.voucher_no AS ref_no, so.opening_date AS ref_date, so.opening_date AS stock_date,
-            'Opening Stock' AS from_to,
-            soi.rate, soi.opening_qty AS receipt_qty, 0 AS issue_qty, soi.amount
-          FROM store_opening_items soi JOIN store_openings so ON so.id=soi.sop_id
-          WHERE so.opening_date BETWEEN $1 AND $2 AND so.status='Posted'
-          ${itemCode ? "AND soi.item_code=$3" : ""}
-
-          UNION ALL
-
           SELECT grni.item_code, 'receipt' AS txn_type,
             grn.voucher_no AS ref_no, grn.bill_date AS ref_date, grn.grn_date AS stock_date,
             COALESCE(grn.supplier_name_manual,'') AS from_to,
@@ -3507,17 +3490,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const to   = (req.query.to   as string) || new Date().toISOString().slice(0, 10);
       const rows = (await pool.query(`
         WITH op_stock AS (
+          -- ALL posted store openings up to the TO date are always Opening stock
           SELECT soi.item_code, SUM(soi.opening_qty) AS qty, SUM(soi.amount) AS val
           FROM store_opening_items soi
           JOIN store_openings so ON so.id = soi.sop_id
-          WHERE so.opening_date < $1 AND so.status = 'Posted'
-          GROUP BY soi.item_code
-        ),
-        sop_in_period AS (
-          SELECT soi.item_code, SUM(soi.opening_qty) AS qty, SUM(soi.amount) AS val
-          FROM store_opening_items soi
-          JOIN store_openings so ON so.id = soi.sop_id
-          WHERE so.opening_date BETWEEN $1 AND $2 AND so.status = 'Posted'
+          WHERE so.opening_date <= $2 AND so.status = 'Posted'
           GROUP BY soi.item_code
         ),
         before_grn AS (
@@ -3602,8 +3579,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           ii.unit,
           COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0)+COALESCE(badj.qty,0) AS opening_qty,
           COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0)+COALESCE(badj.val,0) AS opening_val,
-          COALESCE(sip.qty,0)+COALESCE(pgn.qty,0) AS purchase_qty,
-          COALESCE(sip.val,0)+COALESCE(pgn.val,0) AS purchase_val,
+          COALESCE(pgn.qty,0) AS purchase_qty,
+          COALESCE(pgn.val,0) AS purchase_val,
           COALESCE(pgr.qty,0) AS grn_return_qty,
           COALESCE(pgr.val,0) AS grn_return_val,
           COALESCE(pi.qty,0)  AS issue_qty,
@@ -3613,12 +3590,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(padj.qty,0) AS adjustment_qty,
           COALESCE(padj.val,0) AS adjustment_val,
           COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)-COALESCE(bi.qty,0)+COALESCE(bir.qty,0)+COALESCE(badj.qty,0)
-          +COALESCE(sip.qty,0)+COALESCE(pgn.qty,0)-COALESCE(pgr.qty,0)-COALESCE(pi.qty,0)+COALESCE(pir.qty,0)+COALESCE(padj.qty,0) AS closing_qty,
+          +COALESCE(pgn.qty,0)-COALESCE(pgr.qty,0)-COALESCE(pi.qty,0)+COALESCE(pir.qty,0)+COALESCE(padj.qty,0) AS closing_qty,
           COALESCE(ops.val,0)+COALESCE(bgn.val,0)-COALESCE(bgr.val,0)-COALESCE(bi.val,0)+COALESCE(bir.val,0)+COALESCE(badj.val,0)
-          +COALESCE(sip.val,0)+COALESCE(pgn.val,0)-COALESCE(pgr.val,0)-COALESCE(pi.val,0)+COALESCE(pir.val,0)+COALESCE(padj.val,0) AS closing_val
+          +COALESCE(pgn.val,0)-COALESCE(pgr.val,0)-COALESCE(pi.val,0)+COALESCE(pir.val,0)+COALESCE(padj.val,0) AS closing_val
         FROM products ii
         LEFT JOIN op_stock       ops  ON ops.item_code  = ii.code
-        LEFT JOIN sop_in_period  sip  ON sip.item_code  = ii.code
         LEFT JOIN before_grn     bgn  ON bgn.item_code  = ii.code
         LEFT JOIN before_grn_ret bgr  ON bgr.item_code  = ii.code
         LEFT JOIN before_issue   bi   ON bi.item_code   = ii.code
