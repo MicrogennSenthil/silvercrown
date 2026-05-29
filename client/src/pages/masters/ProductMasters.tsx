@@ -585,6 +585,7 @@ export function Products() {
   const { data: subs  = [] } = useQuery<any[]>({ queryKey: ["/api/sub-categories"] });
   const { data: rows  = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: uoms  = [] } = useQuery<any[]>({ queryKey: ["/api/uom"] });
+  const { data: liveStock = {} } = useQuery<Record<string, { stock: number; rate: number }>>({ queryKey: ["/api/item-stock-summary"] });
 
   const del = useMutation({
     mutationFn: (id: string) => apiReq(`/api/products/${id}`, "DELETE"),
@@ -595,7 +596,7 @@ export function Products() {
     !search || [r.name, r.sapNo, r.drgNo, r.hsnCode].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))
   );
 
-  const COLS = ["S.no", "SAP No", "DRG No", "HSN Code", "Name", "Unit", "Rate", "Min No", "Max No", "Status", "Location", ""];
+  const COLS = ["S.no", "SAP No", "DRG No", "HSN Code", "Name", "Unit", "Rate", "Live Stock", "Min No", "Max No", "Status", "Location", ""];
 
   return (
     <div className="flex flex-col h-full">
@@ -636,6 +637,17 @@ export function Products() {
                   <td className="px-3 py-2.5 font-medium text-gray-800">{r.name}</td>
                   <td className="px-3 py-2.5 text-gray-600">{r.unit || r.uom || "—"}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-gray-700">{r.rate ? Number(r.rate).toFixed(2) : "—"}</td>
+                  <td className="px-3 py-2.5 text-right">
+                    {(() => {
+                      const liveQty = (liveStock as any)[r.code]?.stock ?? r.current_stock ?? 0;
+                      const minQty  = Number(r.minStockLevel || 0);
+                      return (
+                        <span className={`font-semibold tabular-nums ${liveQty <= 0 ? "text-red-500" : liveQty <= minQty ? "text-amber-600" : "text-green-700"}`}>
+                          {Number(liveQty).toFixed(3)}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-3 py-2.5 text-right text-gray-600">{r.minStockLevel ? Number(r.minStockLevel).toFixed(0) : "—"}</td>
                   <td className="px-3 py-2.5 text-right text-gray-600">{r.maxStockLevel ? Number(r.maxStockLevel).toFixed(0) : "—"}</td>
                   <td className="px-3 py-2.5">
