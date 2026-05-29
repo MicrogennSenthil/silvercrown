@@ -6923,6 +6923,11 @@ Return ONLY valid JSON (no markdown, no explanation):
       const { pool } = await import("./db");
       const b = req.body;
       if (!b.store_id) return res.status(400).json({ message: "Store is required. Please select a Store before saving." });
+      // Block edit if entry is already Posted (frozen)
+      const currentStatus = await pool.query(`SELECT status FROM store_openings WHERE id=$1`, [req.params.id]);
+      if (currentStatus.rows[0]?.status === "Posted") {
+        return res.status(400).json({ message: "This entry is Posted and frozen. Posted entries cannot be amended." });
+      }
       // Block edit if any GRN or SII transactions already exist
       const [grnChk2, siiChk2] = await Promise.all([
         pool.query(`SELECT COUNT(*) FROM goods_receipt_notes`),
@@ -6994,12 +6999,10 @@ Return ONLY valid JSON (no markdown, no explanation):
       try {
         await client.query("BEGIN");
         const oldHdr = await client.query(`SELECT status FROM store_openings WHERE id=$1`, [req.params.id]);
-        const wasPosted = oldHdr.rows[0]?.status === "Posted";
-        if (wasPosted) {
-          const oldItems = await client.query(`SELECT item_code, previous_stock FROM store_opening_items WHERE sop_id=$1`, [req.params.id]);
-          for (const oi of oldItems.rows) {
-            if (oi.item_code) await client.query(`UPDATE products SET current_stock=$1 WHERE code=$2`, [+(oi.previous_stock||0), oi.item_code]);
-          }
+        if (oldHdr.rows[0]?.status === "Posted") {
+          await client.query("ROLLBACK");
+          client.release();
+          return res.status(400).json({ message: "Posted entries are frozen and cannot be deleted." });
         }
         await client.query(`DELETE FROM store_openings WHERE id=$1`, [req.params.id]);
         await client.query("COMMIT");

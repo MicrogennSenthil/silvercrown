@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Search, Edit2, FileText, X, Upload, Download, FileSpreadsheet, CheckCircle, Clock } from "lucide-react";
+import { Plus, Trash2, Search, Edit2, FileText, X, Upload, Download, FileSpreadsheet, CheckCircle, Clock, Lock } from "lucide-react";
 import * as XLSX from "xlsx";
 import DatePicker from "@/components/DatePicker";
 
@@ -230,11 +230,7 @@ export default function StoreOpening() {
   }
 
   async function openEdit(sop: any) {
-    if (isLocked) {
-      setErr(lockStatus?.reason || "Opening Stock is locked because transactions already exist.");
-      setMode("list");
-      return;
-    }
+    // Posted entries open as read-only view (not blocked, just frozen)
     setSopNo(sop.voucher_no || ""); setImportErr(""); setImportOk("");
     const r = await fetch(`/api/store-openings/${sop.id}`, { credentials: "include" });
     const data = await r.json();
@@ -581,7 +577,12 @@ export default function StoreOpening() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {isLocked ? (
+                    {s.status === "Posted" ? (
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => openEdit(s)} className="text-[#027fa5] hover:text-[#025f80]" title="View (Posted — read only)" data-testid={`btn-view-${s.id}`}><Edit2 size={14}/></button>
+                        <span className="text-gray-300 cursor-not-allowed" title="Posted entries cannot be deleted"><Trash2 size={14}/></span>
+                      </div>
+                    ) : isLocked ? (
                       <div className="flex items-center gap-2" title={lockStatus?.reason || "Locked — transactions already exist"}>
                         <span className="text-gray-200 cursor-not-allowed"><Edit2 size={14}/></span>
                         <span className="text-gray-200 cursor-not-allowed"><Trash2 size={14}/></span>
@@ -603,6 +604,8 @@ export default function StoreOpening() {
   );
 
   // ── Form ───────────────────────────────────────────────────────────────────
+  const isPostedEntry = !!(editId && form.status === "Posted");
+
   return (
     <div className="p-6 space-y-4">
       {/* Fixed item dropdown — renders above all overflow containers */}
@@ -620,21 +623,27 @@ export default function StoreOpening() {
           <button onClick={() => setMode("list")} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
           <div>
             <h1 className="text-xl font-bold text-gray-800">Store Opening</h1>
-            <p className="text-xs text-gray-400">{editId ? `Editing ${sopNo}` : "New opening stock entry"}</p>
+            <p className="text-xs text-gray-400">
+              {isPostedEntry ? `Viewing ${sopNo} — Posted (Frozen)` : editId ? `Editing ${sopNo}` : "New opening stock entry"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={downloadTemplate}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
-            title="Download Excel template (supports multi-batch rows)" data-testid="btn-download-template">
-            <FileSpreadsheet size={13} className="text-green-600"/> Download Template
-          </button>
-          <button onClick={() => fileRef.current?.click()} disabled={bulkImporting}
-            className="flex items-center gap-1.5 text-xs px-3 py-2 border border-[#027fa5] rounded-lg font-medium hover:bg-[#e8f6fb] disabled:opacity-60"
-            style={{ color: SC.primary }} data-testid="btn-import-excel">
-            <Upload size={13}/> {bulkImporting ? "Importing…" : "Import Excel"}
-          </button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport}/>
+          {!isPostedEntry && (
+            <>
+              <button onClick={downloadTemplate}
+                className="flex items-center gap-1.5 text-xs px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+                title="Download Excel template (supports multi-batch rows)" data-testid="btn-download-template">
+                <FileSpreadsheet size={13} className="text-green-600"/> Download Template
+              </button>
+              <button onClick={() => fileRef.current?.click()} disabled={bulkImporting}
+                className="flex items-center gap-1.5 text-xs px-3 py-2 border border-[#027fa5] rounded-lg font-medium hover:bg-[#e8f6fb] disabled:opacity-60"
+                style={{ color: SC.primary }} data-testid="btn-import-excel">
+                <Upload size={13}/> {bulkImporting ? "Importing…" : "Import Excel"}
+              </button>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport}/>
+            </>
+          )}
           {form.items.some(it => it.item_code) && (
             <button onClick={() => exportToExcel(form.items, sopNo)}
               className="flex items-center gap-1.5 text-xs px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
@@ -643,17 +652,23 @@ export default function StoreOpening() {
             </button>
           )}
           <div className="w-px h-6 bg-gray-200 mx-1"/>
-          <button onClick={() => setMode("list")} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={() => handleSave("Draft")} disabled={saving}
-            className="px-4 py-2 rounded-lg text-sm font-semibold border-2 border-[#027fa5] text-[#027fa5] hover:bg-[#e8f6fb] disabled:opacity-60"
-            data-testid="btn-save-draft">
-            {saving ? "…" : "Save Draft"}
+          <button onClick={() => setMode("list")} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            {isPostedEntry ? "Close" : "Cancel"}
           </button>
-          <button onClick={() => handleSave("Posted")} disabled={saving}
-            className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
-            style={{ background: SC.orange }} data-testid="btn-post">
-            {saving ? "Posting…" : "Post & Update Stock"}
-          </button>
+          {!isPostedEntry && (
+            <>
+              <button onClick={() => handleSave("Draft")} disabled={saving}
+                className="px-4 py-2 rounded-lg text-sm font-semibold border-2 border-[#027fa5] text-[#027fa5] hover:bg-[#e8f6fb] disabled:opacity-60"
+                data-testid="btn-save-draft">
+                {saving ? "…" : "Save Draft"}
+              </button>
+              <button onClick={() => handleSave("Posted")} disabled={saving}
+                className="px-5 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: SC.orange }} data-testid="btn-post">
+                {saving ? "Posting…" : "Post & Update Stock"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -662,14 +677,22 @@ export default function StoreOpening() {
       {importOk  && <div className="bg-green-50 border border-green-200 text-green-700 text-xs px-4 py-2 rounded-lg flex items-center gap-2"><CheckCircle size={13}/> {importOk}</div>}
 
       {/* Status banner */}
-      <div className={`flex items-center gap-2 text-xs px-4 py-2.5 rounded-lg border
-        ${form.status === "Posted" ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
-        {form.status === "Posted" ? <CheckCircle size={13}/> : <Clock size={13}/>}
-        <span className="font-semibold">{form.status === "Posted" ? "Posted" : "Draft"}</span>
-        {form.status === "Draft"
-          ? ' — Stock will NOT be updated until you click "Post & Update Stock".'
-          : " — Stock has been updated. Editing will reverse previous values and re-apply."}
-      </div>
+      {isPostedEntry ? (
+        <div className="flex items-center gap-2 text-xs px-4 py-2.5 rounded-lg border bg-green-50 border-green-200 text-green-700">
+          <Lock size={13}/>
+          <span className="font-semibold">Posted — Frozen</span>
+          <span>This entry is locked. Stock has been updated and no further amendments are allowed.</span>
+        </div>
+      ) : (
+        <div className={`flex items-center gap-2 text-xs px-4 py-2.5 rounded-lg border
+          ${form.status === "Posted" ? "bg-green-50 border-green-200 text-green-700" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
+          {form.status === "Posted" ? <CheckCircle size={13}/> : <Clock size={13}/>}
+          <span className="font-semibold">{form.status === "Posted" ? "Posted" : "Draft"}</span>
+          {form.status === "Draft"
+            ? ' — Stock will NOT be updated until you click "Post & Update Stock".'
+            : " — Stock has been updated. Editing will reverse previous values and re-apply."}
+        </div>
+      )}
 
       {/* Header fields */}
       <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -682,12 +705,13 @@ export default function StoreOpening() {
           </div>
           <div>
             <label className="text-xs text-gray-500 font-medium">Opening Date</label>
-            <DatePicker value={form.opening_date} onChange={v => setForm(f => ({ ...f, opening_date: v }))}/>
+            <DatePicker value={form.opening_date} onChange={v => !isPostedEntry && setForm(f => ({ ...f, opening_date: v }))} disabled={isPostedEntry}/>
           </div>
           <div>
             <label className="text-xs text-gray-500 font-medium">Store *</label>
             <select value={form.store_id} onChange={e => setForm(f => ({ ...f, store_id: e.target.value }))}
-              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+              disabled={isPostedEntry}
+              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
               data-testid="select-store">
               <option value="">Select Store</option>
               {(stores as any[]).map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -697,7 +721,8 @@ export default function StoreOpening() {
             <label className="text-xs text-gray-500 font-medium">Financial Year</label>
             <select value={form.financial_year}
               onChange={e => setForm(f => ({ ...f, financial_year: e.target.value }))}
-              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+              disabled={isPostedEntry}
+              className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
               data-testid="select-fy">
               <option value="">Select Year</option>
               {(financialYears as any[]).sort((a: any, b: any) => b.start_date?.localeCompare(a.start_date)).map((fy: any) => (
@@ -709,15 +734,21 @@ export default function StoreOpening() {
           </div>
           <div>
             <label className="text-xs text-gray-500 font-medium">Status</label>
-            <div className="flex gap-4 mt-2.5">
-              {(["Draft","Posted"] as const).map(s => (
-                <label key={s} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                  <input type="radio" checked={form.status === s} onChange={() => setForm(f => ({ ...f, status: s }))}
-                    className="accent-[#027fa5]" data-testid={`radio-${s.toLowerCase()}`}/>
-                  <span className={form.status === s ? "font-semibold" : "text-gray-500"}>{s}</span>
-                </label>
-              ))}
-            </div>
+            {isPostedEntry ? (
+              <div className="flex items-center gap-1.5 mt-2.5 text-sm font-semibold text-green-700">
+                <Lock size={13}/> Posted
+              </div>
+            ) : (
+              <div className="flex gap-4 mt-2.5">
+                {(["Draft","Posted"] as const).map(s => (
+                  <label key={s} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" checked={form.status === s} onChange={() => setForm(f => ({ ...f, status: s }))}
+                      className="accent-[#027fa5]" data-testid={`radio-${s.toLowerCase()}`}/>
+                    <span className={form.status === s ? "font-semibold" : "text-gray-500"}>{s}</span>
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -761,9 +792,11 @@ export default function StoreOpening() {
                     <td className="px-1 py-1">
                       <div className="relative w-44">
                         <input
+                          readOnly={isPostedEntry}
                           value={openDropIdx === i ? (itemQuery[i] ?? it.item_name) : it.item_name}
-                          onFocus={(e) => openInputDropdown(e, i, it.item_name)}
+                          onFocus={(e) => { if (!isPostedEntry) openInputDropdown(e, i, it.item_name); }}
                           onChange={(e) => {
+                            if (isPostedEntry) return;
                             const val = e.target.value.toUpperCase();
                             setItemQuery(p => ({ ...p, [i]: val }));
                             if (openDropIdx !== i) {
@@ -772,50 +805,50 @@ export default function StoreOpening() {
                             }
                           }}
                           className={`w-full border rounded px-2 py-1.5 pr-6 outline-none focus:border-[#027fa5] text-xs uppercase
-                            ${isBatchContinue ? "border-blue-200 bg-blue-50/50 text-gray-400" : "border-gray-300"}`}
+                            ${isBatchContinue ? "border-blue-200 bg-blue-50/50 text-gray-400" : isPostedEntry ? "bg-gray-50 border-gray-200 text-gray-600" : "border-gray-300"}`}
                           placeholder="SEARCH ITEM…"
                           data-testid={`input-name-${i}`}/>
-                        <Search size={10} className="absolute right-1.5 top-2.5 text-gray-400 pointer-events-none"/>
+                        {!isPostedEntry && <Search size={10} className="absolute right-1.5 top-2.5 text-gray-400 pointer-events-none"/>}
                       </div>
                     </td>
 
                     {/* UOM */}
                     <td className="px-1 py-1">
-                      <input value={it.uom}
+                      <input value={it.uom} readOnly={isPostedEntry}
                         onChange={e => updItem(i, "uom", e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 w-14 outline-none focus:border-[#027fa5] text-xs text-center"
+                        className={`border rounded px-2 py-1.5 w-14 text-xs text-center ${isPostedEntry ? "bg-gray-50 border-gray-200" : "border-gray-300 outline-none focus:border-[#027fa5]"}`}
                         data-testid={`input-uom-${i}`}/>
                     </td>
 
                     {/* Batch No */}
                     <td className="px-1 py-1">
-                      <input value={it.batch_no}
+                      <input value={it.batch_no} readOnly={isPostedEntry}
                         onChange={e => updItem(i, "batch_no", e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 w-24 outline-none focus:border-[#027fa5] text-xs"
+                        className={`border rounded px-2 py-1.5 w-24 text-xs ${isPostedEntry ? "bg-gray-50 border-gray-200" : "border-gray-300 outline-none focus:border-[#027fa5]"}`}
                         placeholder="Batch No" data-testid={`input-batch-${i}`}/>
                     </td>
 
                     {/* Expiry Date */}
                     <td className="px-1 py-1">
-                      <input type="date" value={it.expiry_date}
+                      <input type="date" value={it.expiry_date} readOnly={isPostedEntry}
                         onChange={e => updItem(i, "expiry_date", e.target.value)}
-                        className="border border-gray-300 rounded px-2 py-1.5 w-32 outline-none focus:border-[#027fa5] text-xs"
+                        className={`border rounded px-2 py-1.5 w-32 text-xs ${isPostedEntry ? "bg-gray-50 border-gray-200" : "border-gray-300 outline-none focus:border-[#027fa5]"}`}
                         data-testid={`input-expiry-${i}`}/>
                     </td>
 
                     {/* Opening Qty */}
                     <td className="px-1 py-1">
-                      <input type="number" step="0.001" value={it.opening_qty || ""}
+                      <input type="number" step="0.001" value={it.opening_qty || ""} readOnly={isPostedEntry}
                         onChange={e => updItem(i, "opening_qty", parseFloat(e.target.value)||0)}
-                        className="border-2 border-[#027fa5] rounded px-2 py-1.5 w-24 outline-none focus:border-[#d74700] text-xs text-right font-semibold"
+                        className={`border-2 rounded px-2 py-1.5 w-24 text-xs text-right font-semibold ${isPostedEntry ? "bg-gray-50 border-gray-200" : "border-[#027fa5] outline-none focus:border-[#d74700]"}`}
                         placeholder="0.000" data-testid={`input-qty-${i}`}/>
                     </td>
 
                     {/* Rate */}
                     <td className="px-1 py-1">
-                      <input type="number" step="0.01" value={it.rate || ""}
+                      <input type="number" step="0.01" value={it.rate || ""} readOnly={isPostedEntry}
                         onChange={e => updItem(i, "rate", parseFloat(e.target.value)||0)}
-                        className="border border-gray-300 rounded px-2 py-1.5 w-24 outline-none focus:border-[#027fa5] text-xs text-right"
+                        className={`border rounded px-2 py-1.5 w-24 text-xs text-right ${isPostedEntry ? "bg-gray-50 border-gray-200" : "border-gray-300 outline-none focus:border-[#027fa5]"}`}
                         placeholder="0.00" data-testid={`input-rate-${i}`}/>
                     </td>
 
@@ -824,20 +857,22 @@ export default function StoreOpening() {
                       {n2(it.amount)}
                     </td>
 
-                    {/* Actions */}
+                    {/* Actions — hidden for Posted entries */}
                     <td className="px-2 py-1">
-                      <div className="flex items-center gap-1.5">
-                        {it.item_code && (
-                          <button onClick={() => addBatchRow(i)}
-                            className="text-[#027fa5] hover:text-[#025f80] text-[10px] border border-[#027fa5] rounded px-1.5 py-0.5 font-medium whitespace-nowrap"
-                            title="Add another batch for this item"
-                            data-testid={`btn-add-batch-${i}`}>
-                            + Batch
-                          </button>
-                        )}
-                        <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600"
-                          data-testid={`btn-del-item-${i}`}><Trash2 size={12}/></button>
-                      </div>
+                      {!isPostedEntry && (
+                        <div className="flex items-center gap-1.5">
+                          {it.item_code && (
+                            <button onClick={() => addBatchRow(i)}
+                              className="text-[#027fa5] hover:text-[#025f80] text-[10px] border border-[#027fa5] rounded px-1.5 py-0.5 font-medium whitespace-nowrap"
+                              title="Add another batch for this item"
+                              data-testid={`btn-add-batch-${i}`}>
+                              + Batch
+                            </button>
+                          )}
+                          <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600"
+                            data-testid={`btn-del-item-${i}`}><Trash2 size={12}/></button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -848,11 +883,13 @@ export default function StoreOpening() {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-2.5 border-t bg-gray-50">
-          <button onClick={addItem}
-            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded hover:bg-[#d2f1fa] transition-colors"
-            style={{ color: SC.primary }} data-testid="btn-add-item">
-            <Plus size={12}/> Add Item
-          </button>
+          {!isPostedEntry ? (
+            <button onClick={addItem}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded hover:bg-[#d2f1fa] transition-colors"
+              style={{ color: SC.primary }} data-testid="btn-add-item">
+              <Plus size={12}/> Add Item
+            </button>
+          ) : <div/>}
           <div className="flex items-center gap-8 text-xs text-gray-600">
             <span>Total Qty: <span className="font-bold text-gray-800">{n3(totalQty)}</span></span>
             <span className="text-sm font-bold text-gray-800">Total Amount: ₹ {n2(totalAmount)}</span>
@@ -863,10 +900,10 @@ export default function StoreOpening() {
       {/* Remark */}
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <label className="text-xs text-gray-500 font-medium block mb-1">Remark</label>
-        <textarea value={form.remark}
+        <textarea value={form.remark} readOnly={isPostedEntry}
           onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
           rows={2} placeholder="Notes about this opening entry…"
-          className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-[#027fa5] resize-none"
+          className={`w-full border rounded px-3 py-2 text-sm resize-none ${isPostedEntry ? "bg-gray-50 border-gray-200 text-gray-500" : "border-gray-200 outline-none focus:border-[#027fa5]"}`}
           data-testid="textarea-remark"/>
       </div>
 
