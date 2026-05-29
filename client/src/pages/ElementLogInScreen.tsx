@@ -3,8 +3,8 @@ import { EyeOffIcon, EyeIcon, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 export const ElementLogInScreen = (): JSX.Element => {
-  const [username, setUsername] = useState("Admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const { login } = useAuth();
