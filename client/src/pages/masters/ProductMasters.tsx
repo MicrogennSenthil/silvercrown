@@ -387,7 +387,7 @@ const EMPTY_PRODUCT = {
   rate: "", costPrice: "", minStockLevel: "", maxStockLevel: "",
   cgstRate: "", sgstRate: "", igstRate: "",
   isActive: true, code: "", description: "",
-  batchRequired: false, expiryRequired: false,
+  batchRequired: true, expiryRequired: true,
 };
 
 function PToggle({ label, name, value, onChange }: { label: string; name: string; value: boolean; onChange: (v: boolean) => void }) {
