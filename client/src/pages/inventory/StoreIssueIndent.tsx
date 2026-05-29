@@ -68,6 +68,17 @@ function ItemDropdown({ open, anchorRect, products, query, onPick, onClose }: It
   );
 }
 
+interface BatchOption {
+  id: string;
+  sop_id: string;
+  batch_no: string;
+  expiry_date: string | null;
+  opening_qty: number;
+  rate: number;
+  voucher_no: string;
+  opening_date: string;
+}
+
 interface SiiItem {
   sno: number;
   item_code: string;
@@ -78,6 +89,9 @@ interface SiiItem {
   rate: number;
   amount: number;
   srn_id?: string;
+  batch_id?: string;
+  batch_no?: string;
+  batch_qty?: number;
 }
 interface LinkedSrn { srn_id: string; srn_no: string; srn_date: string; }
 interface SiiForm {
@@ -113,6 +127,7 @@ export default function StoreIssueIndent() {
   const [itemQuery, setItemQuery] = useState<Record<number, string>>({});
   const [openDropIdx, setOpenDropIdx] = useState<number | null>(null);
   const [dropAnchor, setDropAnchor] = useState<DOMRect | null>(null);
+  const [itemBatches, setItemBatches] = useState<Record<number, BatchOption[]>>({});
   // (tableRef removed — using fixed-position dropdown instead)
 
   const { data: siis = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/store-issue-indents"] });
@@ -251,16 +266,37 @@ export default function StoreIssueIndent() {
     setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i).map((it, idx) => ({ ...it, sno: idx + 1 })) }));
   }
 
-  function pickProduct(i: number, prod: any) {
+  async function pickProduct(i: number, prod: any) {
     const rate  = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
     const stock = Number(prod.current_stock ?? 0);
     setForm(f => {
       const items = [...f.items];
-      items[i] = calcItem({ ...items[i], item_code: prod.code || "", item_name: prod.name || "", unit: prod.uom || prod.unit || "Nos", rate, stock });
+      items[i] = calcItem({ ...items[i], item_code: prod.code || "", item_name: prod.name || "", unit: prod.uom || prod.unit || "Nos", rate, stock, batch_id: "", batch_no: "", batch_qty: undefined });
       return { ...f, items };
     });
     setItemQuery(p => ({ ...p, [i]: prod.name }));
+    setItemBatches(b => ({ ...b, [i]: [] }));
     closeDropdown();
+    // Fetch batches for this item
+    if (prod.code) {
+      try {
+        const r = await fetch(`/api/item-batches?item_code=${encodeURIComponent(prod.code)}`, { credentials: "include" });
+        const batches: BatchOption[] = await r.json();
+        setItemBatches(b => ({ ...b, [i]: batches }));
+        // Auto-select if only one batch
+        if (batches.length === 1) {
+          selectBatch(i, batches[0]);
+        }
+      } catch (_) {}
+    }
+  }
+
+  function selectBatch(i: number, batch: BatchOption) {
+    setForm(f => {
+      const items = [...f.items];
+      items[i] = calcItem({ ...items[i], rate: batch.rate, batch_id: batch.id, batch_no: batch.batch_no || batch.voucher_no, batch_qty: batch.opening_qty });
+      return { ...f, items };
+    });
   }
 
   async function handleSave() {
@@ -530,7 +566,7 @@ export default function StoreIssueIndent() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b" style={{ background: "#e8f6fb" }}>
-                {["S.no", "Item Code", "Item Name", "Stock", "Issued Qty", "Unit", "Rate ₹", "Amount ₹", ""].map(h => (
+                {["S.no", "Item Code", "Item Name", "Batch", "Stock", "Issued Qty", "Unit", "Rate ₹", "Amount ₹", ""].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -538,7 +574,7 @@ export default function StoreIssueIndent() {
             <tbody>
               {form.items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-6 text-center text-gray-400 text-xs">
+                  <td colSpan={10} className="px-4 py-6 text-center text-gray-400 text-xs">
                     {isDirect ? 'Click \u201c+ Add Item\u201d to add materials' : "Select store requests above to load items"}
                   </td>
                 </tr>
@@ -581,6 +617,46 @@ export default function StoreIssueIndent() {
                     )}
                   </td>
 
+                  {/* Batch selector */}
+                  <td className="px-1 py-1">
+                    {(() => {
+                      const batches = itemBatches[i] ?? [];
+                      if (batches.length === 0) {
+                        return (
+                          <span className="text-gray-400 text-[10px] px-2">
+                            {it.batch_no ? it.batch_no : "—"}
+                          </span>
+                        );
+                      }
+                      if (batches.length === 1) {
+                        const b = batches[0];
+                        return (
+                          <div className="text-[10px] text-gray-600 px-1 leading-tight">
+                            <div className="font-semibold text-[#027fa5]">{b.batch_no || b.voucher_no}</div>
+                            <div className="text-gray-400">Qty: {Number(b.opening_qty).toFixed(2)}</div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <select
+                          value={it.batch_id || ""}
+                          onChange={e => {
+                            const selected = batches.find((b: BatchOption) => b.id === e.target.value);
+                            if (selected) selectBatch(i, selected);
+                          }}
+                          className="border border-gray-300 rounded px-1.5 py-1 text-[10px] outline-none focus:border-[#027fa5] w-32"
+                          data-testid={`select-batch-${i}`}>
+                          <option value="">— Select Batch —</option>
+                          {batches.map((b: BatchOption) => (
+                            <option key={b.id} value={b.id}>
+                              {b.batch_no || b.voucher_no} | Qty:{Number(b.opening_qty).toFixed(0)} | ₹{Number(b.rate).toFixed(2)}
+                            </option>
+                          ))}
+                        </select>
+                      );
+                    })()}
+                  </td>
+
                   {/* Stock */}
                   <td className="px-2 py-1 text-right w-14">
                     <span className={it.stock < it.issued_qty && it.issued_qty > 0 ? "text-red-500 font-semibold" : "text-gray-600"}>{it.stock}</span>
@@ -590,9 +666,11 @@ export default function StoreIssueIndent() {
                   <td className="px-1 py-1">
                     <input type="number" value={it.issued_qty || ""}
                       onChange={e => {
-                        const val = parseFloat(e.target.value) || 0;
+                        let val = parseFloat(e.target.value) || 0;
+                        if (it.batch_qty !== undefined && val > it.batch_qty) val = it.batch_qty;
                         updItem(i, "issued_qty", val);
                       }}
+                      max={it.batch_qty !== undefined ? it.batch_qty : undefined}
                       className={`border rounded px-2 py-1.5 w-16 outline-none text-xs text-right ${it.issued_qty > it.stock && it.issued_qty > 0 ? "border-red-400 bg-red-50 focus:border-red-500" : "border-gray-300 focus:border-[#027fa5]"}`}
                       data-testid={`input-qty-${i}`}/>
                   </td>

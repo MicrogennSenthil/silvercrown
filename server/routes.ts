@@ -1089,6 +1089,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/item-batches?item_code=XXX — posted SOP batches for an item
+  app.get("/api/item-batches", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { item_code } = req.query as { item_code?: string };
+      if (!item_code) return res.json([]);
+      const r = await pool.query(`
+        SELECT soi.id, soi.sop_id, soi.batch_no, soi.expiry_date,
+               soi.opening_qty::numeric AS opening_qty,
+               soi.rate::numeric AS rate,
+               so.voucher_no, so.opening_date
+        FROM store_opening_items soi
+        JOIN store_openings so ON so.id = soi.sop_id
+        WHERE so.status = 'Posted' AND soi.item_code = $1
+        ORDER BY so.opening_date ASC, soi.sno ASC
+      `, [item_code]);
+      res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   app.get("/api/stores", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
