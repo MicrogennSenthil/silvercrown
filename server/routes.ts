@@ -7348,110 +7348,71 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   // ── Data Purge Endpoints ─────────────────────────────────────────────────────
 
-  // Helper: delete a table inside the current transaction using a SAVEPOINT so a
-  // failure (missing table, FK violation) rolls back only that one statement and
-  // does NOT abort the whole transaction.
-  async function safeDelete(client: any, table: string) {
-    const sp = `sp_purge_${table}`;
-    await client.query(`SAVEPOINT ${sp}`);
-    try {
-      await client.query(`DELETE FROM ${table}`);
-      await client.query(`RELEASE SAVEPOINT ${sp}`);
-    } catch {
-      await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
-    }
+  // Truncate a list of tables using TRUNCATE ... CASCADE so PostgreSQL handles
+  // all FK dependencies automatically. Only truncates tables that actually exist.
+  async function truncateTables(pool: any, tableList: string[]) {
+    // Filter to only tables that actually exist in the DB
+    const existRes = await pool.query(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema='public' AND table_name = ANY($1)`,
+      [tableList]
+    );
+    const existing: string[] = existRes.rows.map((r: any) => r.table_name);
+    if (existing.length === 0) return;
+    // Single TRUNCATE with CASCADE handles all FK deps in one shot
+    await pool.query(`TRUNCATE TABLE ${existing.map(t => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`);
   }
 
-  // Full ordered list of TRANSACTION tables — children before parents so FK constraints are satisfied.
-  const TX_TABLES_ORDERED = [
-    // Voucher detail lines first, then headers
-    "bill_adjustments",
-    "voucher_det",
-    "voucher_mas",
-    "sub_ledger_bills",
-    // Purchase cycle: items → invoices
-    "purchase_invoice_items",
-    "purchase_invoices",
-    // Sales cycle
-    "sales_invoice_items",
-    "sales_invoices",
-    // GRN returns (child) before GRN returns (header) before GRN items before GRN headers
-    "goods_receipt_return_items",
-    "goods_receipt_returns",
-    "goods_receipt_note_items",
-    // Gate pass & returnable: grandchildren before children before parents
-    "gate_pass_items",
-    "gate_pass",
-    "returnable_inward_items",
-    "returnable_outward_items",
-    "returnable_inward",
-    "returnable_outward",
-    // Purchase orders: all dependants before the PO header
-    "po_approval_decisions",
-    "purchase_order_amendment_charges",
-    "purchase_order_amendment_items",
-    "purchase_order_amendment_terms",
-    "purchase_order_amendments",
-    "purchase_order_charges",
-    "purchase_order_items",
-    "purchase_order_terms",
-    "goods_receipt_notes",   // FK → purchase_orders
-    "purchase_orders",
-    // Job work cycle
-    "job_work_despatch_items",
-    "job_work_despatch",
-    "job_work_inward_items",
-    "job_work_inward",
-    "job_work_invoice_charges",
-    "job_work_invoice_items",
-    "job_work_invoices",
-    // Issue / store cycles
-    "store_issue_indent_items",
-    "store_issue_indent_srns",
-    "store_issue_indents",
-    "issue_indent_return_items",
-    "issue_indent_returns",
-    "store_request_note_items",
-    "store_request_notes",
-    "store_opening_items",
-    "store_openings",
-    // Reconciliation
-    "phy_reconciliation_items",
-    "phy_reconciliations",
-    // Journals & misc
-    "journal_entry_lines",
-    "journal_entries",
-    "tally_sync_logs",
-    "tasks",
-    // Batch stock ledger
-    "item_batch_stock",
+  const TX_TABLES = [
+    "bill_adjustments", "voucher_det", "voucher_mas", "sub_ledger_bills",
+    "purchase_invoice_items", "purchase_invoices",
+    "sales_invoice_items", "sales_invoices",
+    "goods_receipt_return_items", "goods_receipt_returns", "goods_receipt_note_items",
+    "gate_pass_items", "gate_pass",
+    "returnable_inward_items", "returnable_outward_items", "returnable_inward", "returnable_outward",
+    "po_approval_decisions", "purchase_order_amendment_charges",
+    "purchase_order_amendment_items", "purchase_order_amendment_terms",
+    "purchase_order_amendments", "purchase_order_charges",
+    "purchase_order_items", "purchase_order_terms",
+    "goods_receipt_notes", "purchase_orders",
+    "job_work_despatch_items", "job_work_despatch",
+    "job_work_inward_items", "job_work_inward",
+    "job_work_invoice_charges", "job_work_invoice_items", "job_work_invoices",
+    "store_issue_indent_items", "store_issue_indent_srns", "store_issue_indents",
+    "issue_indent_return_items", "issue_indent_returns",
+    "store_request_note_items", "store_request_notes",
+    "store_opening_items", "store_openings",
+    "phy_reconciliation_items", "phy_reconciliations",
+    "journal_entry_lines", "journal_entries",
+    "tally_sync_logs", "tasks", "item_batch_stock",
+  ];
+
+  const MASTER_TABLES = [
+    "purchase_store_items", "store_item_sub_groups", "store_item_groups",
+    "inventory_items", "inventory_categories",
+    "sub_ledgers", "suppliers", "customers", "employees",
+    "warehouses", "units_of_measure", "tax_rates",
+    "machine_master", "products", "sub_categories", "categories", "contact_roles",
   ];
 
   // Purge all TRANSACTION data — keeps masters intact
   app.post("/api/purge/transactions", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        for (const t of TX_TABLES_ORDERED) {
-          await safeDelete(client, t);
-        }
-        // Reset stock quantities to 0 on all product/item tables
-        await client.query(`UPDATE products SET current_stock = 0`).catch(() => {});
-        await client.query(`UPDATE inventory_items SET stock_quantity = 0`).catch(() => {});
-        // Reset sub-ledger closing balances back to opening balance
-        await client.query(`
-          UPDATE sub_ledgers
-          SET closing_balance      = COALESCE(opening_balance, 0),
-              closing_balance_type = COALESCE(opening_balance_type, 'Credit')
-        `).catch(() => {});
-        // Reset voucher series counters
-        await client.query(`UPDATE voucher_series SET last_no = 0`).catch(() => {});
-        await client.query("COMMIT");
-        res.json({ ok: true, message: "All transaction data purged successfully." });
-      } catch (e) { await client.query("ROLLBACK"); throw e; }
-      finally { client.release(); }
+      // TRUNCATE with CASCADE — PostgreSQL resolves all FK deps automatically
+      await truncateTables(pool, TX_TABLES);
+      // Reset stock quantities to 0
+      await pool.query(`UPDATE products SET current_stock = 0`).catch(() => {});
+      await pool.query(`UPDATE inventory_items SET stock_quantity = 0`).catch(() => {});
+      // Reset sub-ledger closing balances back to opening balance
+      await pool.query(`
+        UPDATE sub_ledgers
+        SET closing_balance      = COALESCE(opening_balance, 0),
+            closing_balance_type = COALESCE(opening_balance_type, 'Credit')
+      `).catch(() => {});
+      // Reset voucher series counters
+      await pool.query(`UPDATE voucher_series SET last_no = 0`).catch(() => {});
+      res.json({ ok: true, message: "All transaction data purged successfully." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -7459,45 +7420,11 @@ Return ONLY valid JSON (no markdown, no explanation):
   app.post("/api/purge/masters", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        // Step 1: purge all transactions first (same ordered list)
-        for (const t of TX_TABLES_ORDERED) {
-          await safeDelete(client, t);
-        }
-        // Step 2: purge master tables — children before parents
-        const masterTables = [
-          "purchase_store_items",
-          "store_item_sub_groups",
-          "store_item_groups",
-          "inventory_items",
-          "inventory_categories",
-          "sub_ledgers",
-          "suppliers",
-          "customers",
-          "employees",
-          "warehouses",
-          "units_of_measure",
-          "tax_rates",
-          "machine_master",
-          "products",
-          "sub_categories",
-          "categories",
-          "contact_roles",
-        ];
-        for (const t of masterTables) {
-          await safeDelete(client, t);
-        }
-        // Reset voucher series counters
-        await client.query(`UPDATE voucher_series SET last_no = 0`).catch(() => {});
-        // Reset stock quantities (products are deleted in masters but inventory_items may remain edge cases)
-        await client.query(`UPDATE products SET current_stock = 0`).catch(() => {});
-        await client.query(`UPDATE inventory_items SET stock_quantity = 0`).catch(() => {});
-        await client.query("COMMIT");
-        res.json({ ok: true, message: "All master and transaction data purged successfully." });
-      } catch (e) { await client.query("ROLLBACK"); throw e; }
-      finally { client.release(); }
+      // Truncate transactions first, then masters — CASCADE handles cross-table FKs
+      await truncateTables(pool, [...TX_TABLES, ...MASTER_TABLES]);
+      // Reset voucher series counters
+      await pool.query(`UPDATE voucher_series SET last_no = 0`).catch(() => {});
+      res.json({ ok: true, message: "All master and transaction data purged successfully." });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
