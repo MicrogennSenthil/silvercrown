@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, Eye, Mail, X, Calendar, AlertCircle, ChevronDown, Send, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa" };
 
@@ -40,13 +41,18 @@ async function openPrint(type: DocType, row: ListRow) {
   if (!res.ok) { alert("Failed to load document."); return; }
   const doc = await res.json();
 
+  if (type === "despatch_note") {
+    const html = buildDespatchNoteHTML(doc);
+    const win = window.open("", "_blank", "width=860,height=760");
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+    return;
+  }
+
   const typeLabel =
-    type === "invoice"       ? "Job Work Invoice"  :
-    type === "despatch_note" ? "Despatch Note"     : "Purchase Order";
+    type === "invoice"       ? "Job Work Invoice"  : "Purchase Order";
 
   const dateField =
-    type === "invoice"       ? doc.invoice_date  :
-    type === "despatch_note" ? doc.despatch_date : doc.po_date;
+    type === "invoice"       ? doc.invoice_date  : doc.po_date;
 
   const items: any[] = doc.items || [];
 

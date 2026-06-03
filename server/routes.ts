@@ -3117,9 +3117,26 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
 
       } else if (type === "despatch_note") {
         const h = (await pool.query(`
-          SELECT jwd.*, COALESCE(c.name, jwd.party_name_manual,'') AS party_name_db,
-            COALESCE(c.email,'') AS party_email, COALESCE(c.phone,'') AS party_phone
-          FROM job_work_despatch jwd LEFT JOIN customers c ON c.id = jwd.party_id WHERE jwd.id=$1
+          SELECT jwd.*,
+            COALESCE(c.name, jwd.party_name_manual,'') AS party_name_db,
+            COALESCE(c.email,'')             AS party_email,
+            COALESCE(c.phone,'')             AS party_phone,
+            COALESCE(c.address,'')           AS customer_address,
+            COALESCE(c.address1,'')          AS customer_address1,
+            COALESCE(c.address2,'')          AS customer_address2,
+            COALESCE(c.city,'')              AS customer_city,
+            COALESCE(c.state,'')             AS customer_state,
+            COALESCE(c.gst_state_code,'')    AS customer_gst_state_code,
+            COALESCE(c.gstin,'')             AS customer_gstin,
+            COALESCE(jwi.voucher_no,'')      AS inward_voucher_no,
+            COALESCE(jwi.party_dc_no,'')     AS party_dc_no,
+            COALESCE(jwi.work_order_no,'')   AS inward_work_order_no,
+            COALESCE(jwi.party_po_no,'')     AS inward_party_po_no,
+            jwi.inward_date                  AS inward_date
+          FROM job_work_despatch jwd
+          LEFT JOIN customers c ON c.id = jwd.party_id
+          LEFT JOIN job_work_inward jwi ON jwi.id = jwd.inward_id
+          WHERE jwd.id=$1
         `, [id])).rows[0];
         if (!h) return res.status(404).json({ message: "Not found" });
         const items = (await pool.query(`SELECT * FROM job_work_despatch_items WHERE despatch_id=$1 ORDER BY seq_no`, [id])).rows;

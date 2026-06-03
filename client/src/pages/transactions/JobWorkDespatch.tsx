@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, ChevronDown, Loader2, Trash2, PencilLine } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
+import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -231,6 +232,17 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
   }
 
   // ── Save ──────────────────────────────────────────────────────────────────────
+  async function triggerDespatchPrint(id: string) {
+    try {
+      const res = await fetch(`/api/reprint/despatch_note/${id}`, { credentials: "include" });
+      if (!res.ok) return;
+      const doc = await res.json();
+      const html = buildDespatchNoteHTML(doc);
+      const win = window.open("", "_blank", "width=860,height=760");
+      if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+    } catch (_) {}
+  }
+
   const saveMut = useMutation({
     mutationFn: async (payload: any) => {
       const url = editingId ? `/api/job-work-despatch/${editingId}` : "/api/job-work-despatch";
@@ -243,10 +255,12 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
       if (!res.ok) throw new Error((await res.json()).message || "Save failed");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (saved: any) => {
       qc.invalidateQueries({ queryKey: ["/api/job-work-despatch"] });
       qc.invalidateQueries({ queryKey: ["/api/job-work-inward"] });
       toast({ title: "Despatch saved", description: "Job work despatch saved successfully.", variant: "default" });
+      const savedId = saved?.id || editingId;
+      if (savedId) triggerDespatchPrint(savedId);
       if (!editingId) onBackToList();
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
