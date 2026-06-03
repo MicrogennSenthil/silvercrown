@@ -276,18 +276,6 @@ function Sidebar({ collapsed, mobile, onClose, companyName }: { collapsed: boole
         )}
       </div>
 
-      {/* User profile */}
-      {(!collapsed || mobile) && (
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
-          <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-            <User size={18} className="text-white" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-white text-sm font-semibold truncate">{user?.name || user?.username}</div>
-            <div className="text-white/60 text-xs capitalize">{user?.role}</div>
-          </div>
-        </div>
-      )}
 
       {/* Nav */}
       <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
@@ -474,7 +462,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0" style={{ background: "#027fa5" }}>
                 {(user?.name || user?.username || "U")[0].toUpperCase()}
               </div>
-              <span className="text-sm font-medium text-gray-700 hidden sm:block">{user?.name || user?.username}</span>
+              <div className="hidden sm:flex flex-col leading-tight">
+                <span className="text-xs text-gray-400">{(() => { const h = new Date().getHours(); return h < 12 ? "Good Morning" : h < 17 ? "Good Afternoon" : "Good Evening"; })()}</span>
+                <span className="text-sm font-medium text-gray-700">{user?.name || user?.username}</span>
+              </div>
             </div>
           </div>
         </header>
