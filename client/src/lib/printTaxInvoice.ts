@@ -294,11 +294,32 @@ export function buildTaxInvoiceHTML(
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; font-size: 10px; color: #000; background: #fff; }
-  .ti-copy { padding: 10px 14px; max-width: 800px; margin: 0 auto; }
+  .ti-copy {
+    width: 210mm;
+    min-height: 280mm;
+    max-height: 285mm;
+    padding: 6mm 7mm;
+    margin: 0 auto;
+    overflow: hidden;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
   @media print {
-    body { margin: 0; padding: 0; }
-    .ti-copy { padding: 6px 10px; page-break-after: always; }
+    html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; }
+    .ti-copy {
+      width: 210mm;
+      padding: 6mm 7mm;
+      page-break-after: always;
+      page-break-inside: avoid;
+      overflow: hidden;
+    }
     .ti-copy:last-child { page-break-after: avoid; }
+  }
+  @media screen {
+    body { background: #e0e0e0; padding: 10px 0; }
+    .ti-copy { background: #fff; margin: 10px auto; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
   }
 </style>
 </head>

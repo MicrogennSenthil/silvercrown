@@ -81,31 +81,46 @@ export function buildGRNHTML(doc: any): string {
 <title>GRN — ${doc.voucher_no}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Arial', sans-serif; font-size: 10px; color: #111; padding: 14px; }
-  .header { border: 1.5px solid #222; padding: 8px 10px; margin-bottom: 8px; }
-  .company { font-size: 15px; font-weight: bold; color: #027fa5; text-align: center; letter-spacing: 0.5px; }
-  .sub { font-size: 9px; text-align: center; color: #444; }
-  .doc-title { font-size: 11px; font-weight: bold; text-align: center; margin: 4px 0; text-transform: uppercase; letter-spacing: 1px; }
-  .meta-row { display: flex; gap: 8px; margin-bottom: 6px; }
-  .meta-box { flex: 1; border: 1px solid #bbb; padding: 5px 7px; border-radius: 3px; }
-  .meta-box label { display: block; font-size: 8px; color: #888; text-transform: uppercase; margin-bottom: 2px; }
-  .meta-box span { font-size: 10px; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9px; }
-  th { background: #027fa5; color: #fff; padding: 4px 5px; text-align: left; }
-  td { padding: 3px 5px; border-bottom: 1px solid #e5e5e5; vertical-align: middle; }
+  body { font-family: 'Arial', sans-serif; font-size: 10px; color: #111; background: #fff; }
+  .grn-page {
+    width: 210mm;
+    min-height: 280mm;
+    max-height: 285mm;
+    padding: 6mm 7mm;
+    margin: 0 auto;
+    overflow: hidden;
+  }
+  @page { size: A4 portrait; margin: 0; }
+  @media print {
+    html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; }
+    .grn-page { width: 210mm; padding: 6mm 7mm; overflow: hidden; }
+  }
+  @media screen {
+    body { background: #e0e0e0; padding: 10px 0; }
+    .grn-page { background: #fff; margin: 10px auto; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+  }
+  .header { border: 1.5px solid #222; padding: 5px 8px; margin-bottom: 5px; }
+  .company { font-size: 13px; font-weight: bold; color: #027fa5; text-align: center; letter-spacing: 0.5px; }
+  .sub { font-size: 8px; text-align: center; color: #444; }
+  .doc-title { font-size: 10px; font-weight: bold; text-align: center; margin: 3px 0; text-transform: uppercase; letter-spacing: 1px; }
+  .meta-row { display: flex; gap: 5px; margin-bottom: 4px; }
+  .meta-box { flex: 1; border: 1px solid #bbb; padding: 3px 5px; }
+  .meta-box label { display: block; font-size: 7px; color: #888; text-transform: uppercase; margin-bottom: 1px; }
+  .meta-box span { font-size: 9px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 5px; font-size: 8.5px; }
+  th { background: #027fa5; color: #fff; padding: 3px 4px; text-align: left; }
+  td { padding: 2px 4px; border-bottom: 1px solid #e5e5e5; vertical-align: middle; }
   tr:nth-child(even) td { background: #f7fbfd; }
   .tax-table th { background: #6b7280; }
-  .totals-right { text-align: right; }
   .total-row td { font-weight: 700; border-top: 1.5px solid #027fa5; }
-  .grand-box { background: #027fa5; color: #fff; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-radius: 3px; }
-  .grand-box .label { font-size: 11px; font-weight: bold; }
-  .grand-box .amount { font-size: 14px; font-weight: bold; }
-  .words-box { border: 1px solid #bbb; padding: 5px 8px; font-style: italic; font-size: 9px; margin-bottom: 8px; border-radius: 3px; }
-  .footer { display: flex; justify-content: space-between; padding-top: 20px; }
-  .sign-box { text-align: center; border-top: 1px solid #333; width: 150px; padding-top: 4px; font-size: 9px; }
-  @media print { body { padding: 6px; } }
+  .grand-box { background: #027fa5; color: #fff; padding: 4px 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+  .grand-box .label { font-size: 10px; font-weight: bold; }
+  .grand-box .amount { font-size: 12px; font-weight: bold; }
+  .words-box { border: 1px solid #bbb; padding: 4px 6px; font-style: italic; font-size: 8.5px; margin-bottom: 5px; }
+  .footer { display: flex; justify-content: space-between; padding-top: 16px; }
+  .sign-box { text-align: center; border-top: 1px solid #333; width: 140px; padding-top: 3px; font-size: 8.5px; }
 </style>
-</head><body>
+</head><body><div class="grn-page">
 <div class="header">
   <div class="company">SILVER CROWN METAL COATINGS</div>
   <div class="sub">GSTIN: 33AANFS5823J1ZW &nbsp;|&nbsp; No.10A, Industrial Estate, Chennai - 600 032 &nbsp;|&nbsp; Ph: +91 44 0000 0000</div>
@@ -203,6 +218,7 @@ ${doc.remark ? `<div class="words-box"><strong>Remark:</strong> ${doc.remark}</d
   <div class="sign-box">Received By</div>
   <div class="sign-box">Store In-charge</div>
   <div class="sign-box">Authorised Signatory</div>
+</div>
 </div>
 </body></html>`;
 }
