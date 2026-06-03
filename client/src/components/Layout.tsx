@@ -268,12 +268,6 @@ function Sidebar({ collapsed, mobile, onClose, companyName }: { collapsed: boole
         <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0 overflow-hidden">
           <img src="/figmaAssets/image-1.png" alt="logo" className="h-8 w-8 object-contain" />
         </div>
-        {(!collapsed || mobile) && (
-          <div>
-            <div className="text-white font-bold text-sm leading-tight">{companyName || "Element ERP"}</div>
-            <div className="text-white/70 text-xs">Element ERP</div>
-          </div>
-        )}
       </div>
 
 
