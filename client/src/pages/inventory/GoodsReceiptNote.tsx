@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Search, Edit2, Upload, Scan, X, ChevronDown, FileText, CheckCircle } from "lucide-react";
+import { Plus, Trash2, Search, Edit2, Upload, Scan, X, ChevronDown, FileText, CheckCircle, Printer, Eye } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
+import { buildGRNHTML } from "@/lib/printGRN";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" }) : "—";
@@ -216,6 +217,7 @@ export default function GoodsReceiptNote() {
   const portalDropRef = useRef<HTMLDivElement|null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
   const [valErrs, setValErrs] = useState<{ store?: boolean; supplier?: boolean; rows?: Set<number> }>({});
+  const [savedGrn, setSavedGrn] = useState<{ id: string; voucher_no: string } | null>(null);
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/stores"] });
@@ -521,7 +523,7 @@ export default function GoodsReceiptNote() {
       const j = await r.json();
       if (!r.ok) { setErr(j.message || "Save failed"); setSaving(false); return; }
       qc.invalidateQueries({ queryKey: ["/api/goods-receipt-notes"] });
-      setMode("list");
+      setSavedGrn({ id: j.id, voucher_no: j.voucher_no || "" });
     } catch (e: any) { setErr(e.message); }
     setSaving(false);
   }
@@ -994,6 +996,64 @@ export default function GoodsReceiptNote() {
 
       {showScan && (
         <ScanModal onClose={() => setShowScan(false)} onExtracted={applyScannedData}/>
+      )}
+
+      {/* ── Post-save Print/View dialog ────────────────────────────────────── */}
+      {savedGrn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
+          <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm mx-4 text-center">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+              style={{ background: "#d1fae5" }}>
+              <CheckCircle size={28} style={{ color: "#059669" }} />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800 mb-1">GRN Saved!</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              <span className="font-semibold" style={{ color: SC.primary }}>{savedGrn.voucher_no}</span> has been saved successfully.
+              <br/>What would you like to do next?
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold text-white"
+                style={{ background: SC.orange }}
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/goods-receipt-notes/${savedGrn.id}`, { credentials: "include" });
+                    const doc = await res.json();
+                    const html = buildGRNHTML(doc);
+                    const win = window.open("", "_blank", "width=1000,height=750");
+                    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+                  } catch (_) {}
+                }}
+                data-testid="btn-grn-print"
+              >
+                <Printer size={15}/> Print Invoice
+              </button>
+              <button
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold text-white"
+                style={{ background: SC.primary }}
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/goods-receipt-notes/${savedGrn.id}`, { credentials: "include" });
+                    const doc = await res.json();
+                    const html = buildGRNHTML(doc);
+                    const win = window.open("", "_blank", "width=1000,height=750");
+                    if (win) { win.document.write(html); win.document.close(); }
+                  } catch (_) {}
+                }}
+                data-testid="btn-grn-view"
+              >
+                <Eye size={15}/> View GRN
+              </button>
+              <button
+                className="w-full py-2.5 rounded-lg text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50"
+                onClick={() => { setSavedGrn(null); setMode("list"); }}
+                data-testid="btn-grn-done"
+              >
+                Done — Go to List
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Item search dropdown — rendered via portal to escape all overflow clipping */}

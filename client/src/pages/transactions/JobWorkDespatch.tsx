@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, ChevronDown, Loader2, Trash2, PencilLine } from "lucide-react";
+import { Search, ChevronDown, Loader2, Trash2, PencilLine, Printer, Eye, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
@@ -26,6 +26,8 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
   // ── Data queries ─────────────────────────────────────────────────────────────
   const { data: inwardList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+
+  const [savedDespatch, setSavedDespatch] = useState<{ id: string; isNew: boolean } | null>(null);
 
   // ── Form state ───────────────────────────────────────────────────────────────
   const [editingId,      setEditingId]      = useState<string | null>(null);
@@ -258,10 +260,8 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
     onSuccess: (saved: any) => {
       qc.invalidateQueries({ queryKey: ["/api/job-work-despatch"] });
       qc.invalidateQueries({ queryKey: ["/api/job-work-inward"] });
-      toast({ title: "Despatch saved", description: "Job work despatch saved successfully.", variant: "default" });
       const savedId = saved?.id || editingId;
-      if (savedId) triggerDespatchPrint(savedId);
-      if (!editingId) onBackToList();
+      setSavedDespatch({ id: savedId, isNew: !editingId });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
@@ -345,6 +345,7 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
+    <>
     <div className="min-h-screen p-4" style={{ background: SC.bg }}>
       {/* ── Main card ─────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -754,6 +755,63 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
         </div>
       </div>
     </div>
+
+    {/* ── Post-save Print/View dialog ─────────────────────────────────────── */}
+    {savedDespatch && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
+        <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm mx-4 text-center">
+          <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+            style={{ background: "#d1fae5" }}>
+            <CheckCircle size={28} style={{ color: "#059669" }} />
+          </div>
+          <h2 className="text-lg font-bold text-gray-800 mb-1">Despatch Saved!</h2>
+          <p className="text-sm text-gray-500 mb-6">
+            Entry saved successfully.<br/>What would you like to do next?
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold text-white"
+              style={{ background: SC.orange }}
+              onClick={async () => {
+                await triggerDespatchPrint(savedDespatch.id);
+              }}
+              data-testid="btn-despatch-print"
+            >
+              <Printer size={15}/> Print Despatch Note
+            </button>
+            <button
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-sm font-semibold text-white"
+              style={{ background: SC.primary }}
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/reprint/despatch_note/${savedDespatch.id}`, { credentials: "include" });
+                  if (!res.ok) return;
+                  const doc = await res.json();
+                  const html = buildDespatchNoteHTML(doc);
+                  const win = window.open("", "_blank", "width=1000,height=750");
+                  if (win) { win.document.write(html); win.document.close(); }
+                } catch (_) {}
+              }}
+              data-testid="btn-despatch-view"
+            >
+              <Eye size={15}/> View Despatch Note
+            </button>
+            <button
+              className="w-full py-2.5 rounded-lg text-sm font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50"
+              onClick={() => {
+                const wasNew = savedDespatch.isNew;
+                setSavedDespatch(null);
+                if (wasNew) onBackToList();
+              }}
+              data-testid="btn-despatch-done"
+            >
+              Done — Go to List
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
