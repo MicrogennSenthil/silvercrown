@@ -212,7 +212,7 @@ export function buildTaxInvoiceHTML(
       </td>
     </tr>
   </table>
-  <table style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:10px">
+  <table class="items-table" style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:10px">
     <thead>
       <tr style="background:#f0f0f0">
         <th style="border:1px solid #000;padding:3px 5px;text-align:center;width:4%">Sl<br>No.</th>
@@ -226,6 +226,16 @@ export function buildTaxInvoiceHTML(
     </thead>
     <tbody>
       ${itemRowsHTML}
+      <!-- filler row — grows to fill remaining table height -->
+      <tr class="filler-row">
+        <td style="border-left:1px solid #000;border-right:1px solid #000;padding:0">&nbsp;</td>
+        <td style="border-right:1px solid #000;padding:0"></td>
+        <td style="border-right:1px solid #000;padding:0"></td>
+        <td style="border-right:1px solid #000;padding:0"></td>
+        <td style="border-right:1px solid #000;padding:0"></td>
+        <td style="border-right:1px solid #000;padding:0"></td>
+        <td style="border-right:1px solid #000;padding:0"></td>
+      </tr>
       <!-- taxable sub-total -->
       <tr>
         <td colspan="6" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px;text-align:right">
@@ -296,12 +306,23 @@ export function buildTaxInvoiceHTML(
   body { font-family: Arial, sans-serif; font-size: 10px; color: #000; background: #fff; }
   .ti-copy {
     width: 210mm;
-    min-height: 280mm;
-    max-height: 285mm;
+    height: 297mm;
     padding: 6mm 7mm;
     margin: 0 auto;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
   }
+  /* The items table grows to fill remaining space */
+  .items-table {
+    flex: 1;
+    border-collapse: collapse;
+    height: 100%;
+  }
+  /* The filler row expands to consume leftover height */
+  .filler-row { height: 100%; }
+  .filler-row td { border-left: 1px solid #000; border-right: 1px solid #000; }
+  .filler-row td:last-child { border-right: 1px solid #000; }
   @page {
     size: A4 portrait;
     margin: 0;
@@ -310,10 +331,10 @@ export function buildTaxInvoiceHTML(
     html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; }
     .ti-copy {
       width: 210mm;
+      height: 297mm;
       padding: 6mm 7mm;
       page-break-after: always;
       page-break-inside: avoid;
-      overflow: hidden;
     }
     .ti-copy:last-child { page-break-after: avoid; }
   }
