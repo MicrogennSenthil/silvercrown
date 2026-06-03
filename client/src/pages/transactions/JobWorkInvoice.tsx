@@ -376,7 +376,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       setCharges(loadedCharges.length > 0
         ? loadedCharges.map((c: any) => ({ subledger_id: c.subledger_id || "", charge_name: c.charge_name || "", amount: c.amount || "" }))
         : [{ subledger_id: "", charge_name: "", amount: "" }]);
-      setShowSearchDrop(false);
+      setPartyDropOpen(false);
       setSaveError("");
       setSaveOk(false);
     } catch (e: any) {
@@ -397,7 +397,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // ── Remove all items ──────────────────────────────────────────────────────────
   function removeAllItems() {
     setItems([]);
-    setCheckedInwardIds(new Set());
+    setCheckedIds(new Set());
   }
 
   // ── Update item editable fields ───────────────────────────────────────────────
