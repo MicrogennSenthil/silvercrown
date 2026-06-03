@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer, Eye, Mail, X, Calendar, AlertCircle, ChevronDown, Send, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -104,10 +104,27 @@ async function openPrint(type: DocType, row: ListRow, isEInvoice = false, eInvDa
 /* ── Invoice Print Picker Modal ─────────────────────────────────────── */
 function InvoicePrintPickerModal({ row, onClose }: { row: ListRow; onClose: () => void }) {
   const [mode, setMode] = useState<"pick" | "einvoice">("pick");
-  const [irn,    setIrn]    = useState("");
-  const [ackNo,  setAckNo]  = useState("");
-  const [ackDate,setAckDate]= useState("");
-  const [loading,setLoading]= useState(false);
+  const [irn,         setIrn]        = useState("");
+  const [ackNo,       setAckNo]      = useState("");
+  const [ackDate,     setAckDate]    = useState("");
+  const [loading,     setLoading]    = useState(false);
+  const [hasSaved,    setHasSaved]   = useState(false); // true if DB already has IRN for this invoice
+  const [prefillDone, setPrefillDone]= useState(false); // true after first load attempt
+
+  // Load saved IRN on mount so we can show the badge on the pick screen
+  useEffect(() => {
+    fetch(`/api/reprint/invoice/${row.id}`, { credentials: "include" })
+      .then(r => r.json())
+      .then(doc => {
+        const savedIrn  = doc.irn  || "";
+        const savedAck  = doc.ack_no || "";
+        const savedDate = doc.ack_date ? doc.ack_date.split("T")[0] : "";
+        setIrn(savedIrn); setAckNo(savedAck); setAckDate(savedDate);
+        setHasSaved(!!(savedIrn || savedAck || savedDate));
+      })
+      .catch(() => {})
+      .finally(() => setPrefillDone(true));
+  }, [row.id]);
 
   async function handlePrint(isEInvoice: boolean) {
     setLoading(true);
@@ -124,21 +141,6 @@ function InvoicePrintPickerModal({ row, onClose }: { row: ListRow; onClose: () =
     } finally {
       setLoading(false);
       onClose();
-    }
-  }
-
-  async function enterEInvoiceMode() {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/reprint/invoice/${row.id}`, { credentials: "include" });
-      const doc = await res.json();
-      setIrn(doc.irn || "");
-      setAckNo(doc.ack_no || "");
-      const rawDate = doc.ack_date;
-      setAckDate(rawDate ? rawDate.split("T")[0] : "");
-    } finally {
-      setLoading(false);
-      setMode("einvoice");
     }
   }
 
@@ -160,17 +162,35 @@ function InvoicePrintPickerModal({ row, onClose }: { row: ListRow; onClose: () =
               data-testid="btn-print-normal">
               <Printer size={14}/> Normal Invoice (3 copies)
             </button>
-            <button onClick={enterEInvoiceMode} disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-bold border-2 flex items-center justify-center gap-2 disabled:opacity-60"
+            <button onClick={() => setMode("einvoice")} disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-bold border-2 flex items-center justify-center gap-2 disabled:opacity-60 relative"
               style={{ borderColor: SC.primary, color: SC.primary }}
               data-testid="btn-print-einvoice">
               <Printer size={14}/> e-Invoice (with IRN / Ack)
+              {prefillDone && hasSaved && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: "#d1fae5", color: "#059669" }}>
+                  IRN Saved
+                </span>
+              )}
             </button>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
+            {/* Info banner */}
+            {hasSaved ? (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: "#d1fae5", color: "#065f46" }}>
+                <span className="mt-0.5">✓</span>
+                <span><strong>Pre-filled from saved data.</strong> IRN/Ack details already saved for this invoice. You can update them if needed.</span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: "#eff6ff", color: "#1e40af" }}>
+                <span className="mt-0.5">ℹ</span>
+                <span>These details come from the <strong>GST e-Invoice portal (IRP)</strong> after registering this invoice. Paste the IRN, Ack No. and Ack Date provided by the portal.</span>
+              </div>
+            )}
             <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">IRN</label>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">IRN <span className="font-normal text-gray-400">(64-char hash from GST portal)</span></label>
               <textarea value={irn} onChange={e => setIrn(e.target.value)} rows={2}
                 placeholder="Paste IRN hash here..."
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:border-[#027fa5]"
@@ -180,6 +200,7 @@ function InvoicePrintPickerModal({ row, onClose }: { row: ListRow; onClose: () =
               <div className="flex-1">
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Ack No.</label>
                 <input value={ackNo} onChange={e => setAckNo(e.target.value)}
+                  placeholder="e.g. 232310000123456"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#027fa5]"
                   data-testid="input-ack-no"/>
               </div>
