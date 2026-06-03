@@ -448,7 +448,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     //   igst_rate col     → product.igstRate
     //   hsn_code col      → product.hsnCode
     //   unit / uom        → product.unit / product.uom
-    const rate  = parseFloat(product.rate ?? product.sellingPrice ?? product.selling_price ?? 0);
+    const rate  = parseFloat(product.rate || 0) || parseFloat(product.sellingPrice ?? product.selling_price ?? 0);
     const cgstR = parseFloat(product.cgstRate ?? product.cgst_rate ?? 0);
     const sgstR = parseFloat(product.sgstRate ?? product.sgst_rate ?? 0);
     const igstR = parseFloat(product.igstRate ?? product.igst_rate ?? 0) || (cgstR + sgstR);
@@ -1017,11 +1017,21 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                               onChange={e => {
                                 const r2 = parseFloat(e.target.value || "0");
                                 const t2 = qty * r2;
-                                const cgR = parseFloat(it.cgst_rate || 0);
-                                const sgR = parseFloat(it.sgst_rate || 0);
-                                const igR = parseFloat(it.igst_rate || 0);
+                                // If tax rates are still 0 but item_id is known, look up from product master
+                                let cgR = parseFloat(it.cgst_rate || 0);
+                                let sgR = parseFloat(it.sgst_rate || 0);
+                                let igR = parseFloat(it.igst_rate || 0);
+                                if (cgR === 0 && it.item_id) {
+                                  const prod = (allProducts as any[]).find((p: any) => p.id === it.item_id);
+                                  if (prod) {
+                                    cgR = parseFloat(prod.cgstRate ?? prod.cgst_rate ?? 0);
+                                    sgR = parseFloat(prod.sgstRate ?? prod.sgst_rate ?? 0);
+                                    igR = parseFloat(prod.igstRate ?? prod.igst_rate ?? 0) || (cgR + sgR);
+                                  }
+                                }
                                 setItems(prev => prev.map((row, i) => i === realIdx ? {
                                   ...row, rate: r2, amount: t2,
+                                  cgst_rate: cgR, sgst_rate: sgR, igst_rate: igR,
                                   cgst_amt: isInterState ? 0 : t2 * cgR / 100,
                                   sgst_amt: isInterState ? 0 : t2 * sgR / 100,
                                   igst_amt: isInterState ? t2 * igR / 100 : 0,
