@@ -4,11 +4,10 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend
 } from "recharts";
-import { TrendingUp, TrendingDown, ArrowUpRight, Bell, Eye, AlertCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, Bell, Eye } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed", accent: "#f96a0b" };
 
-// ─── Sample data (replace with API calls) ────────────────────────────────────
 const TOP_PRODUCTS = [
   { name: "A1101", value: 85 }, { name: "A1102", value: 70 }, { name: "A1103", value: 60 },
   { name: "A1104", value: 90 }, { name: "A1105", value: 45 }, { name: "A1106", value: 75 },
@@ -31,22 +30,89 @@ const AGEING = [
   { party: "Lakshmi",total: 2.5, d0:  "",  d15: 1.2, d30: "",  d45: 1.3, d60: ""  },
 ];
 
-// REMINDERS — now loaded live from /api/tasks/overdue
+// ── Tab definitions ───────────────────────────────────────────────────────────
+type TabKey = "inward" | "despatch" | "invoice" | "purchaseOrder" | "payments";
 
-const OVERALL = [
-  { label: "Job Work", value: 12 },
-  { label: "Despatch", value: 38 },
-  { label: "Invoice",  value: 50 },
-  { label: "Purchase Order", value: "05" },
-  { label: "Payments", value: 10 },
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "inward",        label: "Job Work" },
+  { key: "despatch",      label: "Despatch" },
+  { key: "invoice",       label: "Invoice" },
+  { key: "purchaseOrder", label: "Purchase Order" },
+  { key: "payments",      label: "Payments" },
 ];
 
-const TRANSACTIONS = [
-  { sno: "01", inwNo: "INW2145", inwDate: "02-Feb-2026", party: "Lakshmi Works", item: "Steel Pipe", unit: "Nos", qty: 20, process: "Zinc Coating" },
-  { sno: "02", inwNo: "INW2146", inwDate: "02-Feb-2026", party: "Pricol",        item: "Steel Pipe", unit: "Nos", qty: 20, process: "Zinc Coating" },
-];
+// ── Column definitions per tab ────────────────────────────────────────────────
+const COLS: Record<TabKey, { key: string; header: string; right?: boolean }[]> = {
+  inward: [
+    { key: "sno",         header: "S.No" },
+    { key: "voucher_no",  header: "Inw No" },
+    { key: "inward_date", header: "Inw Date" },
+    { key: "party_name",  header: "Party Name" },
+    { key: "item_name",   header: "Item Name" },
+    { key: "unit",        header: "Unit" },
+    { key: "qty",         header: "Qty", right: true },
+    { key: "process",     header: "Nature Of Process" },
+  ],
+  despatch: [
+    { key: "sno",               header: "S.No" },
+    { key: "voucher_no",        header: "Desp No" },
+    { key: "despatch_date",     header: "Desp Date" },
+    { key: "party_name",        header: "Party Name" },
+    { key: "item_name",         header: "Item Name" },
+    { key: "unit",              header: "Unit" },
+    { key: "qty_despatched",    header: "Qty", right: true },
+    { key: "inward_voucher_no", header: "Inward Ref" },
+  ],
+  invoice: [
+    { key: "sno",          header: "S.No" },
+    { key: "voucher_no",   header: "Invoice No" },
+    { key: "invoice_date", header: "Date" },
+    { key: "party_name",   header: "Party Name" },
+    { key: "invoice_type_label", header: "Type" },
+    { key: "total_amount", header: "Amount", right: true },
+    { key: "status",       header: "Status" },
+  ],
+  purchaseOrder: [
+    { key: "sno",           header: "S.No" },
+    { key: "voucher_no",    header: "PO No" },
+    { key: "po_date",       header: "PO Date" },
+    { key: "supplier_name", header: "Supplier" },
+    { key: "status",        header: "Status" },
+    { key: "item_count",    header: "Items", right: true },
+  ],
+  payments: [
+    { key: "sno",          header: "S.No" },
+    { key: "voucher_no",   header: "Voucher No" },
+    { key: "voucher_date", header: "Date" },
+    { key: "party_name",   header: "Narration" },
+    { key: "total_amount", header: "Amount", right: true },
+    { key: "voucher_type", header: "Type" },
+  ],
+};
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtDate(d: string | null | undefined) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+function fmtAmt(v: any) {
+  if (v === null || v === undefined) return "—";
+  const n = parseFloat(v);
+  return isNaN(n) ? "—" : `₹ ${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+function daysDiff(dateStr: string) {
+  const due = new Date(dateStr);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.floor((now.getTime() - due.getTime()) / 86400000);
+}
+function invTypeLabel(t: string) {
+  if (t === "despatch_notes") return "Despatch Note";
+  if (t === "direct_invoice") return "Direct Invoice";
+  return t || "—";
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
 function StatCard({ label, value, lastPct, lastUp }: { label: string; value: number; lastPct: string; lastUp: boolean }) {
   return (
     <div className="bg-white rounded-xl p-4 flex items-start gap-3 flex-1" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.12)" }}>
@@ -80,7 +146,7 @@ function StatCard({ label, value, lastPct, lastUp }: { label: string; value: num
   );
 }
 
-// ─── Custom Pie label ─────────────────────────────────────────────────────────
+// ── Pie label ─────────────────────────────────────────────────────────────────
 const RADIAN = Math.PI / 180;
 function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) {
   const r = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -89,7 +155,7 @@ function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) 
   return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">{`${(percent * 100).toFixed(0)}%`}</text>;
 }
 
-// ─── WIP Circle ───────────────────────────────────────────────────────────────
+// ── WIP Circle ────────────────────────────────────────────────────────────────
 function WipCircle({ pct }: { pct: number }) {
   const r = 42, circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
@@ -105,34 +171,56 @@ function WipCircle({ pct }: { pct: number }) {
   );
 }
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
-function daysDiff(dateStr: string) {
-  const due = new Date(dateStr);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.floor((now.getTime() - due.getTime()) / 86400000);
-}
-function fmtDate(d: string) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [chartFilter, setChartFilter] = useState("Last 10-days");
+  const [chartFilter, setChartFilter]  = useState("Last 10-days");
+  const [activeTab,   setActiveTab]    = useState<TabKey>("inward");
+
   const { data: overdueTasks = [] } = useQuery<any[]>({
     queryKey: ["/api/tasks/overdue"],
     queryFn: () => fetch("/api/tasks/overdue", { credentials: "include" }).then(r => r.json()),
     refetchInterval: 60000,
   });
 
+  const { data: counts = {} } = useQuery<Record<string, number>>({
+    queryKey: ["/api/dashboard/counts"],
+    queryFn: () => fetch("/api/dashboard/counts", { credentials: "include" }).then(r => r.json()),
+    refetchInterval: 30000,
+  });
+
+  const { data: detail = [], isFetching: detailLoading } = useQuery<any[]>({
+    queryKey: ["/api/dashboard/detail", activeTab],
+    queryFn: () => fetch(`/api/dashboard/detail/${activeTab}`, { credentials: "include" }).then(r => r.json()),
+  });
+
+  const tabCounts: Record<TabKey, number> = {
+    inward:        counts.inward        ?? 0,
+    despatch:      counts.despatch      ?? 0,
+    invoice:       counts.invoice       ?? 0,
+    purchaseOrder: counts.purchaseOrder ?? 0,
+    payments:      counts.payments      ?? 0,
+  };
+
+  const cols = COLS[activeTab];
+
+  function cellValue(row: any, key: string, idx: number): string {
+    if (key === "sno") return String(idx + 1).padStart(2, "0");
+    if (key === "invoice_type_label") return invTypeLabel(row.invoice_type);
+    if (key === "total_amount") return fmtAmt(row.total_amount);
+    const v = row[key];
+    if (v === null || v === undefined || v === "") return "—";
+    if (key.endsWith("_date") || key === "voucher_date") return fmtDate(String(v));
+    return String(v);
+  }
+
   return (
     <div className="space-y-4 text-sm">
 
       {/* ── Top Stat Cards ── */}
       <div className="flex gap-4">
-        <StatCard label="Inward"  value={20} lastPct="02%" lastUp={false} />
-        <StatCard label="Despatch" value={12} lastPct="08%" lastUp={true} />
-        <StatCard label="Invoice"  value={8}  lastPct="12%" lastUp={true} />
+        <StatCard label="Inward"   value={tabCounts.inward}   lastPct="02%" lastUp={false} />
+        <StatCard label="Despatch" value={tabCounts.despatch}  lastPct="08%" lastUp={true} />
+        <StatCard label="Invoice"  value={tabCounts.invoice}   lastPct="12%" lastUp={true} />
       </div>
 
       {/* ── Main Grid ── */}
@@ -143,7 +231,6 @@ export default function Dashboard() {
 
           {/* Charts row */}
           <div className="flex gap-4">
-            {/* Top-10 Product */}
             <div className="flex-1 bg-white rounded-xl p-4" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
               <div className="text-sm font-semibold text-gray-700 mb-3">Top - 10 Product</div>
               <ResponsiveContainer width="100%" height={160}>
@@ -158,7 +245,6 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
 
-            {/* Job Work Pie */}
             <div className="w-52 bg-white rounded-xl p-4 flex flex-col" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
               <div className="text-sm font-semibold text-gray-700 mb-1">Job Work</div>
               <ResponsiveContainer width="100%" height={160}>
@@ -175,47 +261,81 @@ export default function Dashboard() {
 
           {/* Over-all Chart */}
           <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
+            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <span className="font-semibold text-gray-700">Over-all Chart</span>
-              <div className="flex items-center gap-1 border rounded px-2 py-1 text-xs text-gray-500 cursor-pointer" style={{ borderColor: "#00000020" }}>
-                {chartFilter} <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+              <div
+                className="flex items-center gap-1 border rounded px-2 py-1 text-xs text-gray-500 cursor-pointer"
+                style={{ borderColor: "#00000020" }}
+                onClick={() => setChartFilter(f => f === "Last 10-days" ? "Last 30-days" : "Last 10-days")}
+                data-testid="filter-chart-period"
+              >
+                {chartFilter}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
               </div>
             </div>
-            {/* Summary boxes */}
+
+            {/* Clickable tab boxes */}
             <div className="grid grid-cols-5 divide-x divide-gray-100 border-b border-gray-100">
-              {OVERALL.map((o, i) => (
-                <div key={i} className={`px-4 py-3 text-center ${i === 0 ? "text-white" : ""}`}
-                  style={i === 0 ? { background: SC.primary } : {}}>
-                  <div className={`text-xs font-medium mb-1 ${i === 0 ? "text-white/80" : "text-gray-500"}`}>{o.label}</div>
-                  <div className={`text-xl font-bold ${i === 0 ? "text-white" : "text-gray-800"}`}>{o.value}</div>
-                </div>
-              ))}
+              {TABS.map((tab, i) => {
+                const isActive = tab.key === activeTab;
+                return (
+                  <div
+                    key={tab.key}
+                    className="px-4 py-3 text-center cursor-pointer select-none transition-colors"
+                    style={isActive ? { background: SC.primary } : { background: "white" }}
+                    onClick={() => setActiveTab(tab.key)}
+                    data-testid={`tab-overall-${tab.key}`}
+                  >
+                    <div className={`text-xs font-medium mb-1 ${isActive ? "text-white/80" : "text-gray-500"}`}>
+                      {tab.label}
+                    </div>
+                    <div className={`text-xl font-bold ${isActive ? "text-white" : "text-gray-800"}`}>
+                      {String(tabCounts[tab.key]).padStart(2, "0")}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            {/* Transaction table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: SC.tonal }}>
-                    {["S.No", "Inw No", "Inw Date", "Party Name", "Item Name", "Unit", "Qty", "Nature Of Process"].map(h =>
-                      <th key={h} className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">{h}</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {TRANSACTIONS.map(r => (
-                    <tr key={r.sno} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-500">{r.sno}</td>
-                      <td className="px-3 py-2 font-semibold" style={{ color: SC.primary }}>{r.inwNo}</td>
-                      <td className="px-3 py-2 text-gray-600">{r.inwDate}</td>
-                      <td className="px-3 py-2 text-gray-700">{r.party}</td>
-                      <td className="px-3 py-2 text-gray-700">{r.item}</td>
-                      <td className="px-3 py-2 text-gray-600">{r.unit}</td>
-                      <td className="px-3 py-2 font-semibold text-gray-800">{r.qty}</td>
-                      <td className="px-3 py-2 text-gray-600">{r.process}</td>
+
+            {/* Detail grid */}
+            <div className="overflow-x-auto" style={{ minHeight: 80 }}>
+              {detailLoading ? (
+                <div className="text-center py-6 text-xs text-gray-400">Loading...</div>
+              ) : detail.length === 0 ? (
+                <div className="text-center py-6 text-xs text-gray-400">No records found</div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: SC.tonal }}>
+                      {cols.map(c => (
+                        <th key={c.key} className={`px-3 py-2 font-semibold text-gray-600 whitespace-nowrap ${c.right ? "text-right" : "text-left"}`}>
+                          {c.header}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {detail.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        {cols.map(c => (
+                          <td key={c.key} className={`px-3 py-2 ${
+                            c.key === "voucher_no"
+                              ? "font-semibold"
+                              : c.right
+                              ? "text-right font-semibold text-gray-800"
+                              : "text-gray-700"
+                          }`}
+                            style={c.key === "voucher_no" ? { color: SC.primary } : undefined}
+                          >
+                            {cellValue(row, c.key, idx)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
@@ -263,7 +383,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Quick Reminder — live overdue tasks */}
+          {/* Quick Reminder */}
           <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
               <Bell size={14} style={{ color: SC.orange }} />

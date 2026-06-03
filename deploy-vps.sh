@@ -1,10 +1,8 @@
 #!/bin/bash
 # Silver Crown VPS Deploy Script
+# Strategy: build locally → SCP dist → restart PM2 (no VPS-side build needed)
 # Usage: bash deploy-vps.sh
 # VPS app directory: /var/www/silvercrown-element
-# SSH key: auto-reconstructed from VPS_SSH_KEY_B64 secret
-
-set -e
 
 APP_DIR="/var/www/silvercrown-element"
 VPS_HOST="root@72.61.231.157"
@@ -16,7 +14,7 @@ echo "============================================"
 echo "  Silver Crown VPS Deploy — $TIMESTAMP"
 echo "============================================"
 
-# Reconstruct SSH key from secret (persists across Replit sessions)
+# ── 0. Reconstruct SSH key ────────────────────────────────────────────────────
 if [ -n "$VPS_SSH_KEY_B64" ]; then
   mkdir -p "$HOME/.ssh"
   echo "$VPS_SSH_KEY_B64" | base64 -d > "$KEY_FILE"
@@ -27,52 +25,37 @@ elif [ ! -f "$KEY_FILE" ]; then
   exit 1
 fi
 
-# Step 1: Push to GitHub
+SSH="ssh -i $KEY_FILE -o StrictHostKeyChecking=no -o ConnectTimeout=30"
+SCP="scp -i $KEY_FILE -o StrictHostKeyChecking=no"
+
+# ── 1. Push committed changes to GitHub (best-effort, no fail) ────────────────
 echo ""
-echo "[1/3] Pushing to GitHub..."
-git push "https://MicrogennSenthil:${GITHUB_PAT}@github.com/MicrogennSenthil/silvercrown.git" main
-COMMIT=$(git log --oneline -1)
-echo "      ✓ GitHub updated: $COMMIT"
+echo "[1/4] Pushing to GitHub..."
+if [ -n "$GITHUB_PAT" ]; then
+  git push "https://MicrogennSenthil:${GITHUB_PAT}@github.com/MicrogennSenthil/silvercrown.git" main 2>&1 || true
+fi
+echo "      ✓ Commit: $(git log --oneline -1)"
 
-# Step 2: Pull, build, and restart on VPS
+# ── 2. Build locally ──────────────────────────────────────────────────────────
 echo ""
-echo "[2/3] Connecting to VPS: $APP_DIR"
-ssh -i "$KEY_FILE" \
-  -o StrictHostKeyChecking=no \
-  -o ConnectTimeout=30 \
-  "$VPS_HOST" bash << 'REMOTE'
-set -e
-APP_DIR="/var/www/silvercrown-element"
-cd "$APP_DIR"
+echo "[2/4] Building locally..."
+npm run build 2>&1 | tail -6
+echo "      ✓ Build complete"
 
-echo "      → Directory : $APP_DIR"
-echo "      → Pulling latest code..."
-git pull origin main
-echo "      → Commit: $(git log --oneline -1)"
-
+# ── 3. SCP dist to VPS ────────────────────────────────────────────────────────
 echo ""
-echo "      → Removing old build..."
-rm -rf dist
+echo "[3/4] Uploading dist to VPS..."
+$SCP -r dist/public dist/index.cjs "$VPS_HOST:$APP_DIR/dist/" 2>&1
+echo "      ✓ Upload complete"
 
-echo "      → Building (this takes ~30s)..."
-npm run build 2>&1 | tail -8
+# ── 4. Restart PM2 ────────────────────────────────────────────────────────────
+echo ""
+echo "[4/4] Restarting PM2..."
+$SSH "$VPS_HOST" "pm2 restart silvercrown-element && sleep 2 && pm2 list | grep silvercrown-element" 2>&1
 
 echo ""
-echo "      → Applying DB migrations..."
-printf "\n" | npx drizzle-kit push --config=drizzle.config.ts 2>&1 | tail -5
-
-echo ""
-echo "      → Restarting PM2..."
-pm2 restart silvercrown-element
-sleep 3
-pm2 list | grep silvercrown-element
-
-echo ""
-echo "      ✓ VPS deploy complete"
-REMOTE
-
-echo ""
-echo "[3/3] Done!"
-echo "      Production: https://silver.microgenn.com"
+echo "============================================"
+echo "  ✓ Deploy complete!"
+echo "  Production: https://silver.microgenn.com"
 echo "============================================"
 echo ""

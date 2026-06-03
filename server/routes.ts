@@ -7497,6 +7497,115 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Dashboard API ─────────────────────────────────────────────────────────
+
+  // GET /api/dashboard/counts — real counts for the 5 Overall Chart tabs
+  app.get("/api/dashboard/counts", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const [inward, despatch, invoice, po, payments] = await Promise.all([
+        pool.query(`SELECT COUNT(*) FROM job_work_inward`),
+        pool.query(`SELECT COUNT(*) FROM job_work_despatch`),
+        pool.query(`SELECT COUNT(*) FROM job_work_invoices`),
+        pool.query(`SELECT COUNT(*) FROM purchase_orders`),
+        pool.query(`SELECT COUNT(*) FROM voucher_mas WHERE voucher_type IN ('Payment','Receipt')`),
+      ]);
+      res.json({
+        inward:        parseInt(inward.rows[0].count),
+        despatch:      parseInt(despatch.rows[0].count),
+        invoice:       parseInt(invoice.rows[0].count),
+        purchaseOrder: parseInt(po.rows[0].count),
+        payments:      parseInt(payments.rows[0].count),
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/dashboard/detail/:type — flat rows for dashboard grid
+  app.get("/api/dashboard/detail/:type", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const type = req.params.type;
+      let rows: any[] = [];
+
+      if (type === "inward") {
+        const r = await pool.query(`
+          SELECT j.voucher_no, j.inward_date,
+                 COALESCE(c.name, j.party_name_manual, '') AS party_name,
+                 COALESCE(i.item_name, '—') AS item_name,
+                 COALESCE(i.unit, '')        AS unit,
+                 COALESCE(i.qty, 0)          AS qty,
+                 COALESCE(i.process, '')     AS process
+          FROM job_work_inward j
+          LEFT JOIN customers c ON c.id = j.party_id
+          LEFT JOIN job_work_inward_items i ON i.inward_id = j.id
+          ORDER BY j.created_at DESC, i.seq_no
+          LIMIT 100
+        `);
+        rows = r.rows;
+      } else if (type === "despatch") {
+        const r = await pool.query(`
+          SELECT d.voucher_no, d.despatch_date,
+                 COALESCE(c.name, d.party_name_manual, '') AS party_name,
+                 COALESCE(i.item_name, '—')        AS item_name,
+                 COALESCE(i.unit, '')               AS unit,
+                 COALESCE(i.qty_despatched, 0)      AS qty_despatched,
+                 COALESCE(i.process, '')            AS process,
+                 COALESCE(jw.voucher_no, '—')       AS inward_voucher_no
+          FROM job_work_despatch d
+          LEFT JOIN customers c ON c.id = d.party_id
+          LEFT JOIN job_work_despatch_items i ON i.despatch_id = d.id
+          LEFT JOIN job_work_inward jw ON jw.id = d.inward_id
+          ORDER BY d.created_at DESC, i.seq_no
+          LIMIT 100
+        `);
+        rows = r.rows;
+      } else if (type === "invoice") {
+        const r = await pool.query(`
+          SELECT inv.voucher_no, inv.invoice_date,
+                 COALESCE(c.name, inv.party_name_manual, '') AS party_name,
+                 inv.invoice_type, inv.status,
+                 COALESCE(SUM(it.amount), 0) AS total_amount
+          FROM job_work_invoices inv
+          LEFT JOIN customers c ON c.id = inv.party_id
+          LEFT JOIN job_work_invoice_items it ON it.invoice_id = inv.id
+          GROUP BY inv.id, inv.voucher_no, inv.invoice_date, inv.invoice_type, inv.status,
+                   c.name, inv.party_name_manual, inv.created_at
+          ORDER BY inv.created_at DESC
+          LIMIT 100
+        `);
+        rows = r.rows;
+      } else if (type === "purchaseOrder") {
+        const r = await pool.query(`
+          SELECT po.voucher_no, po.po_date,
+                 COALESCE(s.name, '') AS supplier_name,
+                 po.status,
+                 COUNT(poi.id) AS item_count
+          FROM purchase_orders po
+          LEFT JOIN suppliers s ON s.id = po.supplier_id
+          LEFT JOIN purchase_order_items poi ON poi.po_id = po.id
+          GROUP BY po.id, po.voucher_no, po.po_date, po.status, s.name, po.created_at
+          ORDER BY po.created_at DESC
+          LIMIT 100
+        `);
+        rows = r.rows;
+      } else if (type === "payments") {
+        const r = await pool.query(`
+          SELECT vm.voucher_no, vm.voucher_date,
+                 COALESCE(vm.narration, '') AS party_name,
+                 vm.voucher_type,
+                 COALESCE(vm.total_amount, 0) AS total_amount
+          FROM voucher_mas vm
+          WHERE vm.voucher_type IN ('Payment', 'Receipt')
+          ORDER BY vm.voucher_date DESC, vm.voucher_no DESC
+          LIMIT 100
+        `).catch(() => ({ rows: [] }));
+        rows = r.rows;
+      }
+
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Purge all MASTER data — also deletes transactions first
   app.post("/api/purge/masters", requireAuth, async (req, res) => {
     try {
