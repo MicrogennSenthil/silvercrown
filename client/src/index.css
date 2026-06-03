@@ -271,3 +271,19 @@ a {
     background-color: #f5f0ed;
   }
 }
+
+/* ── Print: hide navigation/sidebar, show only content ── */
+@media print {
+  aside,
+  nav,
+  .no-print,
+  [data-no-print] {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  * {
+    box-shadow: none !important;
+  }
+}

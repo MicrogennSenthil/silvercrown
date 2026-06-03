@@ -134,7 +134,7 @@ export default function LedgerReport() {
       onExcelExport={selectedId ? handleExport : undefined}
     >
       {/* ── Filters ── */}
-      <div className="flex flex-wrap items-end gap-3 p-4 border-b border-gray-100 bg-gray-50">
+      <div className="no-print flex flex-wrap items-end gap-3 p-4 border-b border-gray-100 bg-gray-50">
         {/* Account selector */}
         <div className="flex flex-col gap-1 min-w-[280px]">
           <label className="text-xs font-semibold text-gray-600">Account / Sub-Ledger</label>
