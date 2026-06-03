@@ -1,7 +1,7 @@
 {
-  "name": "Silver Crown Metals - Element ERP",
+  "name": "Silver Crown Metal Coatings - Element ERP",
   "short_name": "Element ERP",
-  "description": "Silver Crown Metals ERP System — Inventory, Accounts & Engineering",
+  "description": "Silver Crown Metal Coatings ERP System — Inventory, Accounts & Engineering",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
