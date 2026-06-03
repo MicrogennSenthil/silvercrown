@@ -269,7 +269,7 @@ function Sidebar({ collapsed, mobile, onClose, companyName }: { collapsed: boole
           <img src="/figmaAssets/image-1.png" alt="logo" className="h-8 w-8 object-contain" />
         </div>
         {(!collapsed || mobile) && (
-          <span className="text-white font-bold text-sm tracking-wide">Element ERP</span>
+          <span className="text-white font-bold text-sm tracking-wide">Pioneer Prism</span>
         )}
       </div>
 
