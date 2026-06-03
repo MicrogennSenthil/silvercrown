@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Printer, Eye, Mail, X, Calendar, AlertCircle, ChevronDown, Send, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
+import { buildTaxInvoiceHTML } from "@/lib/printTaxInvoice";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa" };
 
@@ -36,7 +37,7 @@ function toInput(d: Date) {
 }
 
 /* ── Print helper: opens a new window with formatted doc ──────────── */
-async function openPrint(type: DocType, row: ListRow) {
+async function openPrint(type: DocType, row: ListRow, isEInvoice = false, eInvData?: { irn?: string; ack_no?: string; ack_date?: string }) {
   const res = await fetch(`/api/reprint/${type}/${row.id}`, { credentials: "include" });
   if (!res.ok) { alert("Failed to load document."); return; }
   const doc = await res.json();
@@ -48,14 +49,17 @@ async function openPrint(type: DocType, row: ListRow) {
     return;
   }
 
-  const typeLabel =
-    type === "invoice"       ? "Job Work Invoice"  : "Purchase Order";
+  if (type === "invoice") {
+    const html = buildTaxInvoiceHTML(doc, isEInvoice, eInvData);
+    const win = window.open("", "_blank", "width=900,height=760");
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+    return;
+  }
 
-  const dateField =
-    type === "invoice"       ? doc.invoice_date  : doc.po_date;
-
+  // Purchase Order (generic fallback)
+  const typeLabel = "Purchase Order";
+  const dateField = doc.po_date;
   const items: any[] = doc.items || [];
-
   const itemRows = items.map((it: any, idx: number) => {
     const qty  = parseFloat(it.qty || it.qty_despatched || "0");
     const rate = parseFloat(it.rate || "0");
@@ -70,20 +74,13 @@ async function openPrint(type: DocType, row: ListRow) {
       <td style="text-align:right">${fmtAmt(amt)}</td>
     </tr>`;
   }).join("");
-
-  const taxableAmt = items.reduce((s: number, it: any) => {
-    const qty = parseFloat(it.qty || it.qty_despatched || "0");
-    const rate = parseFloat(it.rate || "0");
-    const amt  = parseFloat(it.amount || it.total || (qty * rate).toFixed(2) || "0");
-    return s + amt;
-  }, 0);
+  const taxableAmt   = items.reduce((s: number, it: any) => { const q = parseFloat(it.qty||it.qty_despatched||"0"); const r = parseFloat(it.rate||"0"); return s + parseFloat(it.amount||it.total||(q*r).toFixed(2)||"0"); }, 0);
   const cgstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.cgst_amt || "0"), 0);
   const sgstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.sgst_amt || "0"), 0);
   const igstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.igst_amt || "0"), 0);
   const charges: any[] = doc.charges || [];
   const chargesTotal = charges.reduce((s: number, ch: any) => s + parseFloat(ch.amount || "0"), 0);
   const totalAmt     = taxableAmt + cgstTotal + sgstTotal + igstTotal + chargesTotal;
-
   const gstRows = [
     `<tr><td colspan="6" style="text-align:right;color:#555">Taxable Amount</td><td style="text-align:right">${fmtAmt(taxableAmt)}</td></tr>`,
     cgstTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">CGST</td><td style="text-align:right">${fmtAmt(cgstTotal)}</td></tr>` : "",
@@ -91,74 +88,131 @@ async function openPrint(type: DocType, row: ListRow) {
     igstTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">IGST</td><td style="text-align:right">${fmtAmt(igstTotal)}</td></tr>` : "",
     chargesTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">Additional Charges</td><td style="text-align:right">${fmtAmt(chargesTotal)}</td></tr>` : "",
   ].join("");
-
-  const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<title>${typeLabel} — ${doc.voucher_no}</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 13px; color: #111; padding: 24px; }
-  .header { text-align: center; border-bottom: 2px solid #027fa5; padding-bottom: 10px; margin-bottom: 16px; }
-  .header h1 { font-size: 20px; font-weight: 700; color: #027fa5; }
-  .header h2 { font-size: 14px; font-weight: 600; margin-top: 2px; color: #555; }
-  .meta { display: flex; justify-content: space-between; margin-bottom: 14px; }
-  .meta-block { flex: 1; }
-  .meta-block p { margin: 2px 0; }
-  .meta-block span { font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th { background: #027fa5; color: white; padding: 7px 8px; text-align: left; font-size: 12px; }
-  td { padding: 6px 8px; border-bottom: 1px solid #e5e5e5; font-size: 12px; }
-  tr:nth-child(even) td { background: #f8fafb; }
-  .total-row td { font-weight: 700; border-top: 2px solid #027fa5; background: #f0f9ff; }
-  .footer { margin-top: 30px; text-align: right; font-size: 11px; color: #999; }
-  @media print { body { padding: 0; } }
-</style></head><body>
-<div class="header">
-  <h1>SILVER CROWN GROUP OF COMPANIES</h1>
-  <h2>${typeLabel}</h2>
-</div>
-<div class="meta">
-  <div class="meta-block">
-    <p><span>Document No:</span> ${doc.voucher_no || "—"}</p>
-    <p><span>Date:</span> ${fmtDate(dateField)}</p>
-    <p><span>Party:</span> ${doc.party_name_db || row.party_name || "—"}</p>
-  </div>
-  <div class="meta-block" style="text-align:right">
-    <p><span>Phone:</span> ${doc.party_phone || "—"}</p>
-    ${doc.party_address ? `<p><span>Address:</span> ${doc.party_address}</p>` : ""}
-  </div>
-</div>
-<table>
-  <thead><tr>
-    <th>#</th><th>Code</th><th>Item / Description</th><th>Unit</th>
-    <th style="text-align:right">Qty</th>
-    <th style="text-align:right">Rate</th>
-    <th style="text-align:right">Amount</th>
-  </tr></thead>
-  <tbody>
-    ${itemRows || '<tr><td colspan="7" style="text-align:center;color:#999">No items</td></tr>'}
-  </tbody>
-  <tfoot>
-    ${gstRows}
-    <tr class="total-row">
-      <td colspan="6" style="text-align:right">Grand Total</td>
-      <td style="text-align:right">₹ ${fmtAmt(totalAmt)}</td>
-    </tr>
-  </tfoot>
-</table>
-<div class="footer">Printed on ${new Date().toLocaleString("en-IN")}</div>
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${typeLabel} — ${doc.voucher_no}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:24px}.header{text-align:center;border-bottom:2px solid #027fa5;padding-bottom:10px;margin-bottom:16px}.header h1{font-size:20px;font-weight:700;color:#027fa5}.header h2{font-size:14px;margin-top:2px;color:#555}.meta{display:flex;justify-content:space-between;margin-bottom:14px}.meta p{margin:2px 0}table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#027fa5;color:#fff;padding:7px 8px;text-align:left;font-size:12px}td{padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:12px}.total-row td{font-weight:700;border-top:2px solid #027fa5;background:#f0f9ff}</style>
+</head><body>
+<div class="header"><h1>SILVER CROWN METAL COATINGS</h1><h2>${typeLabel}</h2></div>
+<div class="meta"><div><p><b>Doc No:</b> ${doc.voucher_no||"—"}</p><p><b>Date:</b> ${fmtDate(dateField)}</p><p><b>Party:</b> ${doc.party_name_db||row.party_name||"—"}</p></div></div>
+<table><thead><tr><th>#</th><th>Code</th><th>Description</th><th>Unit</th><th style="text-align:right">Qty</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
+<tbody>${itemRows||'<tr><td colspan="7" style="text-align:center;color:#999">No items</td></tr>'}</tbody>
+<tfoot>${gstRows}<tr class="total-row"><td colspan="6" style="text-align:right">Grand Total</td><td style="text-align:right">₹ ${fmtAmt(totalAmt)}</td></tr></tfoot></table>
 </body></html>`;
-
   const win = window.open("", "_blank", "width=900,height=700");
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 500);
+  if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
+}
+
+/* ── Invoice Print Picker Modal ─────────────────────────────────────── */
+function InvoicePrintPickerModal({ row, onClose }: { row: ListRow; onClose: () => void }) {
+  const [mode, setMode] = useState<"pick" | "einvoice">("pick");
+  const [irn,    setIrn]    = useState("");
+  const [ackNo,  setAckNo]  = useState("");
+  const [ackDate,setAckDate]= useState("");
+  const [loading,setLoading]= useState(false);
+
+  async function handlePrint(isEInvoice: boolean) {
+    setLoading(true);
+    try {
+      await openPrint("invoice", row, isEInvoice,
+        isEInvoice ? { irn, ack_no: ackNo, ack_date: ackDate } : undefined);
+      if (isEInvoice && (irn || ackNo || ackDate)) {
+        await fetch(`/api/job-work-invoice/${row.id}/e-invoice`, {
+          method: "PATCH", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ irn, ack_no: ackNo, ack_date: ackDate }),
+        });
+      }
+    } finally {
+      setLoading(false);
+      onClose();
+    }
   }
+
+  async function enterEInvoiceMode() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/reprint/invoice/${row.id}`, { credentials: "include" });
+      const doc = await res.json();
+      setIrn(doc.irn || "");
+      setAckNo(doc.ack_no || "");
+      const rawDate = doc.ack_date;
+      setAckDate(rawDate ? rawDate.split("T")[0] : "");
+    } finally {
+      setLoading(false);
+      setMode("einvoice");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 z-10 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-bold text-gray-800">Print Invoice</h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={15}/></button>
+        </div>
+        <p className="text-xs text-gray-400 mb-5">{row.txn_no} · {fmtDate(row.txn_date)}</p>
+
+        {mode === "pick" ? (
+          <div className="flex flex-col gap-3">
+            <button onClick={() => handlePrint(false)} disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ background: SC.orange }}
+              data-testid="btn-print-normal">
+              <Printer size={14}/> Normal Invoice (3 copies)
+            </button>
+            <button onClick={enterEInvoiceMode} disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-bold border-2 flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ borderColor: SC.primary, color: SC.primary }}
+              data-testid="btn-print-einvoice">
+              <Printer size={14}/> e-Invoice (with IRN / Ack)
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">IRN</label>
+              <textarea value={irn} onChange={e => setIrn(e.target.value)} rows={2}
+                placeholder="Paste IRN hash here..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:border-[#027fa5]"
+                data-testid="input-irn"/>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Ack No.</label>
+                <input value={ackNo} onChange={e => setAckNo(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#027fa5]"
+                  data-testid="input-ack-no"/>
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Ack Date</label>
+                <input type="date" value={ackDate} onChange={e => setAckDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#027fa5]"
+                  data-testid="input-ack-date"/>
+              </div>
+            </div>
+            <button onClick={() => handlePrint(true)} disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ background: SC.primary }}
+              data-testid="btn-print-einvoice-confirm">
+              {loading ? <div className="w-4 h-4 rounded-full animate-spin border-2 border-white/30 border-t-white"/> : <Printer size={14}/>}
+              Print e-Invoice
+            </button>
+            <button onClick={() => setMode("pick")}
+              className="text-xs text-gray-400 hover:text-gray-600 text-center">
+              ← Back
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ── View Modal ─────────────────────────────────────────────────────── */
-function ViewModal({ type, row, onClose }: { type: DocType; row: ListRow; onClose: () => void }) {
+function ViewModal({ type, row, onClose, onInvoicePrint }: {
+  type: DocType; row: ListRow; onClose: () => void;
+  onInvoicePrint?: (row: ListRow) => void;
+}) {
   const { data: doc, isLoading } = useQuery<any>({
     queryKey: ["/api/reprint/detail", type, row.id],
     queryFn: () => fetch(`/api/reprint/${type}/${row.id}`, { credentials: "include" }).then(r => r.json()),
@@ -196,7 +250,8 @@ function ViewModal({ type, row, onClose }: { type: DocType; row: ListRow; onClos
             <p className="text-xs text-gray-400 mt-0.5">{row.txn_no} · {fmtDate(row.txn_date)}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => openPrint(type, row)}
+            <button
+              onClick={() => type === "invoice" && onInvoicePrint ? onInvoicePrint(row) : openPrint(type, row)}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
               style={{ background: SC.orange }}>
               <Printer size={13}/> Print
@@ -419,8 +474,9 @@ export default function Reprint() {
   const [fromDate, setFromDate] = useState(toInput(firstDay));
   const [toDate,   setToDate]   = useState(toInput(today));
   const [trigger,  setTrigger]  = useState(0);   // increment to re-fetch
-  const [viewRow,  setViewRow]  = useState<ListRow | null>(null);
-  const [emailRow, setEmailRow] = useState<ListRow | null>(null);
+  const [viewRow,         setViewRow]         = useState<ListRow | null>(null);
+  const [emailRow,        setEmailRow]        = useState<ListRow | null>(null);
+  const [invoicePrintRow, setInvoicePrintRow] = useState<ListRow | null>(null);
 
   const { data: rows = [], isLoading } = useQuery<ListRow[]>({
     queryKey: ["/api/reprint", docType, fromDate, toDate, trigger],
@@ -436,8 +492,10 @@ export default function Reprint() {
 
   return (
     <>
-      {viewRow  && <ViewModal  type={docType} row={viewRow}  onClose={() => setViewRow(null)}/>}
+      {viewRow  && <ViewModal  type={docType} row={viewRow}  onClose={() => setViewRow(null)}
+        onInvoicePrint={r => { setViewRow(null); setInvoicePrintRow(r); }}/>}
       {emailRow && <EmailModal type={docType} row={emailRow} onClose={() => setEmailRow(null)}/>}
+      {invoicePrintRow && <InvoicePrintPickerModal row={invoicePrintRow} onClose={() => setInvoicePrintRow(null)}/>}
 
       {/* Page Shell */}
       <div className="flex flex-col h-full bg-[#f5f0ed]">
@@ -565,7 +623,7 @@ export default function Reprint() {
                           {/* Print */}
                           <button
                             title="Print"
-                            onClick={() => openPrint(docType, row)}
+                            onClick={() => docType === "invoice" ? setInvoicePrintRow(row) : openPrint(docType, row)}
                             className="w-7 h-7 rounded-md flex items-center justify-center transition-colors text-white"
                             style={{ background: SC.orange }}
                             data-testid={`btn-print-${idx}`}>

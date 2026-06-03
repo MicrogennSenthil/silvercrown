@@ -24,6 +24,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS batch_required  boolean DEFAULT false`).catch(()=>{});
     await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS expiry_required boolean DEFAULT false`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS irn text DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_no text DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_date date`).catch(()=>{});
   } catch (_) {}
 
   // Auth routes
@@ -3105,9 +3108,17 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
 
       if (type === "invoice") {
         const h = (await pool.query(`
-          SELECT jwi.*, COALESCE(c.name, jwi.party_name_manual,'') AS party_name_db,
-            COALESCE(c.email,'') AS party_email, COALESCE(c.phone,'') AS party_phone,
-            COALESCE(c.address,'') AS party_address
+          SELECT jwi.*,
+            COALESCE(c.name, jwi.party_name_manual,'') AS party_name_db,
+            COALESCE(c.email,'')          AS party_email,
+            COALESCE(c.phone,'')          AS party_phone,
+            COALESCE(c.address,'')        AS party_address,
+            COALESCE(c.address1,'')       AS customer_address1,
+            COALESCE(c.address2,'')       AS customer_address2,
+            COALESCE(c.city,'')           AS customer_city,
+            COALESCE(c.state,'')          AS customer_state,
+            COALESCE(c.gst_state_code,'') AS customer_gst_state_code,
+            COALESCE(c.gstin,'')          AS customer_gstin
           FROM job_work_invoices jwi LEFT JOIN customers c ON c.id = jwi.party_id WHERE jwi.id=$1
         `, [id])).rows[0];
         if (!h) return res.status(404).json({ message: "Not found" });
@@ -4709,6 +4720,21 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query("ROLLBACK");
       res.status(400).json({ message: e.message });
     } finally { client.release(); }
+  });
+
+  // PATCH /api/job-work-invoice/:id/e-invoice — save IRN/Ack data
+  app.patch("/api/job-work-invoice/:id/e-invoice", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    try {
+      const { irn = "", ack_no = "", ack_date } = req.body;
+      await pool.query(
+        `UPDATE job_work_invoices SET irn=$1, ack_no=$2, ack_date=$3 WHERE id=$4`,
+        [irn, ack_no, ack_date || null, req.params.id]
+      );
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
   });
 
   // DELETE /api/job-work-invoice/:id

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Loader2, AlertCircle, CheckCircle2, Trash2, Plus, PencilLine } from "lucide-react";
+import { Search, Loader2, AlertCircle, CheckCircle2, Trash2, Plus, PencilLine, Printer, X } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
 import { apiRequest } from "@/lib/queryClient";
+import { buildTaxInvoiceHTML } from "@/lib/printTaxInvoice";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -25,6 +26,109 @@ function parseVehicle(s: string) {
   const m = clean.match(/^([A-Z]{2})(\d{2})([A-Z]{1,3})(\d{1,4})$/);
   if (m) return { p1: m[1], p2: m[2], p3: m[3], p4: m[4] };
   return { p1: clean.slice(0,2), p2: clean.slice(2,4), p3: clean.slice(4,6), p4: clean.slice(6) };
+}
+
+/* ── Invoice Print Dialog ──────────────────────────────────────────── */
+function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; isNew: boolean; onDone: () => void }) {
+  const [mode,    setMode]    = useState<"pick" | "einvoice">("pick");
+  const [irn,     setIrn]     = useState("");
+  const [ackNo,   setAckNo]   = useState("");
+  const [ackDate, setAckDate] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function doPrint(isEInvoice: boolean) {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/reprint/invoice/${invoiceId}`, { credentials: "include" });
+      const doc = await res.json();
+      const html = buildTaxInvoiceHTML(doc, isEInvoice, isEInvoice ? { irn, ack_no: ackNo, ack_date: ackDate } : undefined);
+      const win = window.open("", "_blank", "width=900,height=760");
+      if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+      if (isEInvoice && (irn || ackNo || ackDate)) {
+        await fetch(`/api/job-work-invoice/${invoiceId}/e-invoice`, {
+          method: "PATCH", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ irn, ack_no: ackNo, ack_date: ackDate }),
+        });
+      }
+    } finally {
+      setLoading(false);
+      onDone();
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onDone}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 z-10 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <h3 className="text-base font-bold text-gray-800">Invoice Saved!</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Would you like to print?</p>
+          </div>
+          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={15}/></button>
+        </div>
+        <div className="mt-4 flex flex-col gap-3">
+          {mode === "pick" ? (
+            <>
+              <button onClick={() => doPrint(false)} disabled={loading}
+                className="w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-60"
+                style={{ background: SC.orange }}
+                data-testid="btn-print-normal-invoice">
+                <Printer size={14}/> Normal Invoice (3 copies)
+              </button>
+              <button onClick={() => setMode("einvoice")} disabled={loading}
+                className="w-full py-3 rounded-xl text-sm font-bold border-2 flex items-center justify-center gap-2 disabled:opacity-60"
+                style={{ borderColor: SC.primary, color: SC.primary }}
+                data-testid="btn-print-einvoice-open">
+                <Printer size={14}/> e-Invoice (with IRN / Ack)
+              </button>
+              <button onClick={onDone}
+                className="text-xs text-gray-400 hover:text-gray-600 text-center py-1">
+                Skip — don&apos;t print
+              </button>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">IRN</label>
+                <textarea value={irn} onChange={e => setIrn(e.target.value)} rows={2}
+                  placeholder="Paste IRN hash here..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:border-[#027fa5]"
+                  data-testid="input-einv-irn"/>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-gray-500 block mb-1">Ack No.</label>
+                  <input value={ackNo} onChange={e => setAckNo(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#027fa5]"
+                    data-testid="input-einv-ack-no"/>
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs font-semibold text-gray-500 block mb-1">Ack Date</label>
+                  <input type="date" value={ackDate} onChange={e => setAckDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#027fa5]"
+                    data-testid="input-einv-ack-date"/>
+                </div>
+              </div>
+              <button onClick={() => doPrint(true)} disabled={loading}
+                className="w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-60"
+                style={{ background: SC.primary }}
+                data-testid="btn-print-einvoice-confirm">
+                {loading ? <div className="w-4 h-4 rounded-full animate-spin border-2 border-white/30 border-t-white"/> : <Printer size={14}/>}
+                Print e-Invoice
+              </button>
+              <button onClick={() => setMode("pick")}
+                className="text-xs text-gray-400 hover:text-gray-600 text-center">
+                ← Back
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editId?: string | null }) {
@@ -93,6 +197,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // Save state
   const [saveError, setSaveError] = useState("");
   const [saveOk,    setSaveOk]    = useState(false);
+  const [printDialogState, setPrintDialogState] = useState<{ id: string; isNew: boolean } | null>(null);
 
   // Party dropdown close on outside click
   useEffect(() => {
@@ -424,12 +529,19 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     };
     const isNew = !editingId;
     try {
+      let saved: any;
       if (editingId) {
-        await updateMut.mutateAsync({ id: editingId, body },
+        saved = await updateMut.mutateAsync({ id: editingId, body },
           { onSuccess: () => { setSaveOk(true); } });
       } else {
-        await createMut.mutateAsync(body,
-          { onSuccess: () => { setSaveOk(true); if (isNew) resetForm(); } });
+        saved = await createMut.mutateAsync(body,
+          { onSuccess: () => { setSaveOk(true); } });
+      }
+      const savedId = saved?.id || editingId;
+      if (savedId) {
+        setPrintDialogState({ id: savedId, isNew });
+      } else if (isNew) {
+        resetForm();
       }
     } catch (e: any) {
       setSaveError(e?.message || "Save failed");
@@ -441,6 +553,19 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // ── Shared header + panel layout ──────────────────────────────────────────────
   return (
     <div style={{ background: SC.bg, minHeight: "100vh", padding: "24px" }}>
+      {/* Print dialog (shown after save) */}
+      {printDialogState && (
+        <InvoicePrintDialog
+          invoiceId={printDialogState.id}
+          isNew={printDialogState.isNew}
+          onDone={() => {
+            const wasNew = printDialogState.isNew;
+            setPrintDialogState(null);
+            if (wasNew) resetForm();
+          }}
+        />
+      )}
+
       {/* Page title + back */}
       <div className="flex items-center gap-3 mb-4">
         <button onClick={onBackToList} className="text-sm text-gray-500 hover:text-gray-800 transition-colors" data-testid="btn-back-to-list">
