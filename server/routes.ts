@@ -3324,45 +3324,47 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         `;
       } else {
         // ── Supplier Payable aging ────────────────────────────────────────
-        // Primary: sub_ledger_bills (GRN-based payables — CR entries)
-        // Secondary: non-GRN voucher entries (payment DR reduces payable)
+        // Source: ALL sundry_creditor sub_ledgers (linked to supplier or not)
+        // Falls back to sub_ledger name when no supplier is linked
         idCol   = "supplier_id";
         nameCol = "supplier_name";
         baseSQL = `
-          WITH supplier_sl AS (
-            SELECT DISTINCT grn.supplier_id, grn.sl_id AS sub_ledger_id
-            FROM goods_receipt_notes grn
-            WHERE grn.sl_id IS NOT NULL AND grn.supplier_id IS NOT NULL
-            UNION
-            SELECT s.id AS supplier_id, s.sub_ledger_id
-            FROM suppliers s WHERE s.sub_ledger_id IS NOT NULL
+          WITH creditor_map AS (
+            SELECT
+              sl.id                                            AS sub_ledger_id,
+              COALESCE(s.id, sl.id)                           AS supplier_id,
+              COALESCE(s.name, sl.name)                       AS supplier_name,
+              COALESCE(s.phone, s.telephone, '')              AS contact_no,
+              COALESCE(s.contact_person, s.contact_name, '')  AS contact_person
+            FROM sub_ledgers sl
+            JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+            LEFT JOIN suppliers s ON s.sub_ledger_id = sl.id
+            WHERE gl.gl_type = 'sundry_creditor'
           ),
           txns AS (
             SELECT
-              ss.supplier_id,
-              s.name AS supplier_name,
-              COALESCE(s.phone, s.telephone, '')             AS contact_no,
-              COALESCE(s.contact_person, s.contact_name, '') AS contact_person,
+              cm.supplier_id,
+              cm.supplier_name,
+              cm.contact_no,
+              cm.contact_person,
               COALESCE(slb.ref_date, slb.voucher_date, NOW()::date) AS txn_date,
               slb.amount::numeric AS amount,
               UPPER(slb.cr_dr) AS dr_cr
-            FROM supplier_sl ss
-            JOIN suppliers s ON s.id = ss.supplier_id
-            JOIN sub_ledger_bills slb ON slb.sub_ledger_id = ss.sub_ledger_id
+            FROM creditor_map cm
+            JOIN sub_ledger_bills slb ON slb.sub_ledger_id = cm.sub_ledger_id
 
             UNION ALL
 
             SELECT
-              ss.supplier_id,
-              s.name AS supplier_name,
-              COALESCE(s.phone, s.telephone, '')             AS contact_no,
-              COALESCE(s.contact_person, s.contact_name, '') AS contact_person,
+              cm.supplier_id,
+              cm.supplier_name,
+              cm.contact_no,
+              cm.contact_person,
               vm.voucher_date AS txn_date,
               vd.amount::numeric AS amount,
               UPPER(vd.dr_cr) AS dr_cr
-            FROM supplier_sl ss
-            JOIN suppliers s ON s.id = ss.supplier_id
-            JOIN voucher_det vd ON vd.sub_ledger_id = ss.sub_ledger_id
+            FROM creditor_map cm
+            JOIN voucher_det vd ON vd.sub_ledger_id = cm.sub_ledger_id
             JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
             WHERE vm.source_type IS DISTINCT FROM 'grn'
           ),
