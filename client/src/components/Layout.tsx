@@ -259,16 +259,18 @@ function NavItem({ item, collapsed, onClose }: { item: any; collapsed: boolean; 
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ collapsed, mobile, onClose }: { collapsed: boolean; mobile?: boolean; onClose?: () => void }) {
+function Sidebar({ collapsed, mobile, onClose, companyName }: { collapsed: boolean; mobile?: boolean; onClose?: () => void; companyName?: string }) {
   const { user, logout } = useAuth();
   return (
     <div className="flex flex-col h-full" style={{ background: "linear-gradient(180deg, #027fa5 0%, #015f7a 100%)" }}>
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-white/20 flex-shrink-0">
-        <img src="/figmaAssets/image-1.png" alt="Pioneer Prism" className="h-9 w-auto object-contain flex-shrink-0 filter brightness-0 invert" />
+        <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <img src="/figmaAssets/image-1.png" alt="logo" className="h-8 w-8 object-contain" />
+        </div>
         {(!collapsed || mobile) && (
           <div>
-            <div className="text-white font-bold text-sm leading-tight">Pioneer Prism</div>
+            <div className="text-white font-bold text-sm leading-tight">{companyName || "Element ERP"}</div>
             <div className="text-white/70 text-xs">Element ERP</div>
           </div>
         )}
@@ -416,7 +418,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Desktop Sidebar */}
       <aside className={`hidden lg:flex flex-col flex-shrink-0 transition-all duration-300 ${collapsed ? "w-16" : "w-64"}`}>
-        <Sidebar collapsed={collapsed} />
+        <Sidebar collapsed={collapsed} companyName={companyName} />
       </aside>
 
       {/* Mobile Sidebar Overlay */}
@@ -424,7 +426,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
           <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col shadow-2xl">
-            <Sidebar collapsed={false} mobile onClose={() => setSidebarOpen(false)} />
+            <Sidebar collapsed={false} mobile onClose={() => setSidebarOpen(false)} companyName={companyName} />
           </aside>
         </div>
       )}
