@@ -248,11 +248,16 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   useEffect(() => {
     setItems(prev => prev.map(it => {
       const taxable = parseFloat(it.amount || 0);
+      const cgstR = parseFloat(it.cgst_rate || 0);
+      const sgstR = parseFloat(it.sgst_rate || 0);
+      // derive igst from cgst+sgst if igst_rate is 0
+      const igstR = parseFloat(it.igst_rate || 0) || (cgstR + sgstR);
       return {
         ...it,
-        cgst_amt: isInterState ? 0 : taxable * parseFloat(it.cgst_rate || 0) / 100,
-        sgst_amt: isInterState ? 0 : taxable * parseFloat(it.sgst_rate || 0) / 100,
-        igst_amt: isInterState ? taxable * parseFloat(it.igst_rate || 0) / 100 : 0,
+        igst_rate: igstR,
+        cgst_amt: isInterState ? 0 : taxable * cgstR / 100,
+        sgst_amt: isInterState ? 0 : taxable * sgstR / 100,
+        igst_amt: isInterState ? taxable * igstR / 100 : 0,
       };
     }));
   }, [isInterState]);
@@ -286,7 +291,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           const taxable = qty * rate;
           const cgstR   = parseFloat(r.cgst_rate || 0);
           const sgstR   = parseFloat(r.sgst_rate || 0);
-          const igstR   = parseFloat(r.igst_rate || 0);
+          // igst_rate fallback: if 0, derive from cgst+sgst (standard inter-state rule)
+          const igstR   = parseFloat(r.igst_rate || 0) || (cgstR + sgstR);
           return {
             despatch_id:         isDespatchMode ? record.id : null,
             inward_id:           r.inward_id || null,
@@ -445,7 +451,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     const rate  = parseFloat(product.rate ?? product.sellingPrice ?? product.selling_price ?? 0);
     const cgstR = parseFloat(product.cgstRate ?? product.cgst_rate ?? 0);
     const sgstR = parseFloat(product.sgstRate ?? product.sgst_rate ?? 0);
-    const igstR = parseFloat(product.igstRate ?? product.igst_rate ?? 0);
+    const igstR = parseFloat(product.igstRate ?? product.igst_rate ?? 0) || (cgstR + sgstR);
     const qty     = parseFloat(items[realIdx]?.qty_despatched || 0);
     const taxable = qty * rate;
     setItems(prev => prev.map((it, i) => i !== realIdx ? it : {
