@@ -4324,14 +4324,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT di.id, di.despatch_id, di.inward_id, di.inward_item_id, di.item_id,
-               di.item_code, di.item_name, di.unit, di.process, di.hsn,
-               di.qty_despatched, di.rate,
-               (di.qty_despatched * di.rate) AS amount,
+               di.item_code, di.item_name, di.unit,  di.process,
+               COALESCE(NULLIF(di.hsn,''), prod.hsn_code, '')                        AS hsn,
+               di.qty_despatched,
+               COALESCE(NULLIF(di.rate,0), prod.rate, prod.selling_price, 0)         AS rate,
+               di.qty_despatched * COALESCE(NULLIF(di.rate,0), prod.rate, prod.selling_price, 0) AS amount,
                d.voucher_no AS despatch_voucher_no,
                iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no AS inward_voucher_no,
-               COALESCE(NULLIF(di.cgst_rate, 0), prod.cgst_rate, 0) AS cgst_rate,
-               COALESCE(NULLIF(di.sgst_rate, 0), prod.sgst_rate, 0) AS sgst_rate,
-               COALESCE(NULLIF(di.igst_rate, 0), prod.igst_rate, 0) AS igst_rate,
+               COALESCE(NULLIF(di.cgst_rate,0), prod.cgst_rate, 0) AS cgst_rate,
+               COALESCE(NULLIF(di.sgst_rate,0), prod.sgst_rate, 0) AS sgst_rate,
+               COALESCE(NULLIF(di.igst_rate,0), prod.igst_rate, 0) AS igst_rate,
                di.cgst_amt, di.sgst_amt, di.igst_amt
         FROM job_work_despatch_items di
         JOIN job_work_despatch d ON d.id = di.despatch_id
@@ -4350,14 +4352,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT di.id, di.despatch_id, di.inward_id, di.inward_item_id, di.item_id,
-               di.item_code, di.item_name, di.unit, di.process, di.hsn,
-               di.qty_despatched, di.rate,
-               (di.qty_despatched * di.rate) as amount,
+               di.item_code, di.item_name, di.unit, di.process,
+               COALESCE(NULLIF(di.hsn,''), prod.hsn_code, '')                        AS hsn,
+               di.qty_despatched,
+               COALESCE(NULLIF(di.rate,0), prod.rate, prod.selling_price, 0)         AS rate,
+               di.qty_despatched * COALESCE(NULLIF(di.rate,0), prod.rate, prod.selling_price, 0) AS amount,
                d.voucher_no as despatch_voucher_no,
                iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no as inward_voucher_no,
-               COALESCE(prod.cgst_rate,0) AS cgst_rate,
-               COALESCE(prod.sgst_rate,0) AS sgst_rate,
-               COALESCE(prod.igst_rate,0) AS igst_rate
+               COALESCE(NULLIF(di.cgst_rate,0), prod.cgst_rate, 0) AS cgst_rate,
+               COALESCE(NULLIF(di.sgst_rate,0), prod.sgst_rate, 0) AS sgst_rate,
+               COALESCE(NULLIF(di.igst_rate,0), prod.igst_rate, 0) AS igst_rate
         FROM job_work_despatch_items di
         JOIN job_work_despatch d ON d.id = di.despatch_id
         JOIN job_work_inward iw ON iw.id = di.inward_id
@@ -4375,8 +4379,10 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT i.id as inward_item_id, i.inward_id, i.item_id, i.item_code, i.item_name,
-               i.qty as qty_despatched, i.unit, i.hsn, i.remark,
-               COALESCE(p.name,'') as process, COALESCE(p.price,0) as rate,
+               i.qty as qty_despatched, i.unit, i.remark,
+               COALESCE(NULLIF(i.hsn,''), prod.hsn_code, '')                            AS hsn,
+               COALESCE(p.name,'')                                                       as process,
+               COALESCE(NULLIF(p.price,0), prod.rate, prod.selling_price, 0)            as rate,
                iw.party_dc_no, iw.work_order_no, iw.party_po_no, iw.voucher_no as inward_voucher_no,
                COALESCE(prod.cgst_rate,0) AS cgst_rate,
                COALESCE(prod.sgst_rate,0) AS sgst_rate,
