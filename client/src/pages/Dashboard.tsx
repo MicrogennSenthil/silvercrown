@@ -21,14 +21,7 @@ const JOB_WORK_PIE = [
   { name: "Invoice",  value: 45, color: "#f96a0b" },
 ];
 
-const AGEING = [
-  { party: "ESS",    total: 2.5, d0:  "",  d15: 1,   d30: "",  d45: 1.5, d60: ""  },
-  { party: "Pricol", total: 1.5, d0:  1,   d15: "",  d30: "",  d45: "",  d60: 0.5 },
-  { party: "Rove",   total: 2,   d0:  "",  d15: 1.2, d30: 0.8, d45: "",  d60: ""  },
-  { party: "Vigro",  total: 3.5, d0:  "",  d15: 1.2, d30: "",  d45: 1.3, d60: 1   },
-  { party: "Simco",  total: 2,   d0:  "",  d15: 0.5, d30: 1,   d45: "",  d60: 0.5 },
-  { party: "Lakshmi",total: 2.5, d0:  "",  d15: 1.2, d30: "",  d45: 1.3, d60: ""  },
-];
+const AGEING_RANGES = "0-15,15-30,30-45,45-60,60-9999";
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 type TabKey = "inward" | "despatch" | "invoice" | "purchaseOrder" | "payments";
@@ -175,6 +168,7 @@ function WipCircle({ pct }: { pct: number }) {
 export default function Dashboard() {
   const [chartFilter, setChartFilter]  = useState("Last 10-days");
   const [activeTab,   setActiveTab]    = useState<TabKey>("inward");
+  const [ageingType,  setAgeingType]   = useState<"receivable" | "payable">("receivable");
 
   const { data: overdueTasks = [] } = useQuery<any[]>({
     queryKey: ["/api/tasks/overdue"],
@@ -191,6 +185,13 @@ export default function Dashboard() {
   const { data: detail = [], isFetching: detailLoading } = useQuery<any[]>({
     queryKey: ["/api/dashboard/detail", activeTab],
     queryFn: () => fetch(`/api/dashboard/detail/${activeTab}`, { credentials: "include" }).then(r => r.json()),
+  });
+
+  const ageingParty = ageingType === "receivable" ? "customer" : "supplier";
+  const { data: ageingRows = [], isFetching: ageingLoading } = useQuery<any[]>({
+    queryKey: ["/api/reports/ageing-list", ageingParty],
+    queryFn: () => fetch(`/api/reports/ageing-list?party=${ageingParty}&ranges=${AGEING_RANGES}`, { credentials: "include" }).then(r => r.json()),
+    staleTime: 60000,
   });
 
   const tabCounts: Record<TabKey, number> = {
@@ -346,10 +347,16 @@ export default function Dashboard() {
           {/* Ageing List */}
           <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-              <div>
-                <span className="font-semibold text-gray-700 text-sm">Ageing List </span>
-                <span className="text-gray-500 text-xs">(Receivable)</span>
-                <span className="ml-1 text-gray-400 text-xs">▼</span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-700 text-sm">Ageing List</span>
+                <select
+                  value={ageingType}
+                  onChange={e => setAgeingType(e.target.value as "receivable" | "payable")}
+                  className="text-xs border border-gray-200 rounded-md px-2 py-0.5 bg-white font-medium focus:outline-none"
+                  style={{ color: SC.primary }}>
+                  <option value="receivable">Receivable</option>
+                  <option value="payable">Payable</option>
+                </select>
               </div>
               <span className="text-xs text-gray-400">Amount in Lakhs</span>
             </div>
@@ -367,17 +374,34 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {AGEING.map(r => (
-                    <tr key={r.party} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 font-medium text-gray-700">{r.party}</td>
-                      <td className="px-2 py-2 text-right font-semibold" style={{ color: SC.primary }}>₹ {r.total}</td>
-                      <td className="px-2 py-2 text-right text-gray-600">{r.d0  ? `₹ ${r.d0}`  : ""}</td>
-                      <td className="px-2 py-2 text-right text-gray-600">{r.d15 ? `₹ ${r.d15}` : ""}</td>
-                      <td className="px-2 py-2 text-right text-gray-600">{r.d30 ? `₹ ${r.d30}` : ""}</td>
-                      <td className="px-2 py-2 text-right text-gray-600">{r.d45 ? `₹ ${r.d45}` : ""}</td>
-                      <td className="px-2 py-2 text-right text-gray-600">{r.d60 ? `₹ ${r.d60}` : ""}</td>
+                  {ageingLoading ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-5 text-center text-gray-400">Loading…</td>
                     </tr>
-                  ))}
+                  ) : ageingRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-5 text-center text-gray-400">
+                        No outstanding {ageingType === "receivable" ? "receivables" : "payables"}
+                      </td>
+                    </tr>
+                  ) : ageingRows.map((r: any) => {
+                    const toLakh = (v: number) => v > 0 ? `₹ ${(v / 100000).toFixed(2)}` : "";
+                    const total = parseFloat(r.total || 0);
+                    const bkts: number[] = r.buckets || [];
+                    return (
+                      <tr key={r.party_id || r.party_name} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-medium text-gray-700">{r.party_name}</td>
+                        <td className="px-2 py-2 text-right font-semibold" style={{ color: SC.primary }}>
+                          {total !== 0 ? `₹ ${(Math.abs(total) / 100000).toFixed(2)}` : ""}
+                        </td>
+                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[0] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[1] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[2] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[3] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[4] ?? 0)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
