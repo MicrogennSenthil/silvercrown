@@ -458,7 +458,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
             <div>
               <div className="text-sm font-semibold text-gray-800">{companyName}</div>
-              <div className="text-xs text-gray-500 hidden sm:block">{companyName}</div>
+              <div className="text-xs text-gray-500 hidden sm:block">Element ERP</div>
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
