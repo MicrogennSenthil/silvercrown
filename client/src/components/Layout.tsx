@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import {
   LayoutDashboard, ShoppingCart, Package, TrendingUp, BookOpen,
@@ -403,6 +404,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  const { data: settingsArr = [] } = useQuery<{ key: string; value: string }[]>({
+    queryKey: ["/api/settings"],
+  });
+  const companyName = settingsArr.find(s => s.key === "company_name")?.value || "Element ERP";
+
   return (
     <div className="flex h-screen bg-[#f5f0ed] font-['Source_Sans_Pro',sans-serif] overflow-hidden">
       {/* PWA Install Banner */}
@@ -449,8 +455,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Menu size={20} className="text-gray-600" />
             </button>
             <div>
-              <div className="text-sm font-semibold text-gray-800">Pioneer Prism</div>
-              <div className="text-xs text-gray-500 hidden sm:block">Element ERP System</div>
+              <div className="text-sm font-semibold text-gray-800">{companyName}</div>
+              <div className="text-xs text-gray-500 hidden sm:block">{companyName}</div>
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
