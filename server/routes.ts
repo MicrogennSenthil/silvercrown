@@ -4177,7 +4177,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT d.*, c.name AS party_name_db,
-               j.voucher_no AS inward_voucher_no, j.party_dc_no
+               j.voucher_no AS inward_voucher_no, j.party_dc_no,
+               EXISTS (
+                 SELECT 1 FROM job_work_invoice_items ii
+                 JOIN job_work_invoices inv ON inv.id = ii.invoice_id
+                 WHERE ii.despatch_id = d.id AND inv.invoice_type = 'despatch_notes'
+               ) AS is_invoiced
         FROM job_work_despatch d
         LEFT JOIN customers c ON c.id = d.party_id
         LEFT JOIN job_work_inward j ON j.id = d.inward_id
@@ -4193,7 +4198,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const [header] = (await pool.query(`
         SELECT d.*, c.name AS party_name_db,
-               j.voucher_no AS inward_voucher_no, j.party_dc_no
+               j.voucher_no AS inward_voucher_no, j.party_dc_no,
+               EXISTS (
+                 SELECT 1 FROM job_work_invoice_items ii
+                 JOIN job_work_invoices inv ON inv.id = ii.invoice_id
+                 WHERE ii.despatch_id = d.id AND inv.invoice_type = 'despatch_notes'
+               ) AS is_invoiced
         FROM job_work_despatch d
         LEFT JOIN customers c ON c.id = d.party_id
         LEFT JOIN job_work_inward j ON j.id = d.inward_id

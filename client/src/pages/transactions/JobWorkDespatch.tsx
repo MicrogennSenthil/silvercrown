@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, ChevronDown, Loader2, Trash2, PencilLine, Printer, Eye, CheckCircle } from "lucide-react";
+import { Search, ChevronDown, Loader2, Trash2, PencilLine, Printer, Eye, CheckCircle, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
@@ -31,6 +31,7 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
 
   // ── Form state ───────────────────────────────────────────────────────────────
   const [editingId,      setEditingId]      = useState<string | null>(null);
+  const [isInvoiced,     setIsInvoiced]     = useState(false);
   const [voucherNo,      setVoucherNo]      = useState("");
   const [despatchDate,   setDespatchDate]   = useState(today());
   const [notes,          setNotes]          = useState("");
@@ -146,6 +147,7 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
       const data = await res.json();
 
       setEditingId(data.id);
+      setIsInvoiced(!!data.is_invoiced);
       setVoucherNo(data.voucher_no || "");
       setDespatchDate(data.despatch_date?.split("T")[0] || today());
       setNotes(data.notes || "");
@@ -359,8 +361,24 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
             <h2 className="text-base font-bold" style={{ color: SC.primary }}>
               {editingId ? "Edit Despatch" : "New Despatch"}
             </h2>
+            {isInvoiced && (
+              <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                <Lock size={11}/> Invoiced — Read Only
+              </span>
+            )}
           </div>
         </div>
+
+        {/* Invoiced lock banner */}
+        {isInvoiced && (
+          <div className="flex items-center gap-3 px-5 py-3 bg-amber-50 border-b border-amber-200">
+            <Lock size={16} className="text-amber-600 shrink-0"/>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">This despatch has been invoiced and cannot be amended.</p>
+              <p className="text-xs text-amber-600">An invoice has already been raised against this despatch. To make changes, first delete or cancel the associated invoice.</p>
+            </div>
+          </div>
+        )}
 
         <div className="p-5">
 
@@ -727,7 +745,7 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
           </div>
 
           <div className="flex items-center gap-3">
-            {editingId && (
+            {!isInvoiced && editingId && (
               <button
                 onClick={() => { if (confirm("Delete this despatch?")) delMut.mutate(); }}
                 disabled={delMut.isPending}
@@ -740,17 +758,19 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
               onClick={resetForm}
               className="px-6 py-2 rounded border border-gray-300 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
               data-testid="btn-cancel">
-              Cancel
+              {isInvoiced ? "Close" : "Cancel"}
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saveMut.isPending}
-              className="flex items-center gap-2 px-8 py-2 rounded text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-60"
-              style={{ background: SC.orange }}
-              data-testid="btn-save">
-              {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
-              Save
-            </button>
+            {!isInvoiced && (
+              <button
+                onClick={handleSave}
+                disabled={saveMut.isPending}
+                className="flex items-center gap-2 px-8 py-2 rounded text-white text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-60"
+                style={{ background: SC.orange }}
+                data-testid="btn-save">
+                {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+                Save
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -899,16 +919,31 @@ export default function JobWorkDespatch() {
                 <td className="px-5 py-2.5 text-gray-600 text-xs">{r.inward_voucher_no || <span className="text-gray-300">—</span>}</td>
                 <td className="px-5 py-2.5 text-gray-600 text-xs font-mono tracking-wide">{r.vehicle_no ? String(r.vehicle_no).toUpperCase() : <span className="text-gray-300">—</span>}</td>
                 <td className="px-5 py-2.5">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.status === "Saved" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
-                    {r.status || "Draft"}
-                  </span>
+                  {r.is_invoiced ? (
+                    <span className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 w-fit">
+                      <Lock size={10}/> Invoiced
+                    </span>
+                  ) : (
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.status === "Saved" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
+                      {r.status || "Draft"}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
-                  <button onClick={() => { setEditId(r.id); setView("form"); }}
-                    className="p-1.5 rounded hover:bg-blue-50 transition-colors" style={{ color: SC.primary }}
-                    data-testid={`btn-edit-${r.id}`}>
-                    <PencilLine size={14} />
-                  </button>
+                  {r.is_invoiced ? (
+                    <button onClick={() => { setEditId(r.id); setView("form"); }}
+                      className="p-1.5 rounded text-amber-500 hover:bg-amber-50 transition-colors"
+                      title="Invoiced — view only"
+                      data-testid={`btn-view-${r.id}`}>
+                      <Lock size={14} />
+                    </button>
+                  ) : (
+                    <button onClick={() => { setEditId(r.id); setView("form"); }}
+                      className="p-1.5 rounded hover:bg-blue-50 transition-colors" style={{ color: SC.primary }}
+                      data-testid={`btn-edit-${r.id}`}>
+                      <PencilLine size={14} />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
