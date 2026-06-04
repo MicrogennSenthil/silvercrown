@@ -788,7 +788,11 @@ function PoList({ onNew, onEdit }: { onNew: () => void; onEdit: (d: any) => void
                   <td className="px-4 py-3">{statusBadge(r.status)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => onEdit(r)} className="text-[#027fa5] hover:text-[#015f7a] p-1" data-testid={`btn-edit-${r.id}`}><PencilLine size={14}/></button>
+                      {!["Approved","Received","Partially Received","Closed","Amended"].includes(r.status) ? (
+                        <button onClick={() => onEdit(r)} className="text-[#027fa5] hover:text-[#015f7a] p-1" title="Edit" data-testid={`btn-edit-${r.id}`}><PencilLine size={14}/></button>
+                      ) : (
+                        <span className="p-1 text-gray-300 cursor-not-allowed" title="Cannot edit an approved PO"><PencilLine size={14}/></span>
+                      )}
                       <button onClick={() => delMut.mutate(r.id)} className="text-red-400 hover:text-red-600 p-1" data-testid={`btn-del-${r.id}`}><Trash2 size={14}/></button>
                     </div>
                   </td>

@@ -411,7 +411,7 @@ export default function PurchaseOrderApproval() {
                           <Check size={13}/>
                         </button>
                       )}
-                      {!["Approved","Rejected"].includes(po.status) && (
+                      {po.status !== "Rejected" && (
                         <button title="Reject" onClick={() => {
                           setSelected(new Set([po.id]));
                           setShowModal("reject");
@@ -421,7 +421,7 @@ export default function PurchaseOrderApproval() {
                           <X size={13}/>
                         </button>
                       )}
-                      {["Approved","Rejected"].includes(po.status) && (
+                      {po.status === "Rejected" && (
                         <button title="Reset to Draft" onClick={() => resetMut.mutate([po.id])}
                           className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 text-xs font-semibold"
                           data-testid={`btn-reset-${po.id}`}>
