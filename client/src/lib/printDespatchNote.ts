@@ -36,14 +36,14 @@ export function buildDespatchNoteHTML(doc: any): string {
       </tr>`);
     });
 
-    // Pad with empty rows to reach MIN_ROWS
+    // Pad with empty rows to reach MIN_ROWS — no horizontal lines, only column dividers
     const padCount = Math.max(0, MIN_ROWS - items.length);
     for (let i = 0; i < padCount; i++) {
       rows.push(`<tr style="height:18px">
-        <td style="border:1px solid #000;padding:3px 6px">&nbsp;</td>
-        <td style="border:1px solid #000;padding:3px 6px">&nbsp;</td>
-        <td style="border:1px solid #000;padding:3px 6px">&nbsp;</td>
-        <td style="border:1px solid #000;padding:3px 6px">&nbsp;</td>
+        <td style="border-left:1px solid #000;border-right:1px solid #000">&nbsp;</td>
+        <td style="border-left:1px solid #000;border-right:1px solid #000">&nbsp;</td>
+        <td style="border-left:1px solid #000;border-right:1px solid #000">&nbsp;</td>
+        <td style="border-left:1px solid #000;border-right:1px solid #000">&nbsp;</td>
       </tr>`);
     }
 
