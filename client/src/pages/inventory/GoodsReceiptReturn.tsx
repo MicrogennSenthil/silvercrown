@@ -53,16 +53,19 @@ function calcItem(it: GrrItem): GrrItem {
 
 export default function GoodsReceiptReturn() {
   const qc = useQueryClient();
-  const [mode, setMode]     = useState<"list"|"form">("list");
-  const [editId, setEditId] = useState<string|null>(null);
-  const [form, setForm]     = useState<GrrForm>(blankForm());
-  const [grrNo, setGrrNo]   = useState("");
-  const [search, setSearch] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [err, setErr]       = useState("");
+  const [mode, setMode]         = useState<"list"|"form">("list");
+  const [editId, setEditId]     = useState<string|null>(null);
+  const [form, setForm]         = useState<GrrForm>(blankForm());
+  const [grrNo, setGrrNo]       = useState("");
+  const [search, setSearch]     = useState("");
+  const [saving, setSaving]     = useState(false);
+  const [err, setErr]           = useState("");
+  const [filterStoreId, setFilterStoreId]     = useState("");
+  const [filterSupplierId, setFilterSupplierId] = useState("");
 
   const { data: grrs = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-returns"] });
   const { data: warehouses = [] }      = useQuery<any[]>({ queryKey: ["/api/stores"] });
+  const { data: suppliers = [] }       = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
   const { data: grns = [] }            = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: allProductsRaw = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allCategories = [] }   = useQuery<any[]>({ queryKey: ["/api/categories"] });
@@ -321,40 +324,81 @@ export default function GoodsReceiptReturn() {
         </div>
 
         {/* Right — GRN selector */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select GRN to Return Against</div>
-          <div className="overflow-y-auto max-h-40 border border-gray-100 rounded-lg">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Receipt No</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Receipt Date</th>
-                  <th className="px-3 py-2 text-left font-semibold text-gray-600">Supplier</th>
-                  <th className="px-3 py-2 text-center font-semibold text-gray-600">Select</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(grns as any[]).length === 0 ? (
-                  <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">No GRNs found</td></tr>
-                ) : (grns as any[]).map((grn: any) => {
-                  const sel = form.grn_id === grn.id;
-                  return (
-                    <tr key={grn.id} className={`border-b cursor-pointer ${sel ? "bg-[#e8f6fb]" : "hover:bg-gray-50"}`}
-                      onClick={() => selectGrn(grn)}>
-                      <td className="px-3 py-2 font-semibold" style={{ color: SC.primary }}>{grn.voucher_no}</td>
-                      <td className="px-3 py-2 text-gray-600">{grn.grn_date?.slice(0,10)}</td>
-                      <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]">{grn.supplier_name || "—"}</td>
-                      <td className="px-3 py-2 text-center">
-                        <div className={`inline-flex w-4 h-4 rounded border-2 items-center justify-center mx-auto ${sel ? "border-[#d74700] bg-[#d74700]" : "border-gray-300"}`}>
-                          {sel && <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-white fill-white"><path d="M1 5l3 3 5-5"/></svg>}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select GRN to Return Against</div>
+
+          {/* Store + Supplier filters */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-gray-500 font-medium block mb-1">Filter by Store</label>
+              <select value={filterStoreId} onChange={e => { setFilterStoreId(e.target.value); setFilterSupplierId(""); setForm(f => ({ ...f, grn_id: "", grn_no: "", grn_date: "", supplier_id: "", supplier_name: "", store_id: "", items: [] })); }}
+                className="w-full border border-gray-300 rounded px-2 py-2 text-xs outline-none focus:border-[#027fa5]"
+                data-testid="sel-filter-store">
+                <option value="">— All Stores —</option>
+                {(warehouses as any[]).map((w: any) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium block mb-1">Filter by Supplier</label>
+              <select value={filterSupplierId} onChange={e => { setFilterSupplierId(e.target.value); setForm(f => ({ ...f, grn_id: "", grn_no: "", grn_date: "", supplier_id: "", supplier_name: "", store_id: "", items: [] })); }}
+                className="w-full border border-gray-300 rounded px-2 py-2 text-xs outline-none focus:border-[#027fa5]"
+                data-testid="sel-filter-supplier">
+                <option value="">— All Suppliers —</option>
+                {(suppliers as any[]).map((s: any) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {/* GRN table — filtered by store + supplier */}
+          {(() => {
+            const filteredGrns = (grns as any[]).filter((g: any) => {
+              if (filterStoreId && g.store_id !== filterStoreId) return false;
+              if (filterSupplierId && g.supplier_id !== filterSupplierId) return false;
+              return true;
+            });
+            return (
+              <div className="overflow-y-auto max-h-36 border border-gray-100 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-gray-50 sticky top-0">
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Receipt No</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Date</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Supplier</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Store</th>
+                      <th className="px-3 py-2 text-center font-semibold text-gray-600">Select</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredGrns.length === 0 ? (
+                      <tr><td colSpan={5} className="px-3 py-5 text-center text-gray-400">
+                        {filterStoreId || filterSupplierId ? "No GRNs match the selected filters" : "No GRNs found"}
+                      </td></tr>
+                    ) : filteredGrns.map((grn: any) => {
+                      const sel = form.grn_id === grn.id;
+                      return (
+                        <tr key={grn.id} className={`border-b cursor-pointer ${sel ? "bg-[#e8f6fb]" : "hover:bg-gray-50"}`}
+                          onClick={() => selectGrn(grn)}>
+                          <td className="px-3 py-2 font-semibold" style={{ color: SC.primary }}>{grn.voucher_no}</td>
+                          <td className="px-3 py-2 text-gray-600">{grn.grn_date?.slice(0,10)}</td>
+                          <td className="px-3 py-2 text-gray-600 truncate max-w-[90px]">{grn.supplier_name || "—"}</td>
+                          <td className="px-3 py-2 text-gray-500 truncate max-w-[80px]">{grn.store_name || "—"}</td>
+                          <td className="px-3 py-2 text-center">
+                            <div className={`inline-flex w-4 h-4 rounded border-2 items-center justify-center mx-auto ${sel ? "border-[#d74700] bg-[#d74700]" : "border-gray-300"}`}>
+                              {sel && <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 text-white fill-white"><path d="M1 5l3 3 5-5"/></svg>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
