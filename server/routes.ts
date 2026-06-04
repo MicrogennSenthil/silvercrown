@@ -1175,6 +1175,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.delete("/api/products/:id", requireAuth, async (req, res) => { await storage.deleteProduct(req.params.id); res.json({ ok: true }); });
 
+  // POST /api/products/recalculate-stock — recompute current_stock for all products from transactions
+  app.post("/api/products/recalculate-stock", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`
+        UPDATE products p
+        SET current_stock = GREATEST(0,
+          COALESCE((
+            SELECT SUM(soi.opening_qty)
+            FROM store_opening_items soi
+            JOIN store_openings so ON so.id = soi.sop_id
+            WHERE so.status = 'Posted' AND LOWER(soi.item_code) = LOWER(p.code)
+          ), 0)
+          +
+          COALESCE((
+            SELECT SUM(grni.qty::numeric)
+            FROM goods_receipt_note_items grni
+            JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
+            WHERE COALESCE(grn.status,'') <> 'Cancelled'
+              AND LOWER(grni.item_code) = LOWER(p.code)
+          ), 0)
+          -
+          COALESCE((
+            SELECT SUM(sii.issued_qty::numeric)
+            FROM store_issue_indent_items sii
+            JOIN store_issue_indents si ON si.id = sii.sii_id
+            WHERE si.status = 'Posted' AND LOWER(sii.item_code) = LOWER(p.code)
+          ), 0)
+          -
+          COALESCE((
+            SELECT SUM(grri.return_qty::numeric)
+            FROM goods_receipt_return_items grri
+            JOIN goods_receipt_returns grr ON grr.id = grri.grr_id
+            WHERE grr.status = 'Posted' AND LOWER(grri.item_code) = LOWER(p.code)
+          ), 0)
+        )
+      `);
+      const counts = await pool.query(`SELECT COUNT(*) AS total, SUM(current_stock) AS total_stock FROM products`);
+      res.json({ ok: true, products_updated: counts.rows[0].total, total_stock: counts.rows[0].total_stock });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Machine Master
   app.get("/api/machines", requireAuth, async (req, res) => { res.json(await storage.listMachines()); });
   app.post("/api/machines", requireAuth, async (req, res) => {

@@ -96,7 +96,7 @@ export default function GoodsReceiptReturn() {
     const r = await fetch(`/api/goods-receipt-returns/${grr.id}`, { credentials: "include" });
     const data = await r.json();
     const stockMap: Record<string, number> = {};
-    (allProducts as any[]).forEach((p: any) => { stockMap[p.code] = p2(p.current_stock); });
+    (allProductsRaw as any[]).forEach((p: any) => { stockMap[p.code] = p2(p.current_stock); });
     setForm({
       return_date: data.return_date?.slice(0,10) || today(),
       store_id: data.store_id || "", supplier_id: data.supplier_id || "",
@@ -127,7 +127,7 @@ export default function GoodsReceiptReturn() {
       const r = await fetch(`/api/goods-receipt-notes/${grn.id}`, { credentials: "include" });
       const data = await r.json();
       const stockMap: Record<string, number> = {};
-      (allProducts as any[]).forEach((p: any) => { stockMap[p.code] = p2(p.current_stock); });
+      (allProductsRaw as any[]).forEach((p: any) => { stockMap[p.code] = p2(p.current_stock); });
       const items: GrrItem[] = (data.items || []).map((it: any, i: number) => {
         const liveStock = stockMap[it.item_code] ?? 0;
         const grnQty = p2(it.qty);
