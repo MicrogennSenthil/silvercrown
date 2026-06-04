@@ -92,6 +92,7 @@ interface SiiItem {
   batch_id?: string;
   batch_no?: string;
   batch_qty?: number;
+  expiry_date?: string;
 }
 interface LinkedSrn { srn_id: string; srn_no: string; srn_date: string; }
 interface SiiForm {
@@ -136,10 +137,8 @@ export default function StoreIssueIndent() {
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allSrns = [] }        = useQuery<any[]>({ queryKey: ["/api/store-request-notes"] });
-  const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
   // Live stock + SOP rate per item_code
   const { data: liveStockMap = {} }   = useQuery<Record<string, { stock: number; rate: number }>>({ queryKey: ["/api/item-stock-summary"] });
-  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
 
   // Merge inventory items + engineering products — normalise all to snake_case
   const products = [
@@ -201,6 +200,7 @@ export default function StoreIssueIndent() {
       sno: i + 1, item_code: it.item_code || "", item_name: it.item_name || "",
       stock: +it.stock || 0, issued_qty: +it.issued_qty || 0, unit: it.unit || "Nos",
       rate: +it.rate || 0, amount: +it.amount || 0, srn_id: it.srn_id || undefined,
+      batch_no: it.batch_no || "", expiry_date: it.expiry_date || "",
     }));
     setForm({
       issue_date: data.issue_date?.slice(0, 10) || today(),
@@ -222,21 +222,32 @@ export default function StoreIssueIndent() {
       try {
         const r = await fetch(`/api/store-request-notes/${srn.id}`, { credentials: "include" });
         const data = await r.json();
-        const newItems: SiiItem[] = (data.items || []).map((it: any, i: number) => ({
+        const newItems: SiiItem[] = (data.items || []).map((it: any) => ({
           sno: 0, item_code: it.item_code || "", item_name: it.item_name || "",
-          stock: (liveStockMap as Record<string, number>)[it.item_code] ?? (+it.stock || 0),
+          stock: (liveStockMap as any)[it.item_code]?.stock ?? (+it.stock || 0),
           issued_qty: +it.qty || 0, unit: it.unit || "Nos",
           rate: +it.rate || 0, amount: +(it.qty * it.rate) || 0, srn_id: srn.id,
+          batch_no: "", expiry_date: "",
         }));
+        let startIdx = 0;
         setForm(f => {
-          // Remove any existing items from this SRN, then append new
           const existing = f.items.filter(it => it.srn_id !== srn.id);
+          startIdx = existing.length;
           const merged = [...existing, ...newItems].map((it, i) => ({ ...it, sno: i + 1 }));
           return {
             ...f,
             linked_srns: [...f.linked_srns, { srn_id: srn.id, srn_no: srn.voucher_no, srn_date: srn.request_date?.slice(0, 10) || "" }],
             items: merged,
           };
+        });
+        // Fetch batches for each newly added item
+        newItems.forEach((item, idx) => {
+          if (item.item_code) {
+            fetch(`/api/item-batches?item_code=${encodeURIComponent(item.item_code)}`, { credentials: "include" })
+              .then(res2 => res2.json())
+              .then((batches: BatchOption[]) => setItemBatches(b => ({ ...b, [startIdx + idx]: batches })))
+              .catch(() => {});
+          }
         });
       } catch (e) { console.error(e); }
     } else {
@@ -294,7 +305,7 @@ export default function StoreIssueIndent() {
   function selectBatch(i: number, batch: BatchOption) {
     setForm(f => {
       const items = [...f.items];
-      items[i] = calcItem({ ...items[i], rate: batch.rate, batch_id: batch.id, batch_no: batch.batch_no || batch.voucher_no, batch_qty: batch.opening_qty });
+      items[i] = calcItem({ ...items[i], rate: batch.rate, batch_id: batch.id, batch_no: batch.batch_no || batch.voucher_no, batch_qty: batch.opening_qty, expiry_date: batch.expiry_date || "" });
       return { ...f, items };
     });
   }
@@ -566,7 +577,7 @@ export default function StoreIssueIndent() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b" style={{ background: "#e8f6fb" }}>
-                {["S.no", "Item Code", "Item Name", "Batch", "Stock", "Issued Qty", "Unit", "Rate ₹", "Amount ₹", ""].map(h => (
+                {["S.no", "Item Code", "Item Name", "Batch No", "Expiry", "Stock", "Issued Qty", "Unit", "Rate ₹", "Amount ₹", ""].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -574,7 +585,7 @@ export default function StoreIssueIndent() {
             <tbody>
               {form.items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-6 text-center text-gray-400 text-xs">
+                  <td colSpan={11} className="px-4 py-6 text-center text-gray-400 text-xs">
                     {isDirect ? 'Click \u201c+ Add Item\u201d to add materials' : "Select store requests above to load items"}
                   </td>
                 </tr>
@@ -617,24 +628,15 @@ export default function StoreIssueIndent() {
                     )}
                   </td>
 
-                  {/* Batch selector */}
+                  {/* Batch No selector */}
                   <td className="px-1 py-1">
                     {(() => {
                       const batches = itemBatches[i] ?? [];
                       if (batches.length === 0) {
                         return (
-                          <span className="text-gray-400 text-[10px] px-2">
-                            {it.batch_no ? it.batch_no : "—"}
+                          <span className="text-gray-500 text-[10px] px-2 font-medium">
+                            {it.batch_no || "—"}
                           </span>
-                        );
-                      }
-                      if (batches.length === 1) {
-                        const b = batches[0];
-                        return (
-                          <div className="text-[10px] text-gray-600 px-1 leading-tight">
-                            <div className="font-semibold text-[#027fa5]">{b.batch_no || b.voucher_no}</div>
-                            <div className="text-gray-400">Qty: {Number(b.opening_qty).toFixed(2)}</div>
-                          </div>
                         );
                       }
                       return (
@@ -649,12 +651,19 @@ export default function StoreIssueIndent() {
                           <option value="">— Select Batch —</option>
                           {batches.map((b: BatchOption) => (
                             <option key={b.id} value={b.id}>
-                              {b.batch_no || b.voucher_no} | Qty:{Number(b.opening_qty).toFixed(0)} | ₹{Number(b.rate).toFixed(2)}
+                              {b.batch_no || b.voucher_no}{b.expiry_date ? ` | Exp:${b.expiry_date}` : ""} | ₹{Number(b.rate).toFixed(2)}
                             </option>
                           ))}
                         </select>
                       );
                     })()}
+                  </td>
+
+                  {/* Expiry Date (auto-filled from batch selection) */}
+                  <td className="px-2 py-1 whitespace-nowrap">
+                    <span className={`text-[10px] font-medium ${it.expiry_date ? "text-orange-600" : "text-gray-400"}`}>
+                      {it.expiry_date || "—"}
+                    </span>
                   </td>
 
                   {/* Stock */}

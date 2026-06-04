@@ -6460,6 +6460,12 @@ Return ONLY valid JSON (no markdown, no explanation):
   });
 
   // ── Store Issue Indents ──────────────────────────────────────────────────────
+  {
+    const { pool } = await import("./db");
+    await pool.query(`ALTER TABLE store_issue_indent_items ADD COLUMN IF NOT EXISTS batch_no TEXT DEFAULT ''`).catch(() => {});
+    await pool.query(`ALTER TABLE store_issue_indent_items ADD COLUMN IF NOT EXISTS expiry_date TEXT DEFAULT ''`).catch(() => {});
+  }
+
   app.get("/api/store-issue-indents", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
@@ -6534,9 +6540,9 @@ Return ONLY valid JSON (no markdown, no explanation):
             b.issue_type||"Goods Request", b.status||"Draft", b.remark||"", +(b.total_qty||0), +(b.grand_total||0), (req as any).user?.id||null]);
         const hdr = hdrRes.rows[0];
         for (const it of (b.items||[])) {
-          await client.query(`INSERT INTO store_issue_indent_items(id,sii_id,sno,item_code,item_name,stock,issued_qty,unit,rate,amount,srn_id)
-            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-            [hdr.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.issued_qty||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0), it.srn_id||null]);
+          await client.query(`INSERT INTO store_issue_indent_items(id,sii_id,sno,item_code,item_name,stock,issued_qty,unit,rate,amount,srn_id,batch_no,expiry_date)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            [hdr.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.issued_qty||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0), it.srn_id||null, it.batch_no||"", it.expiry_date||""]);
         }
         for (const sr of (b.linked_srns||[])) {
           await client.query(`INSERT INTO store_issue_indent_srns(id,sii_id,srn_id,srn_no,srn_date)
@@ -6567,9 +6573,9 @@ Return ONLY valid JSON (no markdown, no explanation):
         await client.query(`DELETE FROM store_issue_indent_items WHERE sii_id=$1`, [req.params.id]);
         await client.query(`DELETE FROM store_issue_indent_srns WHERE sii_id=$1`, [req.params.id]);
         for (const it of (b.items||[])) {
-          await client.query(`INSERT INTO store_issue_indent_items(id,sii_id,sno,item_code,item_name,stock,issued_qty,unit,rate,amount,srn_id)
-            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-            [req.params.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.issued_qty||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0), it.srn_id||null]);
+          await client.query(`INSERT INTO store_issue_indent_items(id,sii_id,sno,item_code,item_name,stock,issued_qty,unit,rate,amount,srn_id,batch_no,expiry_date)
+            VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            [req.params.id, it.sno, it.item_code||"", it.item_name||"", +(it.stock||0), +(it.issued_qty||0), it.unit||"Nos", +(it.rate||0), +(it.amount||0), it.srn_id||null, it.batch_no||"", it.expiry_date||""]);
         }
         for (const sr of (b.linked_srns||[])) {
           await client.query(`INSERT INTO store_issue_indent_srns(id,sii_id,srn_id,srn_no,srn_date)
