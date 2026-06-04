@@ -10,7 +10,7 @@ const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0
 
 const EMPTY_FORM = {
   name: "", shortName: "",
-  address1: "", address2: "", city: "", state: "", gstStateCode: "",
+  address1: "", address2: "", city: "", pincode: "", state: "", gstStateCode: "",
   contactName: "", contactRole: "", email: "", telephone: "", websiteUrl: "",
   creditLimit: "", creditDays: "", termOfPayment: "",
   accountNo: "", accountHolderName: "", accountType: "", bankName: "", branchName: "", ifscCode: "",
@@ -310,6 +310,7 @@ function CustomerForm({ initial, onClose }: any) {
                 <Field label="Address 2" value={form.address2} onChange={f("address2")} />
                 <div className="flex gap-3">
                   <DropPlus label="City"  value={form.city}  onChange={handleCityChange}  options={cityOptions}  onPlus={() => setQuickAdd("city")}  className="flex-1" />
+                  <Field label="Pincode" value={form.pincode} onChange={f("pincode")} className="w-32" />
                   <DropPlus label="State" value={form.state} onChange={f("state")}       options={stateOptions} onPlus={() => setQuickAdd("state")} className="flex-1" />
                 </div>
                 <Field label="GST State Code" value={form.gstStateCode} onChange={f("gstStateCode")} className="w-40" />
