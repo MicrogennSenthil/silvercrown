@@ -439,12 +439,13 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                 <input value={partySearch}
                   onChange={e => { setPartySearch(e.target.value); setPartyId(""); setPartyDropOpen(true); }}
                   onFocus={() => setPartyDropOpen(true)}
+                  onBlur={() => setTimeout(() => setPartyDropOpen(false), 150)}
                   className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
                   data-testid="input-party-search" />
-                {partyDropOpen && partySearch && filteredParties.length > 0 && (
+                {partyDropOpen && filteredParties.length > 0 && (
                   <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
-                    {filteredParties.slice(0, 8).map((c: any) => (
-                      <button key={c.id} onClick={() => { setPartyId(c.id); setPartySearch(c.name); setPartyDropOpen(false); }}
+                    {filteredParties.slice(0, 20).map((c: any) => (
+                      <button key={c.id} onMouseDown={() => { setPartyId(c.id); setPartySearch(c.name); setPartyDropOpen(false); }}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa]"
                         data-testid={`opt-party-${c.id}`}>{c.name}</button>
                     ))}
