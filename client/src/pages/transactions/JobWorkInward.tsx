@@ -579,8 +579,8 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                 </button>
               </div>
               {partyDropOpen && filteredCustomers.length > 0 && (
-                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto mt-0.5">
-                  {filteredCustomers.slice(0, 8).map((s: any) => (
+                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-52 overflow-y-auto mt-0.5">
+                  {filteredCustomers.map((s: any) => (
                     <button key={s.id} onClick={() => { setPartyId(s.id); setPartySearch(s.name); setPartyDropOpen(false); }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] transition-colors"
                       data-testid={`opt-party-${s.id}`}>
