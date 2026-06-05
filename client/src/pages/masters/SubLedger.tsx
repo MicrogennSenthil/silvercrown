@@ -66,6 +66,7 @@ function LedgerForm({
 
   const { data: generalLedgersList = [] } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
   const { data: categoriesList = [] } = useQuery<any[]>({ queryKey: ["/api/ledger-categories"] });
+  const { data: allSubLedgers = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
 
   // Live account statement (edit mode only)
   const { data: stmtData, isLoading: stmtLoading } = useQuery<any>({
@@ -330,6 +331,26 @@ function LedgerForm({
                 className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm outline-none focus:border-[#027fa5]"
                 data-testid="input-ledger-name"
               />
+              {(() => {
+                const q = name.trim().toLowerCase();
+                if (q.length < 2) return null;
+                const matches = (allSubLedgers as any[]).filter(
+                  s => s.id !== item?.id && s.name?.toLowerCase().includes(q)
+                );
+                if (!matches.length) return null;
+                return (
+                  <div className="absolute top-full left-0 right-0 z-30 mt-0.5 bg-white border border-amber-300 rounded-lg shadow-lg overflow-hidden">
+                    <div className="px-3 py-1 bg-amber-50 border-b border-amber-200">
+                      <span className="text-xs font-semibold text-amber-700">⚠ Similar ledger names already exist</span>
+                    </div>
+                    <div className="max-h-28 overflow-y-auto">
+                      {matches.slice(0, 6).map((s: any) => (
+                        <div key={s.id} className="px-3 py-1.5 text-xs border-b last:border-0 border-gray-100 hover:bg-amber-50 font-medium text-gray-800">{s.name}</div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* General Ledger (Parent) */}

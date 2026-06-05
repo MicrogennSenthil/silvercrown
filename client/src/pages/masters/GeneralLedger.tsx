@@ -310,6 +310,7 @@ function AddGLPanel({ categoryId, onClose, onSaved }: { categoryId: string; onCl
   const [glType, setGlType] = useState("other");
   const [saving, setSaving] = useState(false);
   const { validate, hasError, clearError, showApiError } = useFormValidation();
+  const { data: allGLs = [] } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
 
   async function save() {
     if (!validate([{ key: "code", value: code, label: "Code" }, { key: "name", value: name, label: "Name" }])) return;
@@ -322,15 +323,36 @@ function AddGLPanel({ categoryId, onClose, onSaved }: { categoryId: string; onCl
     finally { setSaving(false); }
   }
 
+  const glNameMatches = (() => {
+    const q = name.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return (allGLs as any[]).filter(g => g.name?.toLowerCase().includes(q));
+  })();
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between pb-2 border-b">
         <div className="text-sm font-bold text-gray-800">Add General Ledger</div>
         <button onClick={onClose}><X size={16} className="text-gray-400 hover:text-gray-700"/></button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3" style={{ overflow: "visible" }}>
         <div>{label("Code",true)}<input value={code} onChange={e => { clearError("code"); setCode(e.target.value); }} className={inp(hasError("code") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-gl-code"/></div>
-        <div>{label("Name",true)}<input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-gl-name"/></div>
+        <div className="relative">
+          {label("Name",true)}
+          <input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-gl-name"/>
+          {glNameMatches.length > 0 && (
+            <div className="absolute top-full left-0 right-0 z-30 mt-0.5 bg-white border border-amber-300 rounded-lg shadow-lg overflow-hidden">
+              <div className="px-3 py-1 bg-amber-50 border-b border-amber-200">
+                <span className="text-xs font-semibold text-amber-700">⚠ Similar GL names already exist</span>
+              </div>
+              <div className="max-h-28 overflow-y-auto">
+                {glNameMatches.slice(0, 6).map((g: any) => (
+                  <div key={g.id} className="px-3 py-1.5 text-xs border-b last:border-0 border-gray-100 hover:bg-amber-50 font-medium text-gray-800">{g.name}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="space-y-0.5">
         {label("GL Type")}
@@ -361,6 +383,7 @@ function AddSLPanel({ glId, categoryId, generalLedgers, onClose, onSaved }: { gl
   const [obType, setObType] = useState("Credit");
   const [saving, setSaving] = useState(false);
   const { validate, hasError, clearError, showApiError } = useFormValidation();
+  const { data: allSLs = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
 
   async function save() {
     if (!validate([{ key: "code", value: code, label: "Code" }, { key: "name", value: name, label: "Name" }])) return;
@@ -378,15 +401,36 @@ function AddSLPanel({ glId, categoryId, generalLedgers, onClose, onSaved }: { gl
     finally { setSaving(false); }
   }
 
+  const slNameMatches = (() => {
+    const q = name.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return (allSLs as any[]).filter(s => s.name?.toLowerCase().includes(q));
+  })();
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between pb-2 border-b">
         <div className="text-sm font-bold text-gray-800">Add Sub-Ledger</div>
         <button onClick={onClose}><X size={16} className="text-gray-400 hover:text-gray-700"/></button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3" style={{ overflow: "visible" }}>
         <div>{label("Code",true)}<input value={code} onChange={e => { clearError("code"); setCode(e.target.value); }} className={inp(hasError("code") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-sl-code"/></div>
-        <div>{label("Name",true)}<input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-sl-name"/></div>
+        <div className="relative">
+          {label("Name",true)}
+          <input value={name} onChange={e => { clearError("name"); setName(e.target.value); }} className={inp(hasError("name") ? "border-red-400 bg-red-50/30" : "")} data-testid="input-new-sl-name"/>
+          {slNameMatches.length > 0 && (
+            <div className="absolute top-full left-0 right-0 z-30 mt-0.5 bg-white border border-amber-300 rounded-lg shadow-lg overflow-hidden">
+              <div className="px-3 py-1 bg-amber-50 border-b border-amber-200">
+                <span className="text-xs font-semibold text-amber-700">⚠ Similar ledger names already exist</span>
+              </div>
+              <div className="max-h-28 overflow-y-auto">
+                {slNameMatches.slice(0, 6).map((s: any) => (
+                  <div key={s.id} className="px-3 py-1.5 text-xs border-b last:border-0 border-gray-100 hover:bg-amber-50 font-medium text-gray-800">{s.name}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>{label("Opening Balance")}<input type="number" step="0.01" value={ob} onChange={e => setOb(e.target.value)} className={inp()}/></div>
