@@ -311,6 +311,17 @@ function SupplierForm({ initial, onClose }: any) {
                   <DropPlus label="State" value={form.state} onChange={f("state")}       options={stateOptions} onPlus={() => setQuickAdd("state")} className="flex-1" />
                 </div>
                 <Field label="GST State Code" value={form.gstStateCode} onChange={f("gstStateCode")} className="w-40" />
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="font-semibold text-gray-700 mb-3 text-sm">Tax Type</div>
+                  <div className="space-y-3">
+                    <SelectField label="GST Registered Type" value={form.gstRegisteredType} onChange={f("gstRegisteredType")} options={GST_TYPES} />
+                    <Field label="GSTIN" value={form.gstin} onChange={f("gstin")} />
+                    <div className="flex gap-3">
+                      <Field label="GSTIN Date" value={form.gstinDate} onChange={f("gstinDate")} type="date" className="flex-1" />
+                      <DropPlus label="GST State" value={form.gstState} onChange={f("gstState")} options={stateOptions} onPlus={() => setQuickAdd("state")} className="flex-1" />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
@@ -377,17 +388,6 @@ function SupplierForm({ initial, onClose }: any) {
 
         {tab === "other" && (
           <div className="flex gap-4">
-            <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
-              <div className="font-semibold text-gray-700 mb-4">Tax Type</div>
-              <div className="space-y-4">
-                <SelectField label="GST Registered Type" value={form.gstRegisteredType} onChange={f("gstRegisteredType")} options={GST_TYPES} />
-                <Field label="GSTIN" value={form.gstin} onChange={f("gstin")} />
-                <div className="flex gap-3">
-                  <Field label="GSTIN Date" value={form.gstinDate} onChange={f("gstinDate")} type="date" className="flex-1" />
-                  <DropPlus label="State" value={form.gstState} onChange={f("gstState")} options={stateOptions} onPlus={() => setQuickAdd("state")} className="flex-1" />
-                </div>
-              </div>
-            </div>
             <div className="flex-1 rounded-lg p-4" style={{ background: SC.bg }}>
               <div className="font-semibold text-gray-700 mb-4">Delivery</div>
               <div className="grid grid-cols-2 gap-4">
