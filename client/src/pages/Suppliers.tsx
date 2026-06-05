@@ -180,6 +180,7 @@ function SupplierForm({ initial, onClose }: any) {
   const { data: cities        = [] } = useQuery<any[]>({ queryKey: ["/api/cities"] });
   const { data: states        = [] } = useQuery<any[]>({ queryKey: ["/api/states"] });
   const { data: customers     = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: allSuppliers  = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
   const { data: contactRoles  = [] } = useQuery<any[]>({ queryKey: ["/api/contact-roles"] });
 
   const counterpartExists = (customers as any[]).some(
@@ -281,7 +282,33 @@ function SupplierForm({ initial, onClose }: any) {
 
       <div className="px-5 py-4">
         <div className="flex gap-4 mb-5">
-          <Field label="Company Name" value={form.name}      onChange={f("name")}      className="flex-1" error={hasError("name")} />
+          {/* Company Name with live duplicate hint */}
+          <div className="flex-1 relative">
+            <Field label="Company Name" value={form.name} onChange={f("name")} error={hasError("name")} />
+            {(() => {
+              const q = (form.name || "").trim().toLowerCase();
+              if (q.length < 2) return null;
+              const matches = (allSuppliers as any[]).filter(
+                s => s.id !== initial?.id && s.name?.toLowerCase().includes(q)
+              );
+              if (!matches.length) return null;
+              return (
+                <div className="absolute top-full left-0 right-0 z-30 mt-0.5 bg-white border border-amber-300 rounded-lg shadow-lg overflow-hidden">
+                  <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-amber-700">⚠ Similar supplier names already exist</span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto">
+                    {matches.slice(0, 8).map((s: any) => (
+                      <div key={s.id} className="flex items-center justify-between px-3 py-2 text-xs border-b last:border-0 border-gray-100 hover:bg-amber-50">
+                        <span className="font-medium text-gray-800">{s.name}</span>
+                        <span className="text-gray-400 ml-2">{s.city || ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
           <Field label="Short Name"   value={form.shortName} onChange={f("shortName")} className="w-56" />
         </div>
 
