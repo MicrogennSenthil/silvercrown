@@ -384,7 +384,7 @@ function SupplierForm({ initial, onClose }: any) {
                 <Field label="GSTIN" value={form.gstin} onChange={f("gstin")} />
                 <div className="flex gap-3">
                   <Field label="GSTIN Date" value={form.gstinDate} onChange={f("gstinDate")} type="date" className="flex-1" />
-                  <Field label="State"      value={form.gstState}  onChange={f("gstState")} className="flex-1" />
+                  <DropPlus label="State" value={form.gstState} onChange={f("gstState")} options={stateOptions} onPlus={() => setQuickAdd("state")} className="flex-1" />
                 </div>
               </div>
             </div>
