@@ -912,10 +912,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             {invoiceType === "direct_invoice" && (
               <>
                 <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
-                  style={{ gridTemplateColumns: "100px 90px 1fr 44px" }}>
+                  style={{ gridTemplateColumns: "100px 80px 1fr 1fr 44px" }}>
                   <div className="px-2 py-1.5">Inward No</div>
                   <div className="px-2 py-1.5">Date</div>
                   <div className="px-2 py-1.5">DC No</div>
+                  <div className="px-2 py-1.5">PO No</div>
                   <div className="px-2 py-1.5 text-center">✓</div>
                 </div>
                 <div className="max-h-28 overflow-y-auto">
@@ -932,10 +933,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                   {partyDirectInwards.map((inw: any) => (
                     <div key={inw.id}
                       className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
-                      style={{ gridTemplateColumns: "100px 90px 1fr 44px" }}>
+                      style={{ gridTemplateColumns: "100px 80px 1fr 1fr 44px" }}>
                       <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{inw.voucher_no}</div>
                       <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.inward_date)}</div>
                       <div className="px-2 py-1.5 text-xs text-gray-500">{inw.party_dc_no || "—"}</div>
+                      <div className="px-2 py-1.5 text-xs text-gray-700 font-medium">{inw.party_po_no || "—"}</div>
                       <div className="px-2 py-1.5 flex justify-center">
                         {loadingId === inw.id
                           ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
