@@ -28,6 +28,135 @@ function parseVehicle(s: string) {
   return { p1: clean.slice(0,2), p2: clean.slice(2,4), p3: clean.slice(4,6), p4: clean.slice(6) };
 }
 
+/* ── Inward Item Pick Modal (Direct Invoice) ───────────────────────── */
+function InwardItemPickModal({ inward, rawItems, isInterState, onConfirm, onCancel }: {
+  inward: any;
+  rawItems: any[];
+  isInterState: boolean;
+  onConfirm: (rows: any[]) => void;
+  onCancel: () => void;
+}) {
+  const [picks, setPicks] = useState<Record<string, { checked: boolean; qty: string }>>(
+    () => Object.fromEntries(rawItems.map(r => [r.id || r.inward_item_id || r._key || Math.random(), { checked: true, qty: String(parseFloat(r.qty_despatched || r.qty || 0)) }]))
+  );
+  const keys = rawItems.map((r, i) => r.id || r.inward_item_id || String(i));
+
+  function toggle(k: string) { setPicks(p => ({ ...p, [k]: { ...p[k], checked: !p[k].checked } })); }
+  function setQty(k: string, v: string) { setPicks(p => ({ ...p, [k]: { ...p[k], qty: v } })); }
+  function selectAll() { setPicks(p => Object.fromEntries(Object.entries(p).map(([k,v]) => [k, { ...v, checked: true }]))); }
+  function deselectAll() { setPicks(p => Object.fromEntries(Object.entries(p).map(([k,v]) => [k, { ...v, checked: false }]))); }
+
+  const selectedCount = Object.values(picks).filter(p => p.checked).length;
+
+  function confirm() {
+    const selected = rawItems.filter((_, i) => picks[keys[i]]?.checked)
+      .map((r, ri) => {
+        const k = keys[rawItems.indexOf(r)];
+        const qty = parseFloat(picks[k]?.qty || 0) || 0;
+        const rate = parseFloat(r.rate || 0);
+        const taxable = qty * rate;
+        const cgstR = parseFloat(r.cgst_rate || 0);
+        const sgstR = parseFloat(r.sgst_rate || 0);
+        const igstR = parseFloat(r.igst_rate || 0) || (cgstR + sgstR);
+        return {
+          despatch_id: null, inward_id: r.inward_id || null,
+          inward_item_id: r.inward_item_id || r.id || null,
+          item_id: r.item_id || null, item_code: r.item_code || "",
+          item_name: r.item_name || "", unit: r.unit || "", process: r.process || "",
+          hsn: r.hsn || "", qty_despatched: qty, rate,
+          amount: taxable, po_no: r.party_po_no || "",
+          party_dc: r.party_dc_no || "", work_order_no: r.work_order_no || "",
+          despatch_voucher_no: r.despatch_voucher_no || "",
+          inward_voucher_no: r.inward_voucher_no || "",
+          no_of_cover: 0, packages: 0, cgst_rate: cgstR, sgst_rate: sgstR, igst_rate: igstR,
+          cgst_amt: isInterState ? 0 : taxable * cgstR / 100,
+          sgst_amt: isInterState ? 0 : taxable * sgstR / 100,
+          igst_amt: isInterState ? taxable * igstR / 100 : 0,
+        };
+      });
+    onConfirm(selected);
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.55)", fontFamily: "Source Sans Pro, sans-serif" }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col" style={{ maxHeight: "85vh" }}>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-gray-800 text-sm">Select Items to Invoice</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Inward <span className="font-semibold text-gray-600">{inward.voucher_no}</span>
+              {inward.party_dc_no ? ` · DC ${inward.party_dc_no}` : ""}
+              {inward.inward_date ? ` · ${fmtDate(inward.inward_date)}` : ""}
+            </p>
+          </div>
+          <button onClick={onCancel} className="p-1.5 rounded hover:bg-gray-100 text-gray-400"><X size={16}/></button>
+        </div>
+
+        <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-4">
+          <span className="text-xs text-gray-500 font-medium">{selectedCount} of {rawItems.length} selected</span>
+          <button onClick={selectAll} className="text-xs text-[#027fa5] font-semibold hover:underline">All</button>
+          <button onClick={deselectAll} className="text-xs text-gray-400 font-semibold hover:underline">None</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ background: "#d2f1fa" }}>
+                <th className="px-3 py-2 w-8 text-center">✓</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">#</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">Item</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700">Process</th>
+                <th className="px-3 py-2 text-right font-semibold text-gray-700 w-28">Inward Qty</th>
+                <th className="px-3 py-2 text-right font-semibold text-gray-700 w-32">Bill Qty</th>
+                <th className="px-3 py-2 text-left font-semibold text-gray-700 w-16">Unit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rawItems.map((r, i) => {
+                const k = keys[i];
+                const pick = picks[k] || { checked: false, qty: "0" };
+                const inwQty = parseFloat(r.qty_despatched || r.qty || 0);
+                return (
+                  <tr key={k} className={`border-t border-gray-50 ${!pick.checked ? "opacity-50 bg-gray-50/40" : ""}`}>
+                    <td className="px-3 py-2 text-center">
+                      <input type="checkbox" className="accent-orange-600 cursor-pointer w-4 h-4"
+                        checked={pick.checked} onChange={() => toggle(k)} />
+                    </td>
+                    <td className="px-3 py-2 text-gray-400">{i + 1}</td>
+                    <td className="px-3 py-2">
+                      <div className="font-medium text-gray-800">{r.item_name || r.item_code || "—"}</div>
+                      {r.item_code && r.item_name && <div className="text-gray-400 font-mono text-[10px]">{r.item_code}</div>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-600">{r.process || "—"}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-gray-700">{inwQty.toLocaleString("en-IN")}</td>
+                    <td className="px-3 py-2">
+                      <input type="number" min={0} step="0.001"
+                        value={pick.qty} onChange={e => setQty(k, e.target.value)}
+                        disabled={!pick.checked}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right outline-none focus:border-[#027fa5] disabled:bg-gray-100" />
+                    </td>
+                    <td className="px-3 py-2 text-gray-600">{r.unit || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-3">
+          <button onClick={onCancel} className="px-5 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button onClick={confirm} disabled={selectedCount === 0}
+            className="px-6 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: "#027fa5" }} data-testid="btn-pick-items-confirm">
+            Add {selectedCount > 0 ? `${selectedCount} Item${selectedCount > 1 ? "s" : ""}` : "Items"} to Invoice
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 /* ── Invoice Print Dialog ──────────────────────────────────────────── */
 function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; isNew: boolean; onDone: () => void }) {
   const [mode,    setMode]    = useState<"pick" | "einvoice">("pick");
@@ -185,6 +314,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [directSearch, setDirectSearch] = useState<Record<number, string>>({});
   const [directDrop,   setDirectDrop]   = useState<number | null>(null);
   const [dropPos,      setDropPos]      = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pendingInwardPick, setPendingInwardPick] = useState<{ inward: any; rawItems: any[] } | null>(null);
 
   // Charges tab
   const [charges,      setCharges]      = useState<any[]>([{ subledger_id: "", charge_name: "", amount: "" }]);
@@ -285,16 +415,23 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           : `/api/job-work-inward/${record.id}/direct-items-for-invoice`;
         const res = await fetch(endpoint, { credentials: "include" });
         const rows: any[] = await res.json();
+
+        if (!isDespatchMode) {
+          // Direct Invoice: show item-pick modal so user can select items & adjust qty
+          setPendingInwardPick({ inward: record, rawItems: rows });
+          setLoadingId(null);
+          return;
+        }
+
         const newItems = rows.map(r => {
           const qty     = parseFloat(r.qty_despatched || 0);
           const rate    = parseFloat(r.rate || 0);
           const taxable = qty * rate;
           const cgstR   = parseFloat(r.cgst_rate || 0);
           const sgstR   = parseFloat(r.sgst_rate || 0);
-          // igst_rate fallback: if 0, derive from cgst+sgst (standard inter-state rule)
           const igstR   = parseFloat(r.igst_rate || 0) || (cgstR + sgstR);
           return {
-            despatch_id:         isDespatchMode ? record.id : null,
+            despatch_id:         record.id,
             inward_id:           r.inward_id || null,
             inward_item_id:      r.inward_item_id || r.id || null,
             item_id:             r.item_id || null,
@@ -321,11 +458,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             igst_amt:            isInterState ? taxable * igstR / 100 : 0,
           };
         });
-        // Remove previous items for this record then add new ones
         setItems(prev => [
-          ...prev.filter(it => isDespatchMode
-            ? it.despatch_id !== record.id
-            : it.inward_id !== record.id),
+          ...prev.filter(it => it.despatch_id !== record.id),
           ...newItems,
         ]);
         // Auto-fill vehicle from despatch record
@@ -439,6 +573,24 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     };
   }
   function addDirectRow() { setItems(prev => [...prev, newDirectRow()]); }
+
+  function confirmInwardPick(confirmedRows: any[]) {
+    const inwardId = pendingInwardPick?.inward?.id;
+    setItems(prev => [
+      ...prev.filter(it => it.inward_id !== inwardId),
+      ...confirmedRows,
+    ]);
+    setPendingInwardPick(null);
+  }
+
+  function cancelInwardPick() {
+    const inwardId = pendingInwardPick?.inward?.id;
+    if (inwardId) {
+      setCheckedIds(prev => { const n = new Set(prev); n.delete(inwardId); return n; });
+      setItems(prev => prev.filter(it => it.inward_id !== inwardId));
+    }
+    setPendingInwardPick(null);
+  }
 
   function selectDirectItem(realIdx: number, product: any) {
     // Products schema (Drizzle camelCase):
@@ -559,6 +711,17 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // ── Shared header + panel layout ──────────────────────────────────────────────
   return (
     <div style={{ background: SC.bg, minHeight: "100vh", padding: "24px" }}>
+      {/* Inward item-pick modal (Direct Invoice) */}
+      {pendingInwardPick && (
+        <InwardItemPickModal
+          inward={pendingInwardPick.inward}
+          rawItems={pendingInwardPick.rawItems}
+          isInterState={isInterState}
+          onConfirm={confirmInwardPick}
+          onCancel={cancelInwardPick}
+        />
+      )}
+
       {/* Print dialog (shown after save) */}
       {printDialogState && (
         <InvoicePrintDialog
@@ -986,7 +1149,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                               onChange={e => updateItem(realIdx, "packages", parseInt(e.target.value || "0"))} />
                           </td>
                           <td className="px-2 py-1 text-right font-semibold">
-                            {isManual
+                            {(isManual || invoiceType === "direct_invoice")
                               ? <input type="number" min={0} step="0.001"
                                   data-testid={`input-qty-${idx}`}
                                   className="border rounded px-1 py-0.5 text-xs text-right w-20"
