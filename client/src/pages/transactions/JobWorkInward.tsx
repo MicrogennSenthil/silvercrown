@@ -453,7 +453,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     }
     setItems(prev => prev.map(r => r._key === rowKey ? {
       ...r, item_id: item.id, item_code: item.code, item_name: item.name,
-      unit: (item.uom || r.unit || "").toUpperCase(), hsn: item.hsn_code || r.hsn,
+      unit: (item.uom || r.unit || "").toUpperCase(), hsn: item.hsnCode || item.hsn_code || r.hsn,
     } : r));
     setItemSearch(prev => ({ ...prev, [rowKey]: item.name }));
     setItemDropOpen(null);
@@ -483,7 +483,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
           qty: String(it.qty || ""),
           unit: it.unit || match?.uom || "",
           process: it.process || "",
-          hsn: it.hsn || match?.hsn_code || "",
+          hsn: it.hsn || match?.hsnCode || match?.hsn_code || "",
           remark: it.remark || "",
         };
       }));
@@ -763,7 +763,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                             const val = e.target.value;
                             updateRow(row._key, "hsn", val);
                             if (val.length >= 4) {
-                              const match = storeItems.find((s: any) => s.hsn_code && s.hsn_code.trim() === val.trim());
+                              const match = storeItems.find((s: any) => (s.hsnCode || s.hsn_code) && (s.hsnCode || s.hsn_code).trim() === val.trim());
                               if (match) {
                                 setItems(prev => prev.map(r => r._key === row._key ? {
                                   ...r,
