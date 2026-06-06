@@ -2482,10 +2482,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const base64 = imageData.toString("base64");
       const mimeType = (req as any).file?.mimetype || "image/jpeg";
 
-      const prompt = `You are an OCR assistant for an Indian manufacturing ERP. Extract data from this Delivery Challan / DC image.
+      const prompt = `You are an OCR assistant for an Indian manufacturing ERP called Silver Crown Metal Coatings (also known as Silver Crown Metals). Extract data from this Delivery Challan / DC image.
+
+IMPORTANT: This is an INWARD entry — goods are being received BY Silver Crown Metal Coatings FROM a customer/party.
+- "partyName" must be the NAME OF THE SENDER (the customer or company who issued/sent this DC to Silver Crown). Do NOT put "Silver Crown" or "Silver Crown Metal Coatings" or "Silver Crown Metals" as the partyName — that is always the receiver, never the sender.
+- If the DC shows "From: ABC Company" and "To: Silver Crown Metal Coatings", then partyName = "ABC Company".
+
 Return ONLY valid JSON with exactly this structure (no markdown, no explanation):
 {
-  "partyName": "string",
+  "partyName": "string — the sender/customer who issued this DC (never Silver Crown)",
   "dcNo": "string",
   "dcDate": "YYYY-MM-DD or empty string",
   "deliveryDate": "YYYY-MM-DD or empty string",
