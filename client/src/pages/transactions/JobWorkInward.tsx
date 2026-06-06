@@ -340,6 +340,228 @@ function UploadScanModal({ onExtracted, onClose }: { onExtracted: (data: any) =>
   );
 }
 
+// ── Scan Item Verification Modal ─────────────────────────────────────────────
+type PendingVerifyItem = {
+  _key: string;
+  aiName: string;
+  item_id: string;
+  item_code: string;
+  item_name: string;
+  qty: string;
+  unit: string;
+  hsn: string;
+  process: string;
+  remark: string;
+};
+
+function ScanItemVerifyModal({
+  pendingData, storeItems, customers, onConfirm, onCancel,
+}: {
+  pendingData: any;
+  storeItems: any[];
+  customers: any[];
+  onConfirm: (result: { partyId: string; partyName: string; dcNo: string; dcDate: string; deliveryDate: string; vehicleNo: string; items: PendingVerifyItem[] }) => void;
+  onCancel: () => void;
+}) {
+  const [rows, setRows] = useState<PendingVerifyItem[]>(() =>
+    (pendingData.items || []).map((it: any) => {
+      const match = storeItems.find((s: any) =>
+        (it.itemCode && s.code?.toLowerCase() === it.itemCode?.toLowerCase()) ||
+        (it.itemName && s.name?.toLowerCase() === it.itemName?.toLowerCase())
+      );
+      return {
+        _key: crypto.randomUUID(),
+        aiName: it.itemName || it.itemCode || "",
+        item_id: match?.id || "",
+        item_code: it.itemCode || match?.code || "",
+        item_name: it.itemName || match?.name || "",
+        qty: String(it.qty || ""),
+        unit: (it.unit || match?.uom || "").toUpperCase(),
+        hsn: it.hsn || match?.hsnCode || match?.hsn_code || "",
+        process: it.process || "",
+        remark: it.remark || "",
+      };
+    })
+  );
+
+  const [partyName, setPartyName] = useState(pendingData.partyName || "");
+  const [partyId, setPartyId] = useState(() => {
+    if (!pendingData.partyName) return "";
+    const m = customers.find((c: any) => c.name.toLowerCase().includes((pendingData.partyName || "").toLowerCase()));
+    return m?.id || "";
+  });
+  const [partyDropOpen, setPartyDropOpen] = useState(false);
+  const [itemSearch, setItemSearch] = useState<Record<string, string>>({});
+  const [itemDropOpen, setItemDropOpen] = useState<string | null>(null);
+
+  function updateRow(key: string, field: keyof PendingVerifyItem, val: string) {
+    setRows(prev => prev.map(r => r._key === key ? { ...r, [field]: val } : r));
+  }
+
+  function selectMasterItem(rowKey: string, item: any) {
+    setRows(prev => prev.map(r => r._key === rowKey ? {
+      ...r, item_id: item.id, item_code: item.code, item_name: item.name,
+      unit: (item.uom || r.unit || "").toUpperCase(),
+      hsn: item.hsnCode || item.hsn_code || r.hsn,
+    } : r));
+    setItemSearch(prev => ({ ...prev, [rowKey]: item.name }));
+    setItemDropOpen(null);
+  }
+
+  const filteredParties = customers.filter((c: any) =>
+    !partyName || c.name.toLowerCase().includes(partyName.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.55)", fontFamily: "Source Sans Pro, sans-serif" }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 flex flex-col" style={{ maxHeight: "90vh" }}>
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-gray-800 text-base">Verify Scanned Items</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Review and correct AI-extracted data before filling the inward grid</p>
+          </div>
+          <button onClick={onCancel} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700"><X size={18}/></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          {/* Party + header info */}
+          <div className="flex gap-4 items-end flex-wrap">
+            <div className="relative" style={{ minWidth: 260 }}>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Customer Name <span className="text-amber-500">(AI detected — verify)</span>
+              </label>
+              <input
+                value={partyName}
+                onChange={e => { setPartyName(e.target.value); setPartyId(""); setPartyDropOpen(true); }}
+                onFocus={() => setPartyDropOpen(true)}
+                onBlur={() => setTimeout(() => setPartyDropOpen(false), 150)}
+                className="w-full border border-gray-300 rounded px-3 h-[34px] text-sm outline-none focus:border-[#027fa5]"
+              />
+              {partyDropOpen && filteredParties.length > 0 && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-36 overflow-y-auto mt-0.5">
+                  {filteredParties.map((c: any) => (
+                    <button key={c.id} onMouseDown={() => { setPartyId(c.id); setPartyName(c.name); setPartyDropOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa]">{c.name}</button>
+                  ))}
+                </div>
+              )}
+              {partyId && <span className="absolute top-0 right-0 text-xs text-green-600 font-semibold">✓ Matched</span>}
+            </div>
+            <div className="text-xs text-gray-500 pb-1.5 flex gap-4">
+              {pendingData.dcNo && <span>DC No: <span className="font-semibold text-gray-700">{pendingData.dcNo}</span></span>}
+              {pendingData.dcDate && <span>Date: <span className="font-semibold text-gray-700">{pendingData.dcDate}</span></span>}
+              {pendingData.vehicleNo && <span>Vehicle: <span className="font-semibold text-gray-700">{pendingData.vehicleNo}</span></span>}
+            </div>
+          </div>
+
+          {/* Items table */}
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">
+              Items ({rows.length}) &nbsp;<span className="font-normal text-gray-400">— Select from item master to link. Unmatched items will be auto-created on save.</span>
+            </div>
+            <div className="border border-gray-200 rounded-lg overflow-visible">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: "#d2f1fa" }}>
+                    <th className="px-2 py-2.5 text-left font-semibold text-gray-700 w-8">#</th>
+                    <th className="px-2 py-2.5 text-left font-semibold text-gray-700 w-44">AI Extracted</th>
+                    <th className="px-2 py-2.5 text-left font-semibold text-gray-700">Item Master Match</th>
+                    <th className="px-2 py-2.5 text-left font-semibold text-gray-700 w-20">Qty</th>
+                    <th className="px-2 py-2.5 text-left font-semibold text-gray-700 w-20">Unit</th>
+                    <th className="px-2 py-2.5 text-left font-semibold text-gray-700 w-24">HSN</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, i) => {
+                    const isMatched = !!row.item_id;
+                    const filteredItems = storeItems.filter((s: any) => {
+                      const q = (itemSearch[row._key] !== undefined ? itemSearch[row._key] : row.item_name).toLowerCase();
+                      return !q || s.name?.toLowerCase().includes(q) || s.code?.toLowerCase().includes(q);
+                    });
+                    return (
+                      <tr key={row._key} className={`border-t border-gray-100 ${!isMatched ? "bg-amber-50/40" : ""}`}>
+                        <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
+                        <td className="px-2 py-1.5 text-gray-500 max-w-[160px]">
+                          <span className="block truncate" title={row.aiName}>{row.aiName || "—"}</span>
+                        </td>
+                        <td className="px-2 py-1.5 relative">
+                          <div className="flex items-center gap-1">
+                            {isMatched
+                              ? <CheckCircle2 size={11} className="text-green-500 shrink-0"/>
+                              : <AlertCircle size={11} className="text-amber-500 shrink-0"/>}
+                            <input
+                              value={itemSearch[row._key] !== undefined ? itemSearch[row._key] : row.item_name}
+                              onChange={e => {
+                                setItemSearch(prev => ({ ...prev, [row._key]: e.target.value }));
+                                updateRow(row._key, "item_name", e.target.value);
+                                updateRow(row._key, "item_id", "");
+                                setItemDropOpen(row._key);
+                              }}
+                              onFocus={() => setItemDropOpen(row._key)}
+                              onBlur={() => setTimeout(() => setItemDropOpen(null), 150)}
+                              placeholder="Select or type item..."
+                              className="flex-1 border border-gray-200 rounded px-2 h-7 text-xs outline-none focus:border-[#027fa5]"
+                            />
+                          </div>
+                          {itemDropOpen === row._key && filteredItems.length > 0 && (
+                            <div className="absolute top-full left-2 right-2 bg-white border border-gray-200 rounded shadow-lg z-40 max-h-32 overflow-y-auto mt-0.5">
+                              {filteredItems.slice(0, 10).map((s: any) => (
+                                <button key={s.id} onMouseDown={() => selectMasterItem(row._key, s)}
+                                  className="w-full text-left px-2 py-1.5 text-xs hover:bg-[#d2f1fa] flex justify-between gap-2">
+                                  <span className="truncate">{s.name}</span>
+                                  <span className="text-gray-400 shrink-0">{s.code}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" value={row.qty} onChange={e => updateRow(row._key, "qty", e.target.value)}
+                            className="w-full border border-gray-200 rounded px-2 h-7 text-xs outline-none focus:border-[#027fa5]"/>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={row.unit} onChange={e => updateRow(row._key, "unit", e.target.value.toUpperCase())}
+                            className="w-full border border-gray-200 rounded px-2 h-7 text-xs outline-none focus:border-[#027fa5] uppercase"/>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={row.hsn} onChange={e => updateRow(row._key, "hsn", e.target.value)}
+                            className="w-full border border-gray-200 rounded px-2 h-7 text-xs outline-none focus:border-[#027fa5]"/>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {rows.some(r => !r.item_id) && (
+              <div className="mt-2 flex items-center gap-1.5 text-amber-600 text-xs">
+                <AlertCircle size={12}/>
+                <span>Highlighted rows have no item master match — they will be created as new items on save.</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+          <button onClick={onCancel}
+            className="px-5 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm({ partyId, partyName, dcNo: pendingData.dcNo || "", dcDate: pendingData.dcDate || "", deliveryDate: pendingData.deliveryDate || "", vehicleNo: pendingData.vehicleNo || "", items: rows })}
+            className="px-6 py-2 rounded text-sm font-semibold text-white"
+            style={{ background: SC.primary }}
+            data-testid="btn-verify-confirm">
+            Confirm &amp; Fill Grid
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Item Row ────────────────────────────────────────────────────────────────
 type ItemRow = {
   _key: string;
@@ -404,6 +626,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   );
 
   const [showScan, setShowScan] = useState(false);
+  const [pendingScannedData, setPendingScannedData] = useState<any | null>(null);
   const [quickItem, setQuickItem] = useState<{ idx: number; name: string } | null>(null);
   const { toast } = useToast();
   const [aiSuccess, setAiSuccess] = useState(false);
@@ -460,34 +683,36 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   }
 
   function onExtracted(data: any) {
+    // Show verification modal instead of directly filling the grid
+    setPendingScannedData(data);
+  }
+
+  function confirmScannedData(result: { partyId: string; partyName: string; dcNo: string; dcDate: string; deliveryDate: string; vehicleNo: string; items: any[] }) {
     setAiSuccess(true);
     setTimeout(() => setAiSuccess(false), 3000);
-    // Party
-    if (data.partyName) {
-      setPartySearch(data.partyName);
-      const match = customers.find((s: any) => s.name.toLowerCase().includes(data.partyName.toLowerCase()));
-      if (match) setPartyId(match.id);
+    if (result.partyName) {
+      setPartySearch(result.partyName);
+      setPartyId(result.partyId || "");
     }
-    if (data.dcNo) setPartyDcNo(data.dcNo);
-    if (data.dcDate) setPartyDcDate(data.dcDate);
-    if (data.deliveryDate) setDeliveryDate(data.deliveryDate);
-    if (data.vehicleNo) setVehicleNo(String(data.vehicleNo).toUpperCase());
-    if (data.items?.length) {
-      setItems(data.items.map((it: any) => {
-        const match = storeItems.find((s: any) => s.code?.toLowerCase() === it.itemCode?.toLowerCase() || s.name?.toLowerCase() === it.itemName?.toLowerCase());
-        return {
-          _key: crypto.randomUUID(),
-          item_id: match?.id || "",
-          item_code: it.itemCode || match?.code || "",
-          item_name: it.itemName || match?.name || "",
-          qty: String(it.qty || ""),
-          unit: it.unit || match?.uom || "",
-          process: it.process || "",
-          hsn: it.hsn || match?.hsnCode || match?.hsn_code || "",
-          remark: it.remark || "",
-        };
-      }));
+    if (result.dcNo) setPartyDcNo(result.dcNo);
+    if (result.dcDate) setPartyDcDate(result.dcDate);
+    if (result.deliveryDate) setDeliveryDate(result.deliveryDate);
+    if (result.vehicleNo) setVehicleNo(result.vehicleNo.toUpperCase());
+    if (result.items?.length) {
+      setItems(result.items.map((it: any) => ({
+        _key: crypto.randomUUID(),
+        item_id: it.item_id || "",
+        item_code: it.item_code || "",
+        item_name: it.item_name || "",
+        qty: String(it.qty || ""),
+        unit: (it.unit || "").toUpperCase(),
+        process: it.process || "",
+        process_id: it.process_id || "",
+        hsn: it.hsn || "",
+        remark: it.remark || "",
+      })));
     }
+    setPendingScannedData(null);
   }
 
   const saveMut = useMutation({
@@ -521,6 +746,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     onSuccess: (data) => {
       if (!isEdit && data.voucher_no) setInwardNo(data.voucher_no);
       qc.invalidateQueries({ queryKey: ["/api/job-work-inward"] });
+      qc.invalidateQueries({ queryKey: ["/api/products"] });
       onBack();
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
@@ -847,6 +1073,15 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
       {/* Modals */}
       {showScan && <UploadScanModal onExtracted={onExtracted} onClose={() => setShowScan(false)} />}
+      {pendingScannedData && (
+        <ScanItemVerifyModal
+          pendingData={pendingScannedData}
+          storeItems={storeItems}
+          customers={customers as any[]}
+          onConfirm={confirmScannedData}
+          onCancel={() => setPendingScannedData(null)}
+        />
+      )}
       {quickParty !== null && (
         <QuickAddPartyModal
           defaultName={quickParty}
