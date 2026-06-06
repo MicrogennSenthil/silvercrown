@@ -687,12 +687,32 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     setPendingScannedData(data);
   }
 
-  function confirmScannedData(result: { partyId: string; partyName: string; dcNo: string; dcDate: string; deliveryDate: string; vehicleNo: string; items: any[] }) {
+  async function confirmScannedData(result: { partyId: string; partyName: string; dcNo: string; dcDate: string; deliveryDate: string; vehicleNo: string; items: any[] }) {
+    let resolvedPartyId = result.partyId || "";
+    const name = (result.partyName || "").trim();
+
+    // Auto-create customer + ledger if party name provided but no master match
+    if (name && !resolvedPartyId) {
+      try {
+        const res = await fetch("/api/customers", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        if (res.ok) {
+          const created = await res.json();
+          resolvedPartyId = created.id || "";
+          qc.invalidateQueries({ queryKey: ["/api/customers"] });
+          toast({ title: `Customer auto-created: ${name}`, description: "Sub-ledger also created under Sundry Debtors." });
+        }
+      } catch { /* fallback: inward save will resolve via party_name_manual */ }
+    }
+
     setAiSuccess(true);
     setTimeout(() => setAiSuccess(false), 3000);
-    if (result.partyName) {
-      setPartySearch(result.partyName);
-      setPartyId(result.partyId || "");
+    if (name) {
+      setPartySearch(name);
+      setPartyId(resolvedPartyId);
     }
     if (result.dcNo) setPartyDcNo(result.dcNo);
     if (result.dcDate) setPartyDcDate(result.dcDate);
