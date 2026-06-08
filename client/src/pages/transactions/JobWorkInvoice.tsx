@@ -666,6 +666,39 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   async function handleSave() {
     setSaveError("");
     setSaveOk(false);
+
+    // ── Validation ─────────────────────────────────────────────────────────────
+    if (!partySearch.trim()) {
+      setSaveError("Party name is required. Please select or enter a party.");
+      return;
+    }
+    const namedItems = items.filter(it => it.item_name?.trim());
+    if (!namedItems.length) {
+      setSaveError("Please add at least one item before saving the invoice.");
+      return;
+    }
+    for (const it of namedItems) {
+      const qty  = parseFloat(it.qty_despatched ?? 0);
+      const rate = parseFloat(it.rate ?? 0);
+      const cgst = parseFloat(it.cgst_rate ?? 0);
+      const sgst = parseFloat(it.sgst_rate ?? 0);
+      const igst = parseFloat(it.igst_rate ?? 0);
+      if (!(qty > 0)) {
+        setSaveError(`Item "${it.item_name}" has zero quantity. Please enter a valid quantity.`);
+        return;
+      }
+      if (!(rate > 0)) {
+        setSaveError(`Item "${it.item_name}" has no rate. Please enter the rate.`);
+        return;
+      }
+      const gstMissing = isInterState ? !(igst > 0) : !(cgst > 0 && sgst > 0);
+      if (gstMissing) {
+        setSaveError(`Item "${it.item_name}" is missing ${isInterState ? "IGST" : "GST"} rate. Please set the tax percentage.`);
+        return;
+      }
+    }
+    // ── End Validation ─────────────────────────────────────────────────────────
+
     const validCharges = charges.filter(c => c.charge_name?.trim());
     const vehicleNo = [vehP1, vehP2, vehP3, vehP4].join("").toUpperCase();
     const body = {

@@ -272,6 +272,28 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
     const activeItems = items.filter(it => parseFloat(it.qty || 0) > 0);
     if (!activeItems.length) { toast({ title: "No items", description: "Add at least one item to despatch.", variant: "destructive" }); return; }
 
+    // ── Validation ─────────────────────────────────────────────────────────────
+    if (!partySearch.trim()) {
+      toast({ title: "Party required", description: "Please select or enter a party name before saving.", variant: "destructive" });
+      return;
+    }
+    for (const it of activeItems) {
+      const rate = parseFloat(it.rate ?? 0);
+      const cgst = parseFloat(it.cgst_rate ?? 0);
+      const sgst = parseFloat(it.sgst_rate ?? 0);
+      const igst = parseFloat(it.igst_rate ?? 0);
+      if (!(rate > 0)) {
+        toast({ title: "Rate missing", description: `Item "${it.item_name}" has no rate. Please enter the rate.`, variant: "destructive" });
+        return;
+      }
+      const gstMissing = isInterState ? !(igst > 0) : !(cgst > 0 && sgst > 0);
+      if (gstMissing) {
+        toast({ title: "GST rate missing", description: `Item "${it.item_name}" is missing ${isInterState ? "IGST" : "GST"} rate. Please set the tax percentage.`, variant: "destructive" });
+        return;
+      }
+    }
+    // ── End Validation ─────────────────────────────────────────────────────────
+
     const isNew = !editingId;          // capture NOW — no closure issues
     const [primaryInward] = [...checkedInwardIds];
 
