@@ -29,6 +29,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_date date`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoice_items ADD COLUMN IF NOT EXISTS packing_details TEXT DEFAULT ''`).catch(()=>{});
     await _pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS products_code_unique ON products (code)`).catch(()=>{});
+    await _pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_user_id varchar`).catch(()=>{});
+    await _pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_name text DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('signature_image','','Digital Signature','Company','image','Upload company authorised signature image for invoice print') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     // Add suffix column to voucher_series if missing (format: IN/0001/26-27)
     await _pool.query(`ALTER TABLE voucher_series ADD COLUMN IF NOT EXISTS suffix TEXT DEFAULT ''`).catch(() => {});
