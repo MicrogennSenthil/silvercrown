@@ -27,6 +27,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS irn text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_no text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_date date`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoice_items ADD COLUMN IF NOT EXISTS packing_details TEXT DEFAULT ''`).catch(()=>{});
     // Seed job_work_invoice voucher series if missing — use FY-aware prefix (e.g. IN/26-27/)
     try {
       const existsSeries = await _pool.query(`SELECT 1 FROM voucher_series WHERE transaction_type='job_work_invoice' LIMIT 1`);
@@ -4704,16 +4705,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           INSERT INTO job_work_invoice_items
             (id, invoice_id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code,
              item_name, unit, process, hsn, qty_despatched, rate, amount, po_no, party_dc,
-             work_order_no, despatch_voucher_no, inward_voucher_no, no_of_cover, packages,
+             work_order_no, despatch_voucher_no, inward_voucher_no, packing_details,
              cgst_rate, sgst_rate, igst_rate, cgst_amt, sgst_amt, igst_amt)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
         `, [invoiceId, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
             (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
             iqty, irate, itaxable,
             it.po_no || "", it.party_dc || "", it.work_order_no || "",
             it.despatch_voucher_no || "", it.inward_voucher_no || "",
-            parseInt(it.no_of_cover || 0), parseInt(it.packages || 0),
+            it.packing_details || "",
             icgst, isgst, iigst, icgstAmt, isgstAmt, iigstAmt]);
       }
       let cseq = 1;
@@ -4773,16 +4774,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           INSERT INTO job_work_invoice_items
             (id, invoice_id, despatch_id, inward_id, inward_item_id, seq_no, item_id, item_code,
              item_name, unit, process, hsn, qty_despatched, rate, amount, po_no, party_dc,
-             work_order_no, despatch_voucher_no, inward_voucher_no, no_of_cover, packages,
+             work_order_no, despatch_voucher_no, inward_voucher_no, packing_details,
              cgst_rate, sgst_rate, igst_rate, cgst_amt, sgst_amt, igst_amt)
-          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+          VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
         `, [req.params.id, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
             (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
             iqty, irate, itaxable,
             it.po_no || "", it.party_dc || "", it.work_order_no || "",
             it.despatch_voucher_no || "", it.inward_voucher_no || "",
-            parseInt(it.no_of_cover || 0), parseInt(it.packages || 0),
+            it.packing_details || "",
             icgst, isgst, iigst, icgstAmt, isgstAmt, iigstAmt]);
       }
       let cseq = 1;

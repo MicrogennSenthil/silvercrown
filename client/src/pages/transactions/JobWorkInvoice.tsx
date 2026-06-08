@@ -68,7 +68,7 @@ function InwardItemPickModal({ inward, rawItems, isInterState, onConfirm, onCanc
           party_dc: r.party_dc_no || "", work_order_no: r.work_order_no || "",
           despatch_voucher_no: r.despatch_voucher_no || "",
           inward_voucher_no: r.inward_voucher_no || "",
-          no_of_cover: 0, packages: 0, cgst_rate: cgstR, sgst_rate: sgstR, igst_rate: igstR,
+          packing_details: "", cgst_rate: cgstR, sgst_rate: sgstR, igst_rate: igstR,
           cgst_amt: isInterState ? 0 : taxable * cgstR / 100,
           sgst_amt: isInterState ? 0 : taxable * sgstR / 100,
           igst_amt: isInterState ? taxable * igstR / 100 : 0,
@@ -448,8 +448,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             work_order_no:       r.work_order_no || "",
             despatch_voucher_no: r.despatch_voucher_no || "",
             inward_voucher_no:   r.inward_voucher_no || "",
-            no_of_cover:         0,
-            packages:            0,
+            packing_details:     "",
             cgst_rate:           cgstR,
             sgst_rate:           sgstR,
             igst_rate:           igstR,
@@ -568,7 +567,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       item_code: "", item_name: "", unit: "", process: "", hsn: "",
       qty_despatched: 0, rate: 0, amount: 0,
       po_no: "", party_dc: "", work_order_no: "", despatch_voucher_no: "", inward_voucher_no: "",
-      no_of_cover: 0, packages: 0,
+      packing_details: "",
       cgst_rate: 0, sgst_rate: 0, igst_rate: 0, cgst_amt: 0, sgst_amt: 0, igst_amt: 0,
     };
   }
@@ -1082,8 +1081,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                           </>
                       }
                       <th className="px-2 py-2 text-right w-28">Tot.Amt ₹</th>
-                      <th className="px-2 py-2 text-center w-20">No.of Cover</th>
-                      <th className="px-2 py-2 text-center w-20">Packages</th>
+                      <th className="px-2 py-2 text-left w-28">Packing</th>
                       <th className="w-8"></th>
                     </tr>
                   </thead>
@@ -1253,18 +1251,12 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                           }
                           <td className="px-2 py-1 text-right font-bold" style={{ color: SC.orange }}>{fmtAmt(rowTotal)}</td>
                           <td className="px-2 py-1">
-                            <input type="number" min={0}
-                              data-testid={`input-cover-${idx}`}
-                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
-                              value={it.no_of_cover || ""}
-                              onChange={e => updateItem(realIdx, "no_of_cover", parseInt(e.target.value || "0"))} />
-                          </td>
-                          <td className="px-2 py-1">
-                            <input type="number" min={0}
-                              data-testid={`input-packages-${idx}`}
-                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
-                              value={it.packages || ""}
-                              onChange={e => updateItem(realIdx, "packages", parseInt(e.target.value || "0"))} />
+                            <input type="text"
+                              data-testid={`input-packing-${idx}`}
+                              className="border rounded px-1 py-0.5 text-xs w-24"
+                              placeholder="e.g. 2 Boxes"
+                              value={it.packing_details || ""}
+                              onChange={e => updateItem(realIdx, "packing_details", e.target.value)} />
                           </td>
                           <td className="px-2 py-1 text-center">
                             <button data-testid={`btn-del-row-${idx}`}
