@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bot, Building2, Hash, Plug, CheckCircle2, Eye, EyeOff,
-  Save, RefreshCw, AlertCircle, ExternalLink, Trash2, ShieldAlert, X
+  Save, RefreshCw, AlertCircle, ExternalLink, Trash2, ShieldAlert, X,
+  Upload, ImageOff
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -448,6 +449,108 @@ function VoucherSeriesInline() {
   );
 }
 
+function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const { data: rawSettings = [] } = useQuery<Setting[]>({ queryKey: ["/api/settings"] });
+  const sigSetting = (rawSettings as Setting[]).find(s => s.key === "signature_image");
+  const savedSig = sigSetting?.value || "";
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    setUploading(true);
+    setMsg("");
+    try {
+      const fd = new FormData();
+      fd.append("signature", file);
+      const res = await fetch("/api/settings/signature-upload", { method: "POST", credentials: "include", body: fd });
+      if (!res.ok) throw new Error((await res.json()).message);
+      await qc.invalidateQueries({ queryKey: ["/api/settings"] });
+      setMsg("Signature saved!");
+    } catch (err: any) {
+      setMsg("Upload failed: " + err.message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function handleRemove() {
+    setRemoving(true);
+    setMsg("");
+    try {
+      await fetch("/api/settings/signature-image", { method: "DELETE", credentials: "include" });
+      setPreview(null);
+      await qc.invalidateQueries({ queryKey: ["/api/settings"] });
+      setMsg("Signature removed.");
+    } catch {
+      setMsg("Remove failed.");
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  const displayImg = preview || savedSig || null;
+
+  return (
+    <div className="px-6 py-4 border-t border-gray-50 flex gap-6">
+      <div className="w-48 flex-shrink-0 pt-0.5">
+        <div className="text-sm font-medium text-gray-700">Digital Signature</div>
+        <div className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+          Upload company authorised signature image for invoice print.
+        </div>
+      </div>
+      <div className="flex-1 min-w-0">
+        {displayImg ? (
+          <div className="flex items-start gap-4">
+            <div className="border rounded-lg p-2 bg-gray-50 inline-block">
+              <img src={displayImg} alt="Signature" className="max-h-20 max-w-48 object-contain" />
+            </div>
+            <div className="flex flex-col gap-2 mt-1">
+              <button
+                data-testid="btn-upload-signature"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-white disabled:opacity-60"
+                style={{ background: SC.primary }}
+              >
+                <Upload size={12} /> Replace
+              </button>
+              <button
+                data-testid="btn-remove-signature"
+                onClick={handleRemove}
+                disabled={removing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-red-600 border border-red-200 bg-white hover:bg-red-50 disabled:opacity-60"
+              >
+                <ImageOff size={12} /> Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            data-testid="btn-upload-signature"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-[#027fa5] hover:text-[#027fa5] transition-colors disabled:opacity-60"
+          >
+            <Upload size={14} /> {uploading ? "Uploading…" : "Click to upload signature image"}
+          </button>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} data-testid="input-signature-file" />
+        {msg && <p className={`text-xs mt-1.5 ${msg.startsWith("Upload failed") || msg.startsWith("Remove") && msg !== "Signature removed." ? "text-red-500" : "text-green-600"}`}>{msg}</p>}
+      </div>
+    </div>
+  );
+}
+
 export default function SoftwareSetup() {
   const qc = useQueryClient();
   const { data: rawSettings = [], isLoading } = useQuery<Setting[]>({
@@ -564,7 +667,7 @@ export default function SoftwareSetup() {
               {/* All other categories — key-value settings */}
               {cat !== "Voucher Numbering" && (
                 <div className="divide-y divide-gray-50">
-                  {(byCategory[cat] || []).map(setting => (
+                  {(byCategory[cat] || []).filter(s => s.input_type !== "image").map(setting => (
                     <div key={setting.key} className="px-6 py-4 flex gap-6">
                       <div className="w-48 flex-shrink-0 pt-0.5">
                         <div className="text-sm font-medium text-gray-700">{setting.label}</div>
@@ -582,6 +685,7 @@ export default function SoftwareSetup() {
                       </div>
                     </div>
                   ))}
+                  {cat === "Company" && <SignatureUploadSection qc={qc} />}
                 </div>
               )}
 

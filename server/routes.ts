@@ -28,6 +28,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_no text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_date date`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoice_items ADD COLUMN IF NOT EXISTS packing_details TEXT DEFAULT ''`).catch(()=>{});
+    await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('signature_image','','Digital Signature','Company','image','Upload company authorised signature image for invoice print') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     // Seed job_work_invoice voucher series if missing — use FY-aware prefix (e.g. IN/26-27/)
     try {
       const existsSeries = await _pool.query(`SELECT 1 FROM voucher_series WHERE transaction_type='job_work_invoice' LIMIT 1`);
@@ -3188,7 +3189,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         if (!h) return res.status(404).json({ message: "Not found" });
         const items = (await pool.query(`SELECT * FROM job_work_invoice_items WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
         const charges = (await pool.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
-        return res.json({ ...h, items, charges });
+        const sigRow = (await pool.query(`SELECT value FROM app_settings WHERE key='signature_image' LIMIT 1`)).rows[0];
+        return res.json({ ...h, items, charges, signature_image: sigRow?.value || "" });
 
       } else if (type === "despatch_note") {
         const h = (await pool.query(`
@@ -4159,6 +4161,34 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+  app.post("/api/settings/signature-upload", requireAuth, upload.single("signature"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const { readFileSync, unlinkSync } = await import("fs");
+      const buf = readFileSync(req.file.path);
+      const mime = req.file.mimetype || "image/png";
+      const b64 = `data:${mime};base64,${buf.toString("base64")}`;
+      unlinkSync(req.file.path);
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`UPDATE app_settings SET value=${b64}, updated_at=now() WHERE key='signature_image'`);
+      res.json({ signature_image: b64 });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.delete("/api/settings/signature-image", requireAuth, async (req, res) => {
+    try {
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`UPDATE app_settings SET value='', updated_at=now() WHERE key='signature_image'`);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.post("/api/settings/bulk", requireAuth, async (req, res) => {
     try {
       const { db } = await import("./db");

@@ -277,7 +277,11 @@ export function buildTaxInvoiceHTML(
         <div style="border-top:1px solid #000;padding-top:2px;text-align:center;font-size:9px">&nbsp;</div>
       </td>
       <td style="padding:5px 8px;width:65%;vertical-align:top">
-        for SILVER CROWN METAL COATINGS<br><br><br>
+        for SILVER CROWN METAL COATINGS
+        ${doc.signature_image
+          ? `<div style="margin:3px 0 0 0;text-align:right"><img src="${doc.signature_image}" style="max-height:52px;max-width:160px;object-fit:contain" /></div>`
+          : `<br><br><br>`
+        }
         <div style="border-top:1px solid #000;padding-top:2px;text-align:center;font-size:9px">Prepared by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Verified by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Authorised Signatory</div>
       </td>
     </tr>
