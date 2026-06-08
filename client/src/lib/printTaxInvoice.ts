@@ -281,7 +281,7 @@ export function buildTaxInvoiceHTML(
           ? `<div style="margin:3px 0 0 0;text-align:center"><img src="${doc.signature_image}" style="max-height:52px;max-width:160px;object-fit:contain" /></div>`
           : `<br><br><br>`
         }
-        <div style="padding-top:2px;text-align:center;font-size:9px;font-weight:600">Authorised Signatory</div>
+        <div style="padding-top:2px;text-align:center;font-size:9px">Prepared by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Verified by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Authorised Signatory</div>
       </td>
     </tr>
   </table>
