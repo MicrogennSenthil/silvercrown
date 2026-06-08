@@ -433,7 +433,7 @@ export type SubCategory = typeof subCategories.$inferSelect;
 // Products
 export const products = pgTable("products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  code: text("code").notNull().unique(),
+  code: text("code").notNull(),
   name: text("name").notNull(),
   categoryId: varchar("category_id").references(() => categories.id),
   subCategoryId: varchar("sub_category_id").references(() => subCategories.id),
