@@ -2994,107 +2994,105 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const days = Math.max(1, parseInt((req.query.days as string) || "15", 10));
       const rows = (await pool.query(`
         WITH customer_sl AS (
-          -- Customers with sub_ledger_id set (populated by resolvePartyMaster on invoice creation)
           SELECT c.id AS customer_id, c.sub_ledger_id
-          FROM customers c
-          WHERE c.sub_ledger_id IS NOT NULL
+          FROM customers c WHERE c.sub_ledger_id IS NOT NULL
         ),
         invoice_txns AS (
-          -- Primary receivables: each job-work invoice is a DR against the customer
           SELECT
-            jwi.party_id                                              AS customer_id,
-            COALESCE(c.name, jwi.party_name_manual, '')              AS customer_name,
-            COALESCE(c.phone, c.telephone, '')                       AS contact_no,
-            COALESCE(c.contact_person, c.contact_name, '')           AS contact_person,
-            jwi.invoice_date::date                                   AS txn_date,
+            jwi.party_id                                         AS customer_id,
+            COALESCE(c.name, jwi.party_name_manual, '')          AS customer_name,
+            COALESCE(c.phone, c.telephone, '')                   AS contact_no,
+            COALESCE(c.contact_person, c.contact_name, '')       AS contact_person,
+            jwi.invoice_date::date                               AS txn_date,
             (
-              COALESCE((
-                SELECT SUM(ii.amount
-                         + COALESCE(ii.cgst_amt,0)
-                         + COALESCE(ii.sgst_amt,0)
-                         + COALESCE(ii.igst_amt,0))
-                FROM job_work_invoice_items ii
-                WHERE ii.invoice_id = jwi.id
-              ), 0)
-              +
-              COALESCE((
-                SELECT SUM(ch.amount)
-                FROM job_work_invoice_charges ch
-                WHERE ch.invoice_id = jwi.id
-              ), 0)
-            )                                                        AS amount,
-            'DR'                                                     AS dr_cr
+              COALESCE((SELECT SUM(ii.amount + COALESCE(ii.cgst_amt,0) + COALESCE(ii.sgst_amt,0) + COALESCE(ii.igst_amt,0))
+                FROM job_work_invoice_items ii WHERE ii.invoice_id = jwi.id), 0)
+              + COALESCE((SELECT SUM(ch.amount) FROM job_work_invoice_charges ch WHERE ch.invoice_id = jwi.id), 0)
+            )                                                    AS amount,
+            'DR'                                                 AS dr_cr
           FROM job_work_invoices jwi
           LEFT JOIN customers c ON c.id = jwi.party_id
           WHERE jwi.party_id IS NOT NULL
             AND COALESCE(jwi.status,'') NOT IN ('Cancelled','Voided')
         ),
         voucher_txns AS (
-          -- Voucher entries against customer sub-ledgers EXCLUDING invoice postings
-          -- (invoices already captured in invoice_txns directly from job_work_invoices)
-          --   Receipt vouchers  → CR (payment received, reduces receivable shown in Others)
-          --   Payment vouchers  → DR (refund/advance paid out, shown in DR buckets)
-          --   Manual journals   → DR or CR as entered
           SELECT
             cs.customer_id,
-            c.name                                                    AS customer_name,
-            COALESCE(c.phone, c.telephone, '')                        AS contact_no,
-            COALESCE(c.contact_person, c.contact_name, '')            AS contact_person,
-            vm.voucher_date                                           AS txn_date,
-            vd.amount::numeric                                        AS amount,
-            UPPER(vd.dr_cr)                                           AS dr_cr
+            c.name                                                AS customer_name,
+            COALESCE(c.phone, c.telephone, '')                    AS contact_no,
+            COALESCE(c.contact_person, c.contact_name, '')        AS contact_person,
+            vm.voucher_date                                       AS txn_date,
+            vd.amount::numeric                                    AS amount,
+            UPPER(vd.dr_cr)                                       AS dr_cr
           FROM customer_sl cs
           JOIN customers c ON c.id = cs.customer_id
           JOIN voucher_det vd ON vd.sub_ledger_id = cs.sub_ledger_id
           JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
-          -- Exclude invoice-originated DR entries (already in invoice_txns); keep only payment/journal vouchers
           WHERE vm.source_type IS DISTINCT FROM 'job_work_invoice'
         ),
         opening_txns AS (
-          -- Opening balance bills under customer sub-ledgers
-          -- Exclude entries created by invoice posting (those are already in invoice_txns)
           SELECT
             cs.customer_id,
-            c.name                                                    AS customer_name,
-            COALESCE(c.phone, c.telephone, '')                        AS contact_no,
-            COALESCE(c.contact_person, c.contact_name, '')            AS contact_person,
-            COALESCE(slb.ref_date, slb.voucher_date, NOW()::date)     AS txn_date,
-            slb.amount::numeric                                       AS amount,
-            UPPER(slb.cr_dr)                                          AS dr_cr
+            c.name                                                AS customer_name,
+            COALESCE(c.phone, c.telephone, '')                    AS contact_no,
+            COALESCE(c.contact_person, c.contact_name, '')        AS contact_person,
+            COALESCE(slb.ref_date, slb.voucher_date, NOW()::date) AS txn_date,
+            slb.amount::numeric                                   AS amount,
+            UPPER(slb.cr_dr)                                      AS dr_cr
           FROM customer_sl cs
           JOIN customers c ON c.id = cs.customer_id
           JOIN sub_ledger_bills slb ON slb.sub_ledger_id = cs.sub_ledger_id
-          -- Exclude bills created by invoice posting (ref_no = invoice voucher_no)
-          WHERE NOT EXISTS (
-            SELECT 1 FROM job_work_invoices jwi WHERE jwi.voucher_no = slb.ref_no
-          )
+          WHERE NOT EXISTS (SELECT 1 FROM job_work_invoices jwi WHERE jwi.voucher_no = slb.ref_no)
         ),
         txns AS (
-          SELECT * FROM invoice_txns
-          UNION ALL
-          SELECT * FROM voucher_txns
-          UNION ALL
+          SELECT * FROM invoice_txns UNION ALL
+          SELECT * FROM voucher_txns UNION ALL
           SELECT * FROM opening_txns
         ),
         aged AS (
           SELECT *, (CURRENT_DATE - txn_date::date) AS age_days FROM txns
+        ),
+        -- FIFO netting: apply CR receipts against oldest DR invoices first
+        -- Running cumulative DR per customer ordered oldest-first (highest age_days first)
+        dr_aged AS (
+          SELECT *,
+            SUM(amount) OVER (
+              PARTITION BY customer_id
+              ORDER BY age_days DESC, txn_date ASC
+              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ) AS running_dr
+          FROM aged WHERE dr_cr = 'DR'
+        ),
+        cr_total AS (
+          SELECT customer_id, COALESCE(SUM(amount), 0) AS total_cr
+          FROM aged WHERE dr_cr = 'CR'
+          GROUP BY customer_id
+        ),
+        -- Net balance per DR line after absorbing payments (oldest bills reduced first)
+        dr_net AS (
+          SELECT
+            d.customer_id, d.customer_name, d.contact_no, d.contact_person, d.age_days,
+            GREATEST(0::numeric,
+              d.amount - GREATEST(0::numeric, COALESCE(c.total_cr, 0) - (d.running_dr - d.amount))
+            ) AS net_amount
+          FROM dr_aged d
+          LEFT JOIN cr_total c ON c.customer_id = d.customer_id
         )
         SELECT
           customer_id,
           customer_name,
           contact_no,
           contact_person,
-          COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days BETWEEN 0      AND $1-1   THEN amount END),0) AS bucket1,
-          COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days BETWEEN $1     AND $1*2-1 THEN amount END),0) AS bucket2,
-          COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days BETWEEN $1*2   AND $1*3-1 THEN amount END),0) AS bucket3,
-          COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days BETWEEN $1*3   AND $1*4-1 THEN amount END),0) AS bucket4,
-          COALESCE(SUM(CASE WHEN dr_cr='DR' AND age_days >= $1*4                   THEN amount END),0) AS bucket_above,
-          COALESCE(SUM(CASE WHEN dr_cr='CR'                                         THEN amount END),0) AS others,
-          COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount ELSE -amount END),0)                           AS total
-        FROM aged
+          COALESCE(SUM(CASE WHEN age_days BETWEEN 0    AND $1-1   THEN net_amount END),0) AS bucket1,
+          COALESCE(SUM(CASE WHEN age_days BETWEEN $1   AND $1*2-1 THEN net_amount END),0) AS bucket2,
+          COALESCE(SUM(CASE WHEN age_days BETWEEN $1*2 AND $1*3-1 THEN net_amount END),0) AS bucket3,
+          COALESCE(SUM(CASE WHEN age_days BETWEEN $1*3 AND $1*4-1 THEN net_amount END),0) AS bucket4,
+          COALESCE(SUM(CASE WHEN age_days >= $1*4                  THEN net_amount END),0) AS bucket_above,
+          0                                                                                  AS others,
+          COALESCE(SUM(net_amount), 0)                                                       AS total
+        FROM dr_net
         GROUP BY customer_id, customer_name, contact_no, contact_person
-        HAVING COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount ELSE -amount END),0) <> 0
-            OR COALESCE(SUM(CASE WHEN dr_cr='DR' THEN amount END),0) > 0
+        HAVING COALESCE(SUM(net_amount), 0) > 0
         ORDER BY customer_name
       `, [days])).rows;
       res.json({ days, rows });
@@ -3108,69 +3106,85 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const days = Math.max(1, parseInt((req.query.days as string) || "15", 10));
       const rows = (await pool.query(`
         WITH supplier_sl AS (
-          -- Primary: map supplier_id → sub_ledger_id via GRN sl_id (ID-based linkage)
           SELECT DISTINCT grn.supplier_id, grn.sl_id AS sub_ledger_id
           FROM goods_receipt_notes grn
           WHERE grn.sl_id IS NOT NULL AND grn.supplier_id IS NOT NULL
-
           UNION
-
-          -- Fallback: suppliers with sub_ledger_id set directly
           SELECT s.id AS supplier_id, s.sub_ledger_id
-          FROM suppliers s
-          WHERE s.sub_ledger_id IS NOT NULL
+          FROM suppliers s WHERE s.sub_ledger_id IS NOT NULL
         ),
         txns AS (
-          -- Bills (sub_ledger_bills — CR = payable, DR = debit note / advance)
+          -- Bills from sub_ledger_bills (CR = payable owed to supplier)
           SELECT
             ss.supplier_id,
-            s.name                                          AS supplier_name,
-            COALESCE(s.phone, s.telephone, '')              AS contact_no,
-            COALESCE(s.contact_person, s.contact_name, '') AS contact_person,
+            s.name                                           AS supplier_name,
+            COALESCE(s.phone, s.telephone, '')               AS contact_no,
+            COALESCE(s.contact_person, s.contact_name, '')   AS contact_person,
             COALESCE(slb.ref_date, slb.voucher_date, NOW()::date) AS txn_date,
-            slb.amount::numeric AS amount,
-            UPPER(slb.cr_dr)    AS dr_cr
+            slb.amount::numeric  AS amount,
+            UPPER(slb.cr_dr)     AS dr_cr
           FROM supplier_sl ss
           JOIN suppliers s ON s.id = ss.supplier_id
           JOIN sub_ledger_bills slb ON slb.sub_ledger_id = ss.sub_ledger_id
-
           UNION ALL
-
-          -- Voucher lines (payments, journals) against same sub_ledgers
+          -- Voucher lines (payments DR, journals) against the same sub-ledgers
           SELECT
             ss.supplier_id,
-            s.name                                          AS supplier_name,
-            COALESCE(s.phone, s.telephone, '')              AS contact_no,
-            COALESCE(s.contact_person, s.contact_name, '') AS contact_person,
-            vm.voucher_date AS txn_date,
+            s.name                                           AS supplier_name,
+            COALESCE(s.phone, s.telephone, '')               AS contact_no,
+            COALESCE(s.contact_person, s.contact_name, '')   AS contact_person,
+            vm.voucher_date   AS txn_date,
             vd.amount::numeric AS amount,
             UPPER(vd.dr_cr)    AS dr_cr
           FROM supplier_sl ss
           JOIN suppliers s ON s.id = ss.supplier_id
           JOIN voucher_det vd ON vd.sub_ledger_id = ss.sub_ledger_id
           JOIN voucher_mas vm ON vm.id = vd.voucher_mas_id
-          -- Exclude the GRN's own CR posting (already captured in sub_ledger_bills)
           WHERE vm.source_type IS DISTINCT FROM 'grn'
         ),
         aged AS (
           SELECT *, (CURRENT_DATE - txn_date::date) AS age_days FROM txns
+        ),
+        -- FIFO netting: apply DR payments against oldest CR bills first
+        cr_aged AS (
+          SELECT *,
+            SUM(amount) OVER (
+              PARTITION BY supplier_id
+              ORDER BY age_days DESC, txn_date ASC
+              ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            ) AS running_cr
+          FROM aged WHERE dr_cr = 'CR'
+        ),
+        dr_total AS (
+          SELECT supplier_id, COALESCE(SUM(amount), 0) AS total_dr
+          FROM aged WHERE dr_cr = 'DR'
+          GROUP BY supplier_id
+        ),
+        -- Net outstanding balance per CR bill after absorbing payments (oldest bills first)
+        cr_net AS (
+          SELECT
+            c.supplier_id, c.supplier_name, c.contact_no, c.contact_person, c.age_days,
+            GREATEST(0::numeric,
+              c.amount - GREATEST(0::numeric, COALESCE(d.total_dr, 0) - (c.running_cr - c.amount))
+            ) AS net_amount
+          FROM cr_aged c
+          LEFT JOIN dr_total d ON d.supplier_id = c.supplier_id
         )
         SELECT
           supplier_id,
           supplier_name,
           contact_no,
           contact_person,
-          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days BETWEEN 0      AND $1-1    THEN amount END),0) AS bucket1,
-          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days BETWEEN $1     AND $1*2-1  THEN amount END),0) AS bucket2,
-          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days BETWEEN $1*2   AND $1*3-1  THEN amount END),0) AS bucket3,
-          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days BETWEEN $1*3   AND $1*4-1  THEN amount END),0) AS bucket4,
-          COALESCE(SUM(CASE WHEN dr_cr='CR' AND age_days >= $1*4                    THEN amount END),0) AS bucket_above,
-          COALESCE(SUM(CASE WHEN dr_cr='DR'                                          THEN amount END),0) AS others,
-          COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount ELSE -amount END),0)                            AS total
-        FROM aged
+          COALESCE(SUM(CASE WHEN age_days BETWEEN 0    AND $1-1   THEN net_amount END),0) AS bucket1,
+          COALESCE(SUM(CASE WHEN age_days BETWEEN $1   AND $1*2-1 THEN net_amount END),0) AS bucket2,
+          COALESCE(SUM(CASE WHEN age_days BETWEEN $1*2 AND $1*3-1 THEN net_amount END),0) AS bucket3,
+          COALESCE(SUM(CASE WHEN age_days BETWEEN $1*3 AND $1*4-1 THEN net_amount END),0) AS bucket4,
+          COALESCE(SUM(CASE WHEN age_days >= $1*4                  THEN net_amount END),0) AS bucket_above,
+          0                                                                                  AS others,
+          COALESCE(SUM(net_amount), 0)                                                       AS total
+        FROM cr_net
         GROUP BY supplier_id, supplier_name, contact_no, contact_person
-        HAVING COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount ELSE -amount END),0) <> 0
-            OR COALESCE(SUM(CASE WHEN dr_cr='CR' THEN amount END),0) > 0
+        HAVING COALESCE(SUM(net_amount), 0) > 0
         ORDER BY supplier_name
       `, [days])).rows;
       res.json({ days, rows });
