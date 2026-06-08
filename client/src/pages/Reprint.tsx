@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer, Eye, Mail, X, Calendar, AlertCircle, ChevronDown, Send, CheckCircle } from "lucide-react";
+import { Printer, Eye, Mail, X, Calendar, AlertCircle, ChevronDown, Send, CheckCircle, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
 import { buildTaxInvoiceHTML } from "@/lib/printTaxInvoice";
@@ -491,10 +491,14 @@ export default function Reprint() {
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
 
+  const PAGE_SIZE = 15;
+
   const [docType,  setDocType]  = useState<DocType>("invoice");
   const [fromDate, setFromDate] = useState(toInput(firstDay));
   const [toDate,   setToDate]   = useState(toInput(today));
-  const [trigger,  setTrigger]  = useState(0);   // increment to re-fetch
+  const [trigger,  setTrigger]  = useState(0);
+  const [search,   setSearch]   = useState("");
+  const [page,     setPage]     = useState(1);
   const [viewRow,         setViewRow]         = useState<ListRow | null>(null);
   const [emailRow,        setEmailRow]        = useState<ListRow | null>(null);
   const [invoicePrintRow, setInvoicePrintRow] = useState<ListRow | null>(null);
@@ -507,7 +511,20 @@ export default function Reprint() {
     enabled: trigger > 0,
   });
 
-  const grandTotal = rows.reduce((s, r) => s + r.amount, 0);
+  const filtered = rows.filter(r => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      r.txn_no?.toLowerCase().includes(q) ||
+      r.party_name?.toLowerCase().includes(q) ||
+      r.txn_date?.includes(q)
+    );
+  });
+
+  const totalPages  = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage    = Math.min(page, totalPages);
+  const pageRows    = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const grandTotal  = filtered.reduce((s, r) => s + r.amount, 0);
 
   const docLabel = DOC_TYPES.find(d => d.value === docType)?.label || "";
 
@@ -573,9 +590,21 @@ export default function Reprint() {
                 </div>
               </div>
 
+              {/* Search */}
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+                <input
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPage(1); }}
+                  placeholder="Search txn no / party…"
+                  className="pl-8 pr-3 py-2 h-[38px] border border-gray-200 rounded-lg text-sm text-gray-700
+                    bg-white focus:outline-none focus:border-[#027fa5] w-52"
+                  data-testid="input-search"/>
+              </div>
+
               {/* Display button */}
               <button
-                onClick={() => setTrigger(t => t + 1)}
+                onClick={() => { setTrigger(t => t + 1); setPage(1); setSearch(""); }}
                 className="px-6 py-2 h-[38px] rounded-lg text-sm font-bold text-white transition-colors ml-auto"
                 style={{ background: SC.primary }}
                 data-testid="btn-display">
@@ -625,13 +654,13 @@ export default function Reprint() {
                       </div>
                     </td></tr>
                   )}
-                  {!isLoading && rows.map((row, idx) => (
+                  {!isLoading && pageRows.map((row, idx) => (
                     <tr key={row.id}
                       className={`border-t border-gray-50 hover:bg-[#f0f9ff] transition-colors
                         ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/20"}`}
                       data-testid={`row-reprint-${idx}`}>
                       <td className="px-4 py-2.5 text-gray-400 text-xs">
-                        {String(idx + 1).padStart(2, "0")}
+                        {String((safePage - 1) * PAGE_SIZE + idx + 1).padStart(2, "0")}
                       </td>
                       <td className="px-4 py-2.5 text-gray-700">{fmtDate(row.txn_date)}</td>
                       <td className="px-4 py-2.5 font-semibold" style={{ color: SC.primary }}>{row.txn_no}</td>
@@ -675,11 +704,12 @@ export default function Reprint() {
                 </tbody>
 
                 {/* Grand Total footer */}
-                {!isLoading && rows.length > 0 && (
+                {!isLoading && filtered.length > 0 && (
                   <tfoot>
                     <tr className="border-t border-gray-200" style={{ background: SC.tonal }}>
                       <td colSpan={4} className="px-4 py-3 text-sm font-bold text-gray-700">
-                        Grand Total — {rows.length} record{rows.length !== 1 ? "s" : ""}
+                        Grand Total — {filtered.length} record{filtered.length !== 1 ? "s" : ""}
+                        {search.trim() ? ` (filtered from ${rows.length})` : ""}
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-bold text-gray-800 tabular-nums">
                         ₹ {fmtAmt(grandTotal)}
@@ -690,6 +720,51 @@ export default function Reprint() {
                 )}
               </table>
             </div>
+
+            {/* Pagination */}
+            {!isLoading && filtered.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50/40">
+                <span className="text-xs text-gray-500">
+                  Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                    className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    data-testid="btn-prev-page">
+                    <ChevronLeft size={14}/>
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                    .reduce<(number | "…")[]>((acc, p, i, arr) => {
+                      if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("…");
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, i) =>
+                      p === "…"
+                        ? <span key={`ellipsis-${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400">…</span>
+                        : <button key={p}
+                            onClick={() => setPage(p as number)}
+                            className={`w-7 h-7 flex items-center justify-center rounded border text-xs font-semibold transition-colors
+                              ${safePage === p ? "text-white border-transparent" : "border-gray-200 text-gray-600 hover:bg-white"}`}
+                            style={safePage === p ? { background: SC.primary, borderColor: SC.primary } : {}}
+                            data-testid={`btn-page-${p}`}>
+                            {p}
+                          </button>
+                    )
+                  }
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={safePage === totalPages}
+                    className="w-7 h-7 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    data-testid="btn-next-page">
+                    <ChevronRight size={14}/>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
