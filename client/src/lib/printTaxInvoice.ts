@@ -264,6 +264,7 @@ export function buildTaxInvoiceHTML(
       </td>
       <td style="width:42%;padding:5px 8px;vertical-align:top">
         <div style="font-weight:600;margin-bottom:3px">Company's Bank Details</div>
+        ${doc.company_name ? `<div style="font-weight:600;margin-bottom:2px">A/c Holder Name : ${doc.company_name}</div>` : ""}
         <div>Bank Name &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: State Bank Of India</div>
         <div>A/c No. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: 3899 256 4002</div>
         <div>Branch &amp; IFS Code : Treasury Branch, Coimbatore &amp; SBIN0007639</div>

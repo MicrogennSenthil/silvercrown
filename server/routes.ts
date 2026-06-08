@@ -3205,7 +3205,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         const items = (await pool.query(`SELECT * FROM job_work_invoice_items WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
         const charges = (await pool.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
         const sigRow = (await pool.query(`SELECT value FROM app_settings WHERE key='signature_image' LIMIT 1`)).rows[0];
-        return res.json({ ...h, items, charges, signature_image: sigRow?.value || "" });
+        const companyNameRow = (await pool.query(`SELECT value FROM app_settings WHERE key='company_name' LIMIT 1`)).rows[0];
+        return res.json({ ...h, items, charges, signature_image: sigRow?.value || "", company_name: companyNameRow?.value || "" });
 
       } else if (type === "despatch_note") {
         const h = (await pool.query(`
