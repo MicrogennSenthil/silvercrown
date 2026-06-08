@@ -1,4 +1,4 @@
-const CACHE_NAME = "scm-element-v5";
+const CACHE_NAME = "scm-element-v6";
 const OFFLINE_URL = "/";
 
 const PRECACHE = [
