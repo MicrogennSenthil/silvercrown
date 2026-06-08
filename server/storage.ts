@@ -525,8 +525,6 @@ export class DatabaseStorage implements IStorage {
   async listProducts() { return db.select().from(products).orderBy(products.name); }
   async getProduct(id: string) { const [p] = await db.select().from(products).where(eq(products.id, id)); return p; }
   async createProduct(p: InsertProduct) {
-    const [ex] = await db.select().from(products).where(ilike(products.name, p.name.trim())).limit(1);
-    if (ex) throw new Error(`Product "${p.name}" already exists`);
     const [r] = await db.insert(products).values({ ...p, id: randomUUID() }).returning(); return r;
   }
   async updateProduct(id: string, p: Partial<InsertProduct>) { const [r] = await db.update(products).set(p).where(eq(products.id, id)).returning(); return r; }
