@@ -1000,6 +1000,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.upsertRoleRights(req.params.id, req.body.rights));
   });
 
+  // Current user's effective rights (used by sidebar to filter menu items)
+  app.get("/api/my-rights", requireAuth, async (req, res) => {
+    const user = req.user as any;
+    if (user.role === "admin" || !user.userRoleId) {
+      return res.json({ fullAccess: true, rights: [] });
+    }
+    const rights = await storage.listRoleRights(user.userRoleId);
+    res.json({ fullAccess: false, rights });
+  });
+
   // Warehouses
   app.get("/api/warehouses", requireAuth, async (_req, res) => res.json(await storage.listWarehouses()));
   app.post("/api/warehouses", requireAuth, async (req, res) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,139 +11,166 @@ import {
 } from "lucide-react";
 
 // ─── Navigation Structure ─────────────────────────────────────────────────────
-// Each item can be:
-//   { label, icon, href }                        — leaf link
-//   { label, icon, children: [...] }             — 2-level group
-//   { label, icon, children: [{ label, icon, subChildren: [...] }] }  — 3-level group
+// moduleKey on leaf items maps to the role_rights.module column.
+// Groups are visible when at least one child/grandchild is visible.
 
 const NAV: any[] = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard", moduleKey: "dashboard" },
   {
     label: "Masters", icon: Database, children: [
       {
         label: "Parties", icon: Handshake, subChildren: [
-          { label: "Suppliers", href: "/masters/suppliers" },
-          { label: "Customers", href: "/masters/customers" },
-          { label: "City", href: "/masters/cities" },
-          { label: "State", href: "/masters/states" },
-          { label: "Country", href: "/masters/countries" },
+          { label: "Suppliers",  href: "/masters/suppliers",  moduleKey: "masters_suppliers" },
+          { label: "Customers",  href: "/masters/customers",  moduleKey: "masters_customers" },
+          { label: "City",       href: "/masters/cities",     moduleKey: "masters_cities" },
+          { label: "State",      href: "/masters/states",     moduleKey: "masters_states" },
+          { label: "Country",    href: "/masters/countries",  moduleKey: "masters_countries" },
         ]
       },
       {
         label: "Items", icon: Package, subChildren: [
-          { label: "Product", href: "/masters/products" },
-          { label: "Process", href: "/masters/processes" },
-          { label: "Machine", href: "/masters/machines" },
-          { label: "Category", href: "/masters/categories" },
-          { label: "Sub Category", href: "/masters/sub-categories" },
-          { label: "Purchase approval", href: "/masters/purchase-approvals" },
-          { label: "Approval Authority", href: "/masters/approval-authority" },
-          { label: "Store Master", href: "/masters/stores" },
-          { label: "UOM", href: "/masters/uom" },
-          { label: "Terms", href: "/masters/terms" },
-          { label: "Term types", href: "/masters/term-types" },
-          { label: "Department", href: "/masters/departments" },
+          { label: "Product",           href: "/masters/products",           moduleKey: "masters_products" },
+          { label: "Process",           href: "/masters/processes",          moduleKey: "masters_processes" },
+          { label: "Machine",           href: "/masters/machines",           moduleKey: "masters_machines" },
+          { label: "Category",          href: "/masters/categories",         moduleKey: "masters_categories" },
+          { label: "Sub Category",      href: "/masters/sub-categories",     moduleKey: "masters_sub_categories" },
+          { label: "Purchase approval", href: "/masters/purchase-approvals", moduleKey: "masters_purchase_approvals" },
+          { label: "Approval Authority",href: "/masters/approval-authority", moduleKey: "masters_approval_authority" },
+          { label: "Store Master",      href: "/masters/stores",             moduleKey: "masters_stores" },
+          { label: "UOM",               href: "/masters/uom",                moduleKey: "masters_uom" },
+          { label: "Terms",             href: "/masters/terms",              moduleKey: "masters_terms" },
+          { label: "Term types",        href: "/masters/term-types",         moduleKey: "masters_term_types" },
+          { label: "Department",        href: "/masters/departments",        moduleKey: "masters_departments" },
         ]
       },
       {
         label: "Accounts", icon: IndianRupee, subChildren: [
-          { label: "Chart of Accounts", href: "/masters/accounts" },
-          { label: "Voucher Types", href: "/masters/voucher-types" },
-          { label: "Pay Mode Types", href: "/masters/pay-mode-types" },
-          { label: "Ledger Categories", href: "/masters/ledger-categories" },
-          { label: "General Ledger", href: "/masters/general-ledgers" },
-          { label: "Ledger", href: "/masters/ledger" },
+          { label: "Chart of Accounts",  href: "/masters/accounts",          moduleKey: "masters_chart_of_accounts" },
+          { label: "Voucher Types",      href: "/masters/voucher-types",     moduleKey: "masters_voucher_types" },
+          { label: "Pay Mode Types",     href: "/masters/pay-mode-types",    moduleKey: "masters_pay_mode_types" },
+          { label: "Ledger Categories",  href: "/masters/ledger-categories", moduleKey: "masters_ledger_categories" },
+          { label: "General Ledger",     href: "/masters/general-ledgers",   moduleKey: "masters_general_ledgers" },
+          { label: "Ledger",             href: "/masters/ledger",            moduleKey: "masters_ledger" },
         ]
       },
       {
         label: "Administration", icon: Shield, subChildren: [
-          { label: "Financial Years", href: "/masters/financial-years" },
-          { label: "Year-End Closing", href: "/masters/year-end-closing" },
-          { label: "Voucher Numbering", href: "/masters/voucher-series" },
+          { label: "Financial Years",   href: "/masters/financial-years",    moduleKey: "masters_financial_years" },
+          { label: "Year-End Closing",  href: "/masters/year-end-closing",   moduleKey: "masters_year_end_closing" },
+          { label: "Voucher Numbering", href: "/masters/voucher-series",     moduleKey: "masters_voucher_series" },
         ]
       },
     ]
   },
   {
     label: "Engineering", icon: Cpu, children: [
-      { label: "Job Work Inward", href: "/engineering/job-work-inward" },
-      { label: "Job Work Despatch", href: "/engineering/job-work-despatch" },
-      { label: "Job Work Invoice", href: "/engineering/job-work-invoice" },
-      { label: "Returnable Inward", href: "/engineering/returnable-inward" },
-      { label: "Returnable Outward", href: "/engineering/returnable-outward" },
-      { label: "Gate Pass", href: "/engineering/gate-pass" },
+      { label: "Job Work Inward",    href: "/engineering/job-work-inward",    moduleKey: "engineering_job_work_inward" },
+      { label: "Job Work Despatch",  href: "/engineering/job-work-despatch",  moduleKey: "engineering_job_work_despatch" },
+      { label: "Job Work Invoice",   href: "/engineering/job-work-invoice",   moduleKey: "engineering_job_work_invoice" },
+      { label: "Returnable Inward",  href: "/engineering/returnable-inward",  moduleKey: "engineering_returnable_inward" },
+      { label: "Returnable Outward", href: "/engineering/returnable-outward", moduleKey: "engineering_returnable_outward" },
+      { label: "Gate Pass",          href: "/engineering/gate-pass",          moduleKey: "engineering_gate_pass" },
     ]
   },
   {
     label: "Inventory", icon: Warehouse, children: [
-      { label: "Purchase Order", href: "/inventory/purchase-order" },
-      { label: "Purchase Amendment", href: "/inventory/purchase-amendment" },
-      { label: "Purchase Order Approval", href: "/inventory/purchase-order-approval" },
-      { label: "Goods Receipt Note", href: "/inventory/goods-receipt-note" },
-      { label: "Store Request Note", href: "/inventory/store-request-note" },
-      { label: "Store Issue Indent", href: "/inventory/store-issue-indent" },
-      { label: "PHY INV Reconciliation", href: "/inventory/phy-reconciliation" },
-      { label: "Goods Receipt Return", href: "/inventory/goods-receipt-return" },
-      { label: "Issue Indent Return", href: "/inventory/issue-indent-return" },
-      { label: "Store Opening", href: "/inventory/store-opening" },
+      { label: "Purchase Order",           href: "/inventory/purchase-order",           moduleKey: "inventory_purchase_order" },
+      { label: "Purchase Amendment",       href: "/inventory/purchase-amendment",       moduleKey: "inventory_purchase_amendment" },
+      { label: "Purchase Order Approval",  href: "/inventory/purchase-order-approval",  moduleKey: "inventory_purchase_order_approval" },
+      { label: "Goods Receipt Note",       href: "/inventory/goods-receipt-note",       moduleKey: "inventory_goods_receipt_note" },
+      { label: "Store Request Note",       href: "/inventory/store-request-note",       moduleKey: "inventory_store_request_note" },
+      { label: "Store Issue Indent",       href: "/inventory/store-issue-indent",       moduleKey: "inventory_store_issue_indent" },
+      { label: "PHY INV Reconciliation",   href: "/inventory/phy-reconciliation",       moduleKey: "inventory_phy_reconciliation" },
+      { label: "Goods Receipt Return",     href: "/inventory/goods-receipt-return",     moduleKey: "inventory_goods_receipt_return" },
+      { label: "Issue Indent Return",      href: "/inventory/issue-indent-return",      moduleKey: "inventory_issue_indent_return" },
+      { label: "Store Opening",            href: "/inventory/store-opening",            moduleKey: "inventory_store_opening" },
     ]
   },
   {
     label: "Accounts", icon: BookOpen, children: [
-      { label: "Voucher", href: "/accounts/voucher" },
-      { label: "General Ledger", href: "/accounts/general-ledger" },
-      { label: "Ledger", href: "/accounts/ledger" },
+      { label: "Voucher",         href: "/accounts/voucher",         moduleKey: "accounts_voucher" },
+      { label: "General Ledger",  href: "/accounts/general-ledger",  moduleKey: "accounts_general_ledger" },
+      { label: "Ledger",          href: "/accounts/ledger",          moduleKey: "accounts_ledger" },
     ]
   },
-  { label: "Tasks & Reminders", icon: CheckSquare, href: "/tasks" },
-  { label: "Tally Integration", icon: RefreshCw, href: "/tally" },
+  { label: "Tasks & Reminders", icon: CheckSquare, href: "/tasks",  moduleKey: "tasks_reminders" },
+  { label: "Tally Integration",  icon: RefreshCw,   href: "/tally",  moduleKey: "tally_integration" },
   {
     label: "Reports", icon: BarChart2, children: [
       {
         label: "Engineering",
         subChildren: [
-          { label: "Job Work Pending",  href: "/reports/engineering/job-work-pending" },
-          { label: "Despatch Pending",  href: "/reports/engineering/despatch-pending" },
-          { label: "Invoice Pending",   href: "/reports/engineering/invoice-pending" },
-          { label: "Despatch Register", href: "/reports/engineering/despatch-register" },
+          { label: "Job Work Pending",  href: "/reports/engineering/job-work-pending",  moduleKey: "report_eng_job_work_pending" },
+          { label: "Despatch Pending",  href: "/reports/engineering/despatch-pending",  moduleKey: "report_eng_despatch_pending" },
+          { label: "Invoice Pending",   href: "/reports/engineering/invoice-pending",   moduleKey: "report_eng_invoice_pending" },
+          { label: "Despatch Register", href: "/reports/engineering/despatch-register", moduleKey: "report_eng_despatch_register" },
         ],
       },
       {
         label: "Inventory",
         subChildren: [
-          { label: "Stock Report",            href: "/reports/inventory/stock-report" },
-          { label: "Stock Report With Value",  href: "/reports/inventory/stock-report-value" },
-          { label: "Stock Ledger",             href: "/reports/inventory/stock-ledger" },
-          { label: "Bank Stock Report",        href: "/reports/inventory/bank-stock-report" },
-          { label: "PO Pending",               href: "/reports/inventory/po-pending" },
-          { label: "Material Register",        href: "/reports/inventory/material-register" },
-          { label: "Issue Register",           href: "/reports/inventory/issue-register" },
-          { label: "Receipt List",             href: "/reports/inventory/receipt-list" },
-          { label: "Expiry Item List",         href: "/reports/inventory/expiry-item-list" },
+          { label: "Stock Report",           href: "/reports/inventory/stock-report",       moduleKey: "report_inv_stock_report" },
+          { label: "Stock Report With Value", href: "/reports/inventory/stock-report-value", moduleKey: "report_inv_stock_report_value" },
+          { label: "Stock Ledger",           href: "/reports/inventory/stock-ledger",       moduleKey: "report_inv_stock_ledger" },
+          { label: "Bank Stock Report",      href: "/reports/inventory/bank-stock-report",  moduleKey: "report_inv_bank_stock" },
+          { label: "PO Pending",             href: "/reports/inventory/po-pending",         moduleKey: "report_inv_po_pending" },
+          { label: "Material Register",      href: "/reports/inventory/material-register",  moduleKey: "report_inv_material_register" },
+          { label: "Issue Register",         href: "/reports/inventory/issue-register",     moduleKey: "report_inv_issue_register" },
+          { label: "Receipt List",           href: "/reports/inventory/receipt-list",       moduleKey: "report_inv_receipt_list" },
+          { label: "Expiry Item List",       href: "/reports/inventory/expiry-item-list",   moduleKey: "report_inv_expiry_item_list" },
         ],
       },
       {
         label: "Accounts",
         subChildren: [
-          { label: "Customer Receivable", href: "/reports/accounts/customer-receivable" },
-          { label: "Supplier Payables",   href: "/reports/accounts/supplier-payables" },
-          { label: "Ledger Report",       href: "/reports/accounts/ledger" },
-          { label: "Trial Balance",       href: "/reports/accounts/trial-balance" },
-          { label: "Ageing List",         href: "/reports/accounts/ageing-list" },
+          { label: "Customer Receivable", href: "/reports/accounts/customer-receivable", moduleKey: "report_acc_customer_receivable" },
+          { label: "Supplier Payables",   href: "/reports/accounts/supplier-payables",   moduleKey: "report_acc_supplier_payables" },
+          { label: "Ledger Report",       href: "/reports/accounts/ledger",              moduleKey: "report_acc_ledger_report" },
+          { label: "Trial Balance",       href: "/reports/accounts/trial-balance",       moduleKey: "report_acc_trial_balance" },
+          { label: "Ageing List",         href: "/reports/accounts/ageing-list",         moduleKey: "report_acc_ageing_list" },
         ],
       },
     ],
   },
-  { label: "Reprint", icon: Printer, href: "/reprint" },
+  { label: "Reprint", icon: Printer, href: "/reprint", moduleKey: "reprint" },
   {
     label: "User Management", icon: Users, children: [
-      { label: "Users", href: "/usermgmt/users" },
-      { label: "Roles", href: "/usermgmt/roles" },
-      { label: "Role Rights", href: "/usermgmt/role-rights" },
+      { label: "Users",       href: "/usermgmt/users",      moduleKey: "usermgmt_users" },
+      { label: "Roles",       href: "/usermgmt/roles",      moduleKey: "usermgmt_roles" },
+      { label: "Role Rights", href: "/usermgmt/role-rights",moduleKey: "usermgmt_role_rights" },
     ]
   },
-  { label: "Software Setup", icon: Settings, href: "/setup" },
+  { label: "Software Setup", icon: Settings, href: "/setup", moduleKey: "software_setup" },
 ];
+
+// ─── Rights filtering ──────────────────────────────────────────────────────────
+function buildCanView(fullAccess: boolean, rights: { module: string; canView: boolean }[]) {
+  if (fullAccess) return (_key: string) => true;
+  const map = new Map(rights.map(r => [r.module, r.canView]));
+  // If a module has no entry saved yet, default to true so existing menus aren't
+  // silently hidden when admin hasn't explicitly configured the role yet.
+  return (key: string) => map.has(key) ? (map.get(key) ?? false) : true;
+}
+
+function filterNav(items: any[], canView: (key: string) => boolean): any[] {
+  return items.flatMap(item => {
+    // Leaf item
+    if (!item.children) {
+      return canView(item.moduleKey) ? [item] : [];
+    }
+    // Group with children (2-level or 3-level)
+    const filteredChildren = item.children.flatMap((child: any) => {
+      if (child.subChildren) {
+        // 3-level: filter subChildren
+        const filteredSubs = child.subChildren.filter((sc: any) => canView(sc.moduleKey));
+        return filteredSubs.length > 0 ? [{ ...child, subChildren: filteredSubs }] : [];
+      }
+      // 2-level: leaf child
+      return canView(child.moduleKey) ? [child] : [];
+    });
+    return filteredChildren.length > 0 ? [{ ...item, children: filteredChildren }] : [];
+  });
+}
 
 // ─── Sub-item leaf link (level 3) ─────────────────────────────────────────────
 function SubLink({ item, onClose }: { item: any; onClose?: () => void }) {
@@ -189,7 +216,6 @@ function SubGroup({ group, onClose }: { group: any; onClose?: () => void }) {
 // ─── Top-level nav item ────────────────────────────────────────────────────────
 function NavItem({ item, collapsed, onClose }: { item: any; collapsed: boolean; onClose?: () => void }) {
   const [location] = useLocation();
-  // Check if any child/grandchild is active
   const isAnyChildActive = item.children?.some((c: any) => {
     if (c.subChildren) return c.subChildren.some((sc: any) => location === sc.href || location.startsWith(sc.href + "/"));
     return location === c.href || location.startsWith(c.href + "/");
@@ -234,11 +260,9 @@ function NavItem({ item, collapsed, onClose }: { item: any; collapsed: boolean; 
       {!collapsed && open && (
         <div className="ml-8 mt-0.5 mb-1 space-y-0.5">
           {item.children.map((c: any) => {
-            // Sub-group (has subChildren — level 3)
             if (c.subChildren) {
               return <SubGroup key={c.label} group={c} onClose={onClose} />;
             }
-            // Regular child link
             const active = location === c.href || location.startsWith(c.href + "/");
             return (
               <Link
@@ -261,6 +285,18 @@ function NavItem({ item, collapsed, onClose }: { item: any; collapsed: boolean; 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ collapsed, mobile, onClose, companyName }: { collapsed: boolean; mobile?: boolean; onClose?: () => void; companyName?: string }) {
   const { user, logout } = useAuth();
+
+  const { data: myRights } = useQuery<{ fullAccess: boolean; rights: { module: string; canView: boolean }[] }>({
+    queryKey: ["/api/my-rights"],
+    staleTime: 60_000,
+  });
+
+  const visibleNav = useMemo(() => {
+    if (!myRights) return NAV;
+    const canView = buildCanView(myRights.fullAccess, myRights.rights);
+    return filterNav(NAV, canView);
+  }, [myRights]);
+
   return (
     <div className="flex flex-col h-full" style={{ background: "linear-gradient(180deg, #027fa5 0%, #015f7a 100%)" }}>
       {/* Logo */}
@@ -276,7 +312,7 @@ function Sidebar({ collapsed, mobile, onClose, companyName }: { collapsed: boole
 
       {/* Nav */}
       <nav className="flex-1 py-3 space-y-0.5 overflow-y-auto scrollbar-thin">
-        {NAV.map(item => (
+        {visibleNav.map(item => (
           <NavItem key={item.label} item={item} collapsed={collapsed && !mobile} onClose={onClose} />
         ))}
       </nav>
