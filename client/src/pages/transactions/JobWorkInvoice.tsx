@@ -1535,9 +1535,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
 
 // ── Job Work Invoice List (default export) ────────────────────────────────────
 export default function JobWorkInvoice() {
+  const PAGE_SIZE = 15;
   const [view, setView] = useState<"list" | "form">("list");
   const [editId, setEditId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const { data: records = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/job-work-invoice"] });
 
@@ -1547,9 +1549,14 @@ export default function JobWorkInvoice() {
     return (
       r.voucher_no?.toLowerCase().includes(q) ||
       r.party_name_db?.toLowerCase().includes(q) ||
+      r.party_name_manual?.toLowerCase().includes(q) ||
       r.invoice_date?.includes(q)
     );
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage   = Math.min(page, totalPages);
+  const pageRows   = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   if (view === "form") {
     return <InvoiceForm editId={editId} onBackToList={() => { setEditId(null); setView("list"); }} />;
@@ -1564,7 +1571,7 @@ export default function JobWorkInvoice() {
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={search} onChange={e => setSearch(e.target.value)}
+              <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
                 placeholder="Search by voucher / party / date..."
                 className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded w-64 outline-none focus:border-[#027fa5]"
                 data-testid="input-search" />
@@ -1605,10 +1612,10 @@ export default function JobWorkInvoice() {
                 </td>
               </tr>
             )}
-            {filtered.map((r: any, i: number) => (
+            {pageRows.map((r: any, i: number) => (
               <tr key={r.id} className={`border-t border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
                 data-testid={`row-invoice-${r.id}`}>
-                <td className="px-5 py-2.5 text-gray-500">{i + 1}</td>
+                <td className="px-5 py-2.5 text-gray-500">{(safePage - 1) * PAGE_SIZE + i + 1}</td>
                 <td className="px-5 py-2.5 font-semibold" style={{ color: SC.primary }}>{r.voucher_no}</td>
                 <td className="px-5 py-2.5 text-gray-600 text-xs">{r.invoice_date ? new Date(r.invoice_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</td>
                 <td className="px-5 py-2.5 font-medium text-gray-700">{r.party_name_db || r.party_name_manual || <span className="text-gray-300">—</span>}</td>
@@ -1636,6 +1643,43 @@ export default function JobWorkInvoice() {
             ))}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        {!isLoading && filtered.length > 0 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50/50">
+            <span className="text-xs text-gray-500">
+              Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length} records
+            </span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(1)} disabled={safePage === 1}
+                className="px-2 py-1 text-xs rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-100">«</button>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1}
+                className="px-2 py-1 text-xs rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-100">‹</button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
+                .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("...");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, idx) =>
+                  p === "..." ? (
+                    <span key={`e${idx}`} className="px-2 py-1 text-xs text-gray-400">…</span>
+                  ) : (
+                    <button key={p} onClick={() => setPage(p as number)}
+                      className={`px-2.5 py-1 text-xs rounded border ${safePage === p ? "text-white border-transparent" : "border-gray-200 hover:bg-gray-100"}`}
+                      style={safePage === p ? { background: "#027fa5" } : {}}>
+                      {p}
+                    </button>
+                  )
+                )}
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}
+                className="px-2 py-1 text-xs rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-100">›</button>
+              <button onClick={() => setPage(totalPages)} disabled={safePage === totalPages}
+                className="px-2 py-1 text-xs rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-100">»</button>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
