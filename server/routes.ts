@@ -40,9 +40,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const prefix = fyShort ? `IN/${fyShort}/` : "IN/";
         await _pool.query(
           `INSERT INTO voucher_series(id,transaction_label,transaction_type,prefix,starting_number,current_number,digits,is_active)
-           VALUES(gen_random_uuid()::text,'Job Work Invoice','job_work_invoice',$1,1,1,4,true)`,
+           VALUES(gen_random_uuid()::text,'Job Work Invoice','job_work_invoice',$1,1,1,3,true)`,
           [prefix]
         );
+      } else {
+        // Always ensure the invoice series is active — prevent fallback to JOB{timestamp} numbers
+        await _pool.query(`UPDATE voucher_series SET is_active=true WHERE transaction_type='job_work_invoice' AND is_active=false`);
       }
     } catch (_seed) {}
   } catch (_) {}
