@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Trash2, Edit, X, Loader2, AlertTriangle } from "lucide-react";
 
@@ -19,13 +20,77 @@ function Toggle({ label, name, value, onChange }: { label: string; name: string;
   );
 }
 
+// ─── Quick Add UOM Modal ──────────────────────────────────────────────────────
+function QuickAddUOM({ onSaved, onCancel }: { onSaved: (name: string) => void; onCancel: () => void }) {
+  const [name,      setName]      = useState("");
+  const [shortForm, setShortForm] = useState("");
+  const qc = useQueryClient();
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      const code = name.trim().toUpperCase().replace(/\s+/g, "_") || `UOM-${Date.now()}`;
+      const res = await fetch("/api/uom", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: name.trim(), shortForm: shortForm.trim(), numberOfDecimals: 0, isActive: true }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ["/api/uom"] });
+      onSaved(data.name || name.trim());
+    },
+  });
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center" style={{ zIndex: 9999 }}>
+      <div className="bg-white rounded-xl p-5 w-80" style={{ boxShadow: "2px 2px 10px rgba(0,0,0,0.25)" }}>
+        <div className="font-semibold text-gray-800 mb-4">Add New Unit of Measure</div>
+        <div className="space-y-3">
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Measurement Name *</label>
+            <input value={name} onChange={e => setName(e.target.value)} autoFocus
+              placeholder="e.g. Kilograms"
+              onKeyDown={e => { if (e.key === "Enter" && name.trim()) mut.mutate(); }}
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm focus:outline-none focus:border-[#027fa5]"
+              data-testid="input-uom-name" />
+          </div>
+          <div className="relative">
+            <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Short Form</label>
+            <input value={shortForm} onChange={e => setShortForm(e.target.value)}
+              placeholder="e.g. KGS"
+              className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm focus:outline-none focus:border-[#027fa5]"
+              data-testid="input-uom-short-form" />
+          </div>
+        </div>
+        {mut.isError && <p className="text-red-500 text-xs mt-2">{(mut.error as Error).message}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={() => mut.mutate()} disabled={mut.isPending || !name.trim()}
+            className="flex-1 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: SC.orange }} data-testid="btn-save-uom">
+            {mut.isPending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : null}Add
+          </button>
+          <button onClick={onCancel} className="flex-1 py-2 rounded border text-sm text-gray-600 hover:bg-gray-50"
+            data-testid="btn-cancel-uom">Cancel</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function ItemForm({ initial, categories, onClose }: any) {
   const [form, setForm] = useState({
     code: "", name: "", categoryId: "", unit: "Nos", description: "",
     purchasePrice: 0, sellingPrice: 0, stockQuantity: 0, minStockLevel: 0,
     hsnCode: "", taxRate: 18, batchRequired: false, expiryRequired: false, ...initial
   });
+  const [showUomModal, setShowUomModal] = useState(false);
   const qc = useQueryClient();
+
+  const { data: uomList = [] } = useQuery<any[]>({ queryKey: ["/api/uom"] });
+
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
       const url = initial?.id ? `/api/inventory/items/${initial.id}` : "/api/inventory/items";
@@ -45,6 +110,13 @@ function ItemForm({ initial, categories, onClose }: any) {
   );
 
   return (
+    <>
+    {showUomModal && (
+      <QuickAddUOM
+        onSaved={(name) => { setForm((f: any) => ({ ...f, unit: name })); setShowUomModal(false); }}
+        onCancel={() => setShowUomModal(false)}
+      />
+    )}
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl w-full max-w-2xl" style={{ boxShadow: "2px 2px 4px 2px rgba(0,0,0,0.3)" }}>
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "#b8d2da" }}>
@@ -62,7 +134,24 @@ function ItemForm({ initial, categories, onClose }: any) {
               {categories?.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <F label="Unit" name="unit" />
+          {/* Unit — dropdown from UOM master + quick-add */}
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Unit</label>
+            <div className="flex items-center gap-2">
+              <select value={form.unit || ""} onChange={e => setForm((f: any) => ({ ...f, unit: e.target.value }))}
+                className="flex-1 border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="select-unit">
+                <option value="">— Select —</option>
+                {(uomList as any[]).map((u: any) => (
+                  <option key={u.id} value={u.name}>{u.name}{u.shortForm ? ` (${u.shortForm})` : ""}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setShowUomModal(true)}
+                className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center text-white font-bold text-base"
+                style={{ background: SC.primary }} data-testid="btn-add-uom" title="Add new UOM">
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
           <F label="HSN Code" name="hsnCode" />
           <F label="Tax Rate (%)" name="taxRate" type="number" />
           <F label="Purchase Price" name="purchasePrice" type="number" />
@@ -89,6 +178,7 @@ function ItemForm({ initial, categories, onClose }: any) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
