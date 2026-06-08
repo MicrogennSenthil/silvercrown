@@ -304,6 +304,10 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [partyDropOpen, setPartyDropOpen] = useState(false);
   const partyRef = useRef<HTMLDivElement>(null);
 
+  // Credit check
+  type CreditWarn = { warning: "limit"|"days"|"both"|null; credit_limit: number; credit_days: number; outstanding: number; oldest_dr_days: number; can_override: boolean } | null;
+  const [creditWarn, setCreditWarn] = useState<CreditWarn>(null);
+
   // Panel selection — despatch IDs (despatch_notes mode) or inward IDs (direct_invoice mode)
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [loadingId,  setLoadingId]  = useState<string | null>(null);
@@ -399,6 +403,22 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const totalSgst    = items.reduce((s, it) => s + parseFloat(it.sgst_amt || 0), 0);
   const totalIgst    = items.reduce((s, it) => s + parseFloat(it.igst_amt || 0), 0);
   const grandTotal   = totalTaxable + (isInterState ? totalIgst : totalCgst + totalSgst);
+
+  // ── Credit check — auto-runs when party or total changes ─────────────────────
+  useEffect(() => {
+    if (!partyId) { setCreditWarn(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(
+          `/api/credit-check?party_id=${partyId}&amount=${grandTotal}&module=job_work_invoice`,
+          { credentials: "include" }
+        );
+        if (!cancelled) setCreditWarn(await r.json());
+      } catch { /* silent */ }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [partyId, grandTotal]);
 
   // ── Toggle despatch (Despatch Notes mode) or inward (Direct Invoice mode) ────
   async function toggleRecord(record: any, checked: boolean) {
@@ -696,6 +716,17 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
         return;
       }
     }
+    // ── Credit limit / days block ───────────────────────────────────────────────
+    if (creditWarn?.warning && !creditWarn.can_override) {
+      setSaveError(
+        creditWarn.warning === "limit"
+          ? "Cannot save: this party's credit limit has been exceeded. Contact your supervisor for approval."
+          : creditWarn.warning === "days"
+          ? "Cannot save: this party's credit days have been exceeded. Contact your supervisor for approval."
+          : "Cannot save: this party's credit limit and credit days have both been exceeded. Contact your supervisor for approval."
+      );
+      return;
+    }
     // ── End Validation ─────────────────────────────────────────────────────────
 
     const validCharges = charges.filter(c => c.charge_name?.trim());
@@ -874,6 +905,30 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                 </div>
               );
             })()}
+
+            {/* Credit warning banner */}
+            {creditWarn?.warning && (
+              <div className={`mt-2 px-3 py-2.5 rounded-lg border flex gap-2 items-start text-sm ${
+                !creditWarn.can_override
+                  ? "border-red-300 bg-red-50 text-red-700"
+                  : "border-amber-300 bg-amber-50 text-amber-700"
+              }`}>
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <div>
+                  {(creditWarn.warning === "limit" || creditWarn.warning === "both") && (
+                    <div><strong>Credit Limit Exceeded:</strong> Outstanding ₹{creditWarn.outstanding.toLocaleString("en-IN", { minimumFractionDigits: 2 })} + this invoice exceeds the limit of ₹{creditWarn.credit_limit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}.</div>
+                  )}
+                  {(creditWarn.warning === "days" || creditWarn.warning === "both") && (
+                    <div><strong>Credit Days Exceeded:</strong> Oldest outstanding bill is {creditWarn.oldest_dr_days} days old (credit limit: {creditWarn.credit_days} days).</div>
+                  )}
+                  <div className="mt-0.5 text-xs opacity-75">
+                    {creditWarn.can_override
+                      ? "You have approval rights — you may still save this document."
+                      : "You do not have approval rights to override the credit limit. Please contact your supervisor."}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: selection panel — Despatch Notes or Direct Invoice */}

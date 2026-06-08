@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, ChevronDown, Loader2, Trash2, PencilLine, Printer, Eye, CheckCircle, Lock } from "lucide-react";
+import { Search, ChevronDown, Loader2, Trash2, PencilLine, Printer, Eye, CheckCircle, Lock, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
@@ -49,6 +49,10 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
   const [partySearch,    setPartySearch]    = useState("");
   const [partyDropOpen,  setPartyDropOpen]  = useState(false);
   const partyRef = useRef<HTMLDivElement>(null);
+
+  // Credit check
+  type CreditWarn = { warning: "limit"|"days"|"both"|null; credit_limit: number; credit_days: number; outstanding: number; oldest_dr_days: number; can_override: boolean } | null;
+  const [creditWarn, setCreditWarn] = useState<CreditWarn>(null);
 
   // Pending inwards for selected party
   const [checkedInwardIds, setCheckedInwardIds] = useState<Set<string>>(new Set());
@@ -292,6 +296,20 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
         return;
       }
     }
+    // ── Credit limit / days block ───────────────────────────────────────────────
+    if (creditWarn?.warning && !creditWarn.can_override) {
+      toast({
+        title: "Credit limit exceeded",
+        description:
+          creditWarn.warning === "limit"
+            ? `This party's credit limit (₹${creditWarn.credit_limit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}) has been exceeded. Contact your supervisor for approval.`
+            : creditWarn.warning === "days"
+            ? `This party's credit days (${creditWarn.credit_days} days) have been exceeded. Contact your supervisor for approval.`
+            : `This party's credit limit and credit days have both been exceeded. Contact your supervisor for approval.`,
+        variant: "destructive",
+      });
+      return;
+    }
     // ── End Validation ─────────────────────────────────────────────────────────
 
     const isNew = !editingId;          // capture NOW — no closure issues
@@ -354,6 +372,22 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
   const totalSgst   = items.reduce((s, it) => s + rowTax(it).sgst, 0);
   const totalIgst   = items.reduce((s, it) => s + rowTax(it).igst, 0);
   const totalWithTax = totalAmount + totalCgst + totalSgst + totalIgst;
+
+  // ── Credit check — auto-runs when party or total changes ─────────────────────
+  useEffect(() => {
+    if (!partyId) { setCreditWarn(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(
+          `/api/credit-check?party_id=${partyId}&amount=${totalWithTax}&module=job_work_despatch`,
+          { credentials: "include" }
+        );
+        if (!cancelled) setCreditWarn(await r.json());
+      } catch { /* silent */ }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [partyId, totalWithTax]);
 
   // ── Delete existing despatch ──────────────────────────────────────────────────
   const delMut = useMutation({
@@ -440,6 +474,29 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
                   ))}
                 </div>
               )}
+            {/* Credit warning banner */}
+            {creditWarn?.warning && (
+              <div className={`mt-2 px-3 py-2.5 rounded-lg border flex gap-2 items-start text-sm ${
+                !creditWarn.can_override
+                  ? "border-red-300 bg-red-50 text-red-700"
+                  : "border-amber-300 bg-amber-50 text-amber-700"
+              }`}>
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <div>
+                  {(creditWarn.warning === "limit" || creditWarn.warning === "both") && (
+                    <div><strong>Credit Limit Exceeded:</strong> Outstanding ₹{creditWarn.outstanding.toLocaleString("en-IN", { minimumFractionDigits: 2 })} + this despatch exceeds the limit of ₹{creditWarn.credit_limit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}.</div>
+                  )}
+                  {(creditWarn.warning === "days" || creditWarn.warning === "both") && (
+                    <div><strong>Credit Days Exceeded:</strong> Oldest outstanding bill is {creditWarn.oldest_dr_days} days old (credit limit: {creditWarn.credit_days} days).</div>
+                  )}
+                  <div className="mt-0.5 text-xs opacity-75">
+                    {creditWarn.can_override
+                      ? "You have approval rights — you may still save this document."
+                      : "You do not have approval rights to override the credit limit. Please contact your supervisor."}
+                  </div>
+                </div>
+              </div>
+            )}
             </div>
 
             {/* Pending Inwards table */}

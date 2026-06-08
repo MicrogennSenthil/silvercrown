@@ -85,6 +85,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ user: safeUser });
   });
 
+  // Credit limit / days check for a party
+  app.get("/api/credit-check", requireAuth, async (req, res) => {
+    try {
+      const { party_id, amount = "0", module: mod = "job_work_invoice" } = req.query as any;
+      if (!party_id) return res.json({ warning: null });
+
+      const custRow = (await pool.query(
+        `SELECT credit_limit, credit_days, sub_ledger_id FROM customers WHERE id=$1 LIMIT 1`,
+        [party_id]
+      )).rows[0];
+      if (!custRow) return res.json({ warning: null });
+
+      const creditLimit = parseFloat(custRow.credit_limit  || "0");
+      const creditDays  = parseInt(custRow.credit_days     || "0", 10);
+      const slId        = custRow.sub_ledger_id;
+      const invoiceAmt  = parseFloat(amount || "0");
+
+      if (!creditLimit && !creditDays) {
+        return res.json({ warning: null, credit_limit: 0, credit_days: 0, outstanding: 0, oldest_dr_days: 0, can_override: true });
+      }
+
+      let outstanding = 0, oldestDrDays = 0;
+      if (slId) {
+        const balRow = (await pool.query(
+          `SELECT COALESCE(SUM(CASE WHEN cr_dr='Dr' THEN amount ELSE -amount END), 0) AS bal
+           FROM sub_ledger_bills WHERE sub_ledger_id=$1`,
+          [slId]
+        )).rows[0];
+        outstanding = parseFloat(balRow?.bal || "0");
+
+        if (creditDays > 0 && outstanding > 0) {
+          const oldestRow = (await pool.query(
+            `SELECT GREATEST(0, EXTRACT(DAY FROM NOW() - MIN(COALESCE(ref_date, voucher_date)))::int) AS oldest_days
+             FROM sub_ledger_bills WHERE sub_ledger_id=$1 AND cr_dr='Dr' AND amount > 0`,
+            [slId]
+          )).rows[0];
+          oldestDrDays = parseInt(oldestRow?.oldest_days || "0", 10) || 0;
+        }
+      }
+
+      const limitExceeded = creditLimit > 0 && (outstanding + invoiceAmt) > creditLimit;
+      const daysExceeded  = creditDays  > 0 && outstanding > 0 && oldestDrDays > creditDays;
+
+      let warning: string | null = null;
+      if (limitExceeded && daysExceeded) warning = "both";
+      else if (limitExceeded)            warning = "limit";
+      else if (daysExceeded)             warning = "days";
+
+      const user = req.user as any;
+      let canOverride = user?.role === "admin";
+      if (!canOverride && user?.user_role_id) {
+        const rightRow = (await pool.query(
+          `SELECT can_approve FROM role_rights WHERE role_id=$1 AND module=$2 LIMIT 1`,
+          [user.user_role_id, mod]
+        )).rows[0];
+        canOverride = !!rightRow?.can_approve;
+      }
+
+      res.json({ warning, credit_limit: creditLimit, credit_days: creditDays, outstanding, oldest_dr_days: oldestDrDays, can_override: canOverride });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // Dashboard
   app.get("/api/dashboard/stats", requireAuth, async (_req, res) => {
     const stats = await storage.getDashboardStats();
