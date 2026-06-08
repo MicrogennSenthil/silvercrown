@@ -2795,6 +2795,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN before_issue   bi  ON bi.item_code  = ii.code
         LEFT JOIN period_receipt pr  ON pr.item_code  = ii.code
         LEFT JOIN period_issue   pi  ON pi.item_code  = ii.code
+        WHERE ii.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
         ORDER BY ii.name
       `, [from, to])).rows;
       res.json(rows);
@@ -2846,7 +2847,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN bgr ON bgr.item_code=ii.code
         LEFT JOIN bi  ON bi.item_code =ii.code
         LEFT JOIN bir ON bir.item_code=ii.code
-        ${itemCode ? "WHERE ii.code=$3" : ""}
+        WHERE ii.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
+        ${itemCode ? "AND ii.code=$3" : ""}
         ORDER BY ii.name
       `, itemCode ? [from, to, itemCode] : [from, to]);
 
@@ -2931,6 +2933,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(u.name, u.username, '')                 AS user_name
         FROM goods_receipt_notes grn
         JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
+        JOIN products p_rm ON p_rm.code = grni.item_code AND p_rm.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
         LEFT JOIN customers c ON c.id = grn.supplier_id
         LEFT JOIN users u ON u.id::text = grn.created_by::text
         WHERE grn.grn_date BETWEEN $1 AND $2
@@ -2966,6 +2969,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             'Opening'                  AS source
           FROM store_opening_items soi
           JOIN store_openings so ON so.id = soi.sop_id
+          JOIN products p_rm ON p_rm.code = soi.item_code AND p_rm.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
           LEFT JOIN stores w ON w.id = so.store_id
           WHERE soi.expiry_date IS NOT NULL
             AND so.status = 'Posted'
@@ -2985,6 +2989,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             'GRN'                      AS source
           FROM goods_receipt_note_items grni
           JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
+          JOIN products p_rm ON p_rm.code = grni.item_code AND p_rm.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
           LEFT JOIN stores w ON w.id = grn.store_id
           WHERE grni.expiry_date IS NOT NULL
             AND COALESCE(grn.status,'') <> 'Cancelled'
@@ -3614,6 +3619,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(u.name, u.username, '')             AS user_name
         FROM store_issue_indents sii
         JOIN store_issue_indent_items siit ON siit.sii_id = sii.id
+        JOIN products p_rm ON p_rm.code = siit.item_code AND p_rm.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
         LEFT JOIN inventory_items ii  ON ii.code = siit.item_code
         LEFT JOIN users u ON u.id::text = sii.created_by::text
         WHERE sii.issue_date BETWEEN $1 AND $2
@@ -3644,6 +3650,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(grni.qty::numeric, 0)                   AS qty
         FROM goods_receipt_notes grn
         JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
+        JOIN products p_rm ON p_rm.code = grni.item_code AND p_rm.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
         LEFT JOIN customers c ON c.id = grn.supplier_id
         LEFT JOIN purchase_orders po ON po.id = grn.po_id
         WHERE grn.grn_date BETWEEN $1 AND $2
@@ -3672,6 +3679,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           COALESCE(u.username, '')                                              AS user_name
         FROM purchase_orders po
         JOIN purchase_order_items poi ON poi.po_id = po.id
+        JOIN products p_rm ON p_rm.code = poi.item_code AND p_rm.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
         LEFT JOIN suppliers s ON s.id = po.supplier_id
         LEFT JOIN users     u ON u.id = po.created_by
         LEFT JOIN (
@@ -3715,6 +3723,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN categories      c   ON c.id    = COALESCE(ii.category_id, p.category_id)
         LEFT JOIN sub_categories  sc  ON sc.id   = p.sub_category_id
         WHERE ibs.closing_qty > 0
+          AND COALESCE(ii.category_id, p.category_id) = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
         ORDER BY COALESCE(c.name,'zzz'), COALESCE(sc.name,'zzz'), ibs.item_name, ibs.batch_no
       `)).rows;
       res.json(rows);
@@ -3844,6 +3853,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN period_issue   pi   ON pi.item_code   = ii.code
         LEFT JOIN period_issue_ret pir ON pir.item_code = ii.code
         LEFT JOIN period_adj     padj ON padj.item_code = ii.code
+        WHERE ii.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
         ORDER BY ii.name
       `, [from, to])).rows;
       res.json(rows);
