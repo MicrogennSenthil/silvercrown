@@ -489,12 +489,14 @@ function EmailModal({ type, row, onClose }: { type: DocType; row: ListRow; onClo
 /* ── Main Page ──────────────────────────────────────────────────────── */
 export default function Reprint() {
   const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  // Financial year starts April 1 — if current month is Jan–Mar, FY started the previous year
+  const fyStartYear = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+  const fyStart = new Date(fyStartYear, 3, 1); // April 1
 
   const PAGE_SIZE = 15;
 
   const [docType,  setDocType]  = useState<DocType>("invoice");
-  const [fromDate, setFromDate] = useState(toInput(firstDay));
+  const [fromDate, setFromDate] = useState(toInput(fyStart));
   const [toDate,   setToDate]   = useState(toInput(today));
   const [trigger,  setTrigger]  = useState(0);
   const [search,   setSearch]   = useState("");
