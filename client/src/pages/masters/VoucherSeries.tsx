@@ -23,18 +23,19 @@ const DEFAULT_TYPES = [
 ];
 
 const EMPTY_FORM = {
-  transaction_type: "", transaction_label: "", prefix: "",
+  transaction_type: "", transaction_label: "", prefix: "", suffix: "",
   digits: 5, starting_number: 1, current_number: 1,
   financial_year_id: "", is_active: true,
 };
 
-function Preview({ prefix, digits, start }: { prefix: string; digits: number; start: number }) {
+function Preview({ prefix, suffix, digits, start }: { prefix: string; suffix: string; digits: number; start: number }) {
   const p = prefix || "XXX";
+  const s = suffix || "";
   const d = Math.max(1, Math.min(10, digits || 5));
   const n = start || 1;
   return (
     <span className="font-mono text-xs px-2 py-0.5 rounded" style={{ background: SC.tonal, color: SC.primary }}>
-      {p}{String(n).padStart(d, "0")}
+      {p}{String(n).padStart(d, "0")}{s}
     </span>
   );
 }
@@ -59,7 +60,8 @@ export default function VoucherSeries() {
   function openEdit(r: any) {
     setForm({
       transaction_type: r.transaction_type, transaction_label: r.transaction_label,
-      prefix: r.prefix, digits: r.digits, starting_number: r.starting_number,
+      prefix: r.prefix, suffix: r.suffix || "",
+      digits: r.digits, starting_number: r.starting_number,
       current_number: r.current_number, financial_year_id: r.financial_year_id || "",
       is_active: r.is_active,
     });
@@ -70,7 +72,14 @@ export default function VoucherSeries() {
     mutationFn: async () => {
       const url = editId ? `/api/voucher-series/${editId}` : "/api/voucher-series";
       const method = editId ? "PATCH" : "POST";
-      const payload = { ...form, digits: Number(form.digits), starting_number: Number(form.starting_number), current_number: Number(form.current_number), financial_year_id: form.financial_year_id || null };
+      const payload = {
+        ...form,
+        digits: Number(form.digits),
+        starting_number: Number(form.starting_number),
+        current_number: Number(form.current_number),
+        financial_year_id: form.financial_year_id || null,
+        suffix: form.suffix || "",
+      };
       const res = await fetch(url, { method, credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
@@ -132,7 +141,7 @@ export default function VoucherSeries() {
         {/* Tip banner */}
         <div className="mx-5 mt-4 mb-0 px-3 py-2 rounded-lg text-xs text-blue-700 bg-blue-50 border border-blue-100 flex items-start gap-2">
           <Hash size={13} className="flex-shrink-0 mt-0.5" />
-          <span>Each transaction type gets its own number series per financial year. Example: prefix <b>JWI</b>, 5 digits, start <b>1</b> → <span className="font-mono">JWI00001</span></span>
+          <span>Format: <b>Prefix</b> + padded number + <b>Suffix</b>. Example: prefix <b>IN/</b>, 3 digits, suffix <b>/26-27</b> → <span className="font-mono">IN/001/26-27</span></span>
         </div>
 
         {/* Table */}
@@ -142,6 +151,7 @@ export default function VoucherSeries() {
               <th className="px-4 py-2.5 text-left font-semibold text-gray-700">Transaction</th>
               <th className="px-4 py-2.5 text-left font-semibold text-gray-700">Financial Year</th>
               <th className="px-4 py-2.5 text-left font-semibold text-gray-700">Prefix</th>
+              <th className="px-4 py-2.5 text-left font-semibold text-gray-700">Suffix</th>
               <th className="px-4 py-2.5 text-left font-semibold text-gray-700">Digits</th>
               <th className="px-4 py-2.5 text-left font-semibold text-gray-700">Start No</th>
               <th className="px-4 py-2.5 text-left font-semibold text-gray-700">Current No</th>
@@ -151,21 +161,22 @@ export default function VoucherSeries() {
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={9} className="px-5 py-8 text-center text-gray-400 text-sm">Loading...</td></tr>}
-            {!isLoading && filtered.length === 0 && <tr><td colSpan={9} className="px-5 py-8 text-center text-gray-400 text-sm">No series found</td></tr>}
+            {isLoading && <tr><td colSpan={10} className="px-5 py-8 text-center text-gray-400 text-sm">Loading...</td></tr>}
+            {!isLoading && filtered.length === 0 && <tr><td colSpan={10} className="px-5 py-8 text-center text-gray-400 text-sm">No series found</td></tr>}
             {filtered.map((r: any, i: number) => (
               <tr key={r.id} className={`border-t border-gray-50 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
                 data-testid={`row-vs-${r.id}`}>
                 <td className="px-4 py-2.5 font-medium text-gray-800">{r.transaction_label}</td>
                 <td className="px-4 py-2.5 text-gray-500 text-xs">{r.fy_label || <span className="text-gray-300">—</span>}</td>
                 <td className="px-4 py-2.5 font-mono font-semibold text-sm" style={{ color: SC.primary }}>{r.prefix}</td>
+                <td className="px-4 py-2.5 font-mono text-sm text-gray-500">{r.suffix || <span className="text-gray-300">—</span>}</td>
                 <td className="px-4 py-2.5 text-gray-600 text-center">{r.digits}</td>
                 <td className="px-4 py-2.5 text-gray-600 text-center">{r.starting_number}</td>
                 <td className="px-4 py-2.5 text-center">
                   <span className="font-semibold text-sm" style={{ color: SC.orange }}>{r.current_number}</span>
                 </td>
                 <td className="px-4 py-2.5">
-                  <Preview prefix={r.prefix} digits={r.digits} start={r.current_number} />
+                  <Preview prefix={r.prefix} suffix={r.suffix || ""} digits={r.digits} start={r.current_number} />
                 </td>
                 <td className="px-4 py-2.5">
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
@@ -251,14 +262,21 @@ export default function VoucherSeries() {
                 </select>
               </div>
 
-              {/* Prefix + Digits */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Prefix + Suffix + Digits — 3 columns */}
+              <div className="grid grid-cols-3 gap-3">
                 <div className="relative">
                   <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${hasError("prefix") ? "text-red-500 font-semibold" : "text-gray-500"}`}>Prefix <span className="text-red-400">*</span></label>
                   <input value={form.prefix} onChange={e => { clearError("prefix"); setForm(p => ({ ...p, prefix: e.target.value.toUpperCase() })); }}
-                    placeholder="e.g. JWI"
+                    placeholder="IN/"
                     className={`w-full rounded px-3 py-2.5 text-sm font-mono outline-none border ${hasError("prefix") ? "border-red-400 bg-red-50/30 focus:border-red-500" : "border-gray-300 focus:border-[#027fa5]"}`}
                     data-testid="input-prefix" />
+                </div>
+                <div className="relative">
+                  <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Suffix</label>
+                  <input value={form.suffix} onChange={e => setForm(p => ({ ...p, suffix: e.target.value }))}
+                    placeholder="/26-27"
+                    className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm font-mono outline-none focus:border-[#027fa5]"
+                    data-testid="input-suffix" />
                 </div>
                 <div className="relative">
                   <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">No. of Digits</label>
@@ -300,7 +318,7 @@ export default function VoucherSeries() {
               {form.prefix && (
                 <div className="flex items-center gap-2 pt-1">
                   <span className="text-xs text-gray-500">Next voucher will look like:</span>
-                  <Preview prefix={form.prefix} digits={form.digits} start={modal === "add" ? form.starting_number : form.current_number} />
+                  <Preview prefix={form.prefix} suffix={form.suffix} digits={form.digits} start={modal === "add" ? form.starting_number : form.current_number} />
                 </div>
               )}
 
