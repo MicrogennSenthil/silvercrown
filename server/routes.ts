@@ -27,6 +27,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS irn text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_no text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_date date`).catch(()=>{});
+    // Seed job_work_invoice voucher series if missing — use FY-aware prefix (e.g. IN/26-27/)
+    try {
+      const existsSeries = await _pool.query(`SELECT 1 FROM voucher_series WHERE transaction_type='job_work_invoice' LIMIT 1`);
+      if (existsSeries.rows.length === 0) {
+        const fyRow = await _pool.query(`SELECT label FROM financial_years WHERE is_current=true LIMIT 1`).catch(() => ({ rows: [] as any[] }));
+        const fyLabel: string = (fyRow.rows[0]?.label as string) || "";
+        // Convert "2026-27" → "26-27", "2025-2026" → "25-26", etc.
+        const fyShort = fyLabel.replace(/^20(\d{2})-(?:20)?(\d{2})$/, "$1-$2") || fyLabel.replace(/\d{4}/g, (m: string) => m.slice(2));
+        const prefix = fyShort ? `IN/${fyShort}/` : "IN/";
+        await _pool.query(
+          `INSERT INTO voucher_series(id,transaction_label,transaction_type,prefix,starting_number,current_number,digits,is_active)
+           VALUES(gen_random_uuid()::text,'Job Work Invoice','job_work_invoice',$1,1,1,4,true)`,
+          [prefix]
+        );
+      }
+    } catch (_seed) {}
   } catch (_) {}
 
   // Auth routes
