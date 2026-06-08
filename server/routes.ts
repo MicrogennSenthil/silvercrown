@@ -2552,7 +2552,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Cache-Control", "no-store");
       if (!seriesRow) return res.json({ voucher_no: `${req.params.type.slice(0, 3).toUpperCase()}${Date.now()}` });
       const num = seriesRow.current_number || seriesRow.starting_number || 1;
-      const preview = `${seriesRow.prefix}${String(num).padStart(seriesRow.digits, "0")}`;
+      const sfx = seriesRow.suffix || "";
+      const preview = `${seriesRow.prefix}${String(num).padStart(seriesRow.digits, "0")}${sfx}`;
       res.json({ voucher_no: preview });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
