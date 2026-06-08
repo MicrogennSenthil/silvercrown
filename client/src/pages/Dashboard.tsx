@@ -169,6 +169,7 @@ export default function Dashboard() {
   const [chartFilter, setChartFilter]  = useState("Last 10-days");
   const [activeTab,   setActiveTab]    = useState<TabKey>("inward");
   const [ageingType,  setAgeingType]   = useState<"receivable" | "payable">("receivable");
+  const [ageingUnit,  setAgeingUnit]   = useState<"thousands" | "lakhs" | "crores">("lakhs");
 
   const { data: overdueTasks = [] } = useQuery<any[]>({
     queryKey: ["/api/tasks/overdue"],
@@ -358,7 +359,15 @@ export default function Dashboard() {
                   <option value="payable">Payable</option>
                 </select>
               </div>
-              <span className="text-xs text-gray-400">Amount in Lakhs</span>
+              <select
+                value={ageingUnit}
+                onChange={e => setAgeingUnit(e.target.value as "thousands" | "lakhs" | "crores")}
+                className="text-xs border border-gray-200 rounded-md px-2 py-0.5 bg-white font-medium focus:outline-none"
+                style={{ color: SC.primary }}>
+                <option value="thousands">Thousands</option>
+                <option value="lakhs">Lakhs</option>
+                <option value="crores">Crores</option>
+              </select>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -385,20 +394,21 @@ export default function Dashboard() {
                       </td>
                     </tr>
                   ) : ageingRows.map((r: any) => {
-                    const toLakh = (v: number) => v > 0 ? `₹ ${(v / 100000).toFixed(2)}` : "";
+                    const divisor = ageingUnit === "thousands" ? 1000 : ageingUnit === "crores" ? 10000000 : 100000;
+                    const fmtUnit = (v: number) => v > 0 ? `₹ ${(v / divisor).toFixed(2)}` : "";
                     const total = parseFloat(r.total || 0);
                     const bkts: number[] = r.buckets || [];
                     return (
                       <tr key={r.party_id || r.party_name} className="hover:bg-gray-50">
                         <td className="px-3 py-2 font-medium text-gray-700">{r.party_name}</td>
                         <td className="px-2 py-2 text-right font-semibold" style={{ color: SC.primary }}>
-                          {total !== 0 ? `₹ ${(Math.abs(total) / 100000).toFixed(2)}` : ""}
+                          {total !== 0 ? `₹ ${(Math.abs(total) / divisor).toFixed(2)}` : ""}
                         </td>
-                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[0] ?? 0)}</td>
-                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[1] ?? 0)}</td>
-                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[2] ?? 0)}</td>
-                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[3] ?? 0)}</td>
-                        <td className="px-2 py-2 text-right text-gray-600">{toLakh(bkts[4] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{fmtUnit(bkts[0] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{fmtUnit(bkts[1] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{fmtUnit(bkts[2] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{fmtUnit(bkts[3] ?? 0)}</td>
+                        <td className="px-2 py-2 text-right text-gray-600">{fmtUnit(bkts[4] ?? 0)}</td>
                       </tr>
                     );
                   })}
