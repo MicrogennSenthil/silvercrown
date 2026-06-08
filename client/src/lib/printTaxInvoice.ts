@@ -272,16 +272,16 @@ export function buildTaxInvoiceHTML(
   </table>
   <table style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:9.5px">
     <tr>
-      <td style="border-right:1px solid #000;padding:5px 8px;width:35%;vertical-align:top">
+      <td style="border-right:1px solid #000;padding:5px 8px;width:35%;vertical-align:top;text-align:center">
         Customer's Seal and Signature<br><br><br><br>
       </td>
-      <td style="padding:5px 8px;width:65%;vertical-align:top">
+      <td style="padding:5px 8px;width:65%;vertical-align:top;text-align:center">
         for SILVER CROWN METAL COATINGS
         ${doc.signature_image
-          ? `<div style="margin:3px 0 0 0;text-align:right"><img src="${doc.signature_image}" style="max-height:52px;max-width:160px;object-fit:contain" /></div>`
+          ? `<div style="margin:3px 0 0 0;text-align:center"><img src="${doc.signature_image}" style="max-height:52px;max-width:160px;object-fit:contain" /></div>`
           : `<br><br><br>`
         }
-        <div style="padding-top:2px;text-align:right;font-size:9px;font-weight:600">Authorised Signatory</div>
+        <div style="padding-top:2px;text-align:center;font-size:9px;font-weight:600">Authorised Signatory</div>
       </td>
     </tr>
   </table>
