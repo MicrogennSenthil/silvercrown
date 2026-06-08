@@ -793,7 +793,10 @@ function PoList({ onNew, onEdit }: { onNew: () => void; onEdit: (d: any) => void
                       ) : (
                         <span className="p-1 text-gray-300 cursor-not-allowed" title="Cannot edit an approved PO"><PencilLine size={14}/></span>
                       )}
-                      <button onClick={() => delMut.mutate(r.id)} className="text-red-400 hover:text-red-600 p-1" data-testid={`btn-del-${r.id}`}><Trash2 size={14}/></button>
+                      {r.grn_count > 0
+                        ? <span className="p-1 text-gray-300 cursor-not-allowed" title="Cannot delete — GRN inward already done for this PO"><Trash2 size={14}/></span>
+                        : <button onClick={() => delMut.mutate(r.id)} className="text-red-400 hover:text-red-600 p-1" data-testid={`btn-del-${r.id}`}><Trash2 size={14}/></button>
+                      }
                     </div>
                   </td>
                 </tr>

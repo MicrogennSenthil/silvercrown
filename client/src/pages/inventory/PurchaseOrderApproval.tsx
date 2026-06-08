@@ -411,7 +411,7 @@ export default function PurchaseOrderApproval() {
                           <Check size={13}/>
                         </button>
                       )}
-                      {po.status !== "Rejected" && (
+                      {po.status !== "Rejected" && !po.grn_count && (
                         <button title="Reject" onClick={() => {
                           setSelected(new Set([po.id]));
                           setShowModal("reject");

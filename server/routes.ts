@@ -5288,7 +5288,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT po.*, s.name AS supplier_name_db
+        SELECT po.*, s.name AS supplier_name_db,
+          COALESCE((
+            SELECT COUNT(*) FROM goods_receipt_notes grn
+            WHERE grn.po_id = po.id AND COALESCE(grn.status,'Draft') != 'Cancelled'
+          ), 0)::int AS grn_count
         FROM purchase_orders po
         LEFT JOIN suppliers s ON s.id = po.supplier_id
         ORDER BY po.created_at DESC
@@ -5509,7 +5513,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           ) AS item_qtys,
           COALESCE(
             (SELECT string_agg(poi.rate::text, ' ') FROM purchase_order_items poi WHERE poi.po_id = po.id), ''
-          ) AS item_rates
+          ) AS item_rates,
+          COALESCE((
+            SELECT COUNT(*) FROM goods_receipt_notes grn
+            WHERE grn.po_id = po.id AND COALESCE(grn.status,'Draft') != 'Cancelled'
+          ), 0)::int AS grn_count
         FROM purchase_orders po
         LEFT JOIN suppliers s ON s.id = po.supplier_id
         WHERE po.status != 'Cancelled'
@@ -5539,6 +5547,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         decisions: r.decisions || [],
         approver_user_id: r.approver_user_id || null,
         approver_name: r.approver_name || "",
+        grn_count: parseInt(r.grn_count || "0", 10),
       })));
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

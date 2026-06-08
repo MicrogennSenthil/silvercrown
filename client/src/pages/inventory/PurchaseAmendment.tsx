@@ -272,8 +272,9 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   });
 
   const filteredPOs = (purchaseOrders as any[]).filter((po: any) =>
-    !sourcePoSearch || po.voucher_no?.toLowerCase().includes(sourcePoSearch.toLowerCase()) ||
-    (po.supplier_name_db||"").toLowerCase().includes(sourcePoSearch.toLowerCase())
+    (po.grn_count === 0 || po.grn_count === null || po.grn_count === undefined) &&
+    (!sourcePoSearch || po.voucher_no?.toLowerCase().includes(sourcePoSearch.toLowerCase()) ||
+    (po.supplier_name_db||"").toLowerCase().includes(sourcePoSearch.toLowerCase()))
   );
   const filteredSuppliers = (suppliers as any[]).filter((s: any) =>
     !suppSearch || s.name?.toLowerCase().includes(suppSearch.toLowerCase())
