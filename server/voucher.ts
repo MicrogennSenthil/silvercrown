@@ -75,6 +75,7 @@ export async function generateVoucherNo(
   }
 
   const prefix = seriesRow.prefix || "";
+  const suffix = seriesRow.suffix || "";
   const digits = seriesRow.digits || 5;
   const startingNum = seriesRow.starting_number || 1;
   let counterNum = seriesRow.current_number || startingNum;
@@ -87,12 +88,10 @@ export async function generateVoucherNo(
   if (tableName && prefix) {
     try {
       const safePrefix = prefix.replace(/'/g, "''");
+      // Extract the number immediately after the prefix (works for both suffix-less and suffix formats)
       const maxRes = await db.execute(sql.raw(
         `SELECT MAX(
-           CASE WHEN voucher_no ~ '[0-9]+$'
-                THEN CAST(SUBSTRING(voucher_no FROM '[0-9]+$') AS INTEGER)
-                ELSE 0
-           END
+           CAST(NULLIF(SUBSTRING(voucher_no FROM '^${safePrefix}([0-9]+)'), '') AS INTEGER)
          ) AS max_num FROM "${tableName}" WHERE voucher_no LIKE '${safePrefix}%'`
       ));
       const maxInTable: number = parseInt((maxRes as any).rows?.[0]?.max_num ?? "0", 10) || 0;
@@ -116,5 +115,5 @@ export async function generateVoucherNo(
     );
   }
 
-  return `${prefix}${String(counterNum).padStart(digits, "0")}`;
+  return `${prefix}${String(counterNum).padStart(digits, "0")}${suffix}`;
 }

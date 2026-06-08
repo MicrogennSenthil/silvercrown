@@ -29,7 +29,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_date date`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoice_items ADD COLUMN IF NOT EXISTS packing_details TEXT DEFAULT ''`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('signature_image','','Digital Signature','Company','image','Upload company authorised signature image for invoice print') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
-    // Seed job_work_invoice voucher series if missing — use FY-aware prefix (e.g. IN/26-27/)
+    // Add suffix column to voucher_series if missing (format: IN/0001/26-27)
+    await _pool.query(`ALTER TABLE voucher_series ADD COLUMN IF NOT EXISTS suffix TEXT DEFAULT ''`).catch(() => {});
+
+    // Seed job_work_invoice voucher series if missing — format: IN/{num}/{fyShort}
     try {
       const existsSeries = await _pool.query(`SELECT 1 FROM voucher_series WHERE transaction_type='job_work_invoice' LIMIT 1`);
       if (existsSeries.rows.length === 0) {
@@ -37,15 +40,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const fyLabel: string = (fyRow.rows[0]?.label as string) || "";
         // Convert "2026-27" → "26-27", "2025-2026" → "25-26", etc.
         const fyShort = fyLabel.replace(/^20(\d{2})-(?:20)?(\d{2})$/, "$1-$2") || fyLabel.replace(/\d{4}/g, (m: string) => m.slice(2));
-        const prefix = fyShort ? `IN/${fyShort}/` : "IN/";
+        const suffix = fyShort ? `/${fyShort}` : "";
         await _pool.query(
-          `INSERT INTO voucher_series(id,transaction_label,transaction_type,prefix,starting_number,current_number,digits,is_active)
-           VALUES(gen_random_uuid()::text,'Job Work Invoice','job_work_invoice',$1,1,1,3,true)`,
-          [prefix]
+          `INSERT INTO voucher_series(id,transaction_label,transaction_type,prefix,suffix,starting_number,current_number,digits,is_active)
+           VALUES(gen_random_uuid()::text,'Job Work Invoice','job_work_invoice','IN/',$1,1,1,3,true)`,
+          [suffix]
         );
       } else {
         // Always ensure the invoice series is active — prevent fallback to JOB{timestamp} numbers
         await _pool.query(`UPDATE voucher_series SET is_active=true WHERE transaction_type='job_work_invoice' AND is_active=false`);
+        // Migrate old prefix format IN/26-27/ → prefix=IN/ suffix=/26-27
+        await _pool.query(`
+          UPDATE voucher_series
+          SET suffix = '/' || SUBSTRING(prefix FROM 4 FOR LENGTH(prefix)-4),
+              prefix = 'IN/'
+          WHERE transaction_type='job_work_invoice'
+            AND prefix ~ '^IN/[^/]+/$'
+            AND (suffix IS NULL OR suffix = '')
+        `).catch(() => {});
       }
     } catch (_seed) {}
   } catch (_) {}
