@@ -4168,10 +4168,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const buf = readFileSync(req.file.path);
       const mime = req.file.mimetype || "image/png";
       const b64 = `data:${mime};base64,${buf.toString("base64")}`;
-      unlinkSync(req.file.path);
-      const { db } = await import("./db");
-      const { sql } = await import("drizzle-orm");
-      await db.execute(sql`UPDATE app_settings SET value=${b64}, updated_at=now() WHERE key='signature_image'`);
+      try { unlinkSync(req.file.path); } catch {}
+      await pool.query("UPDATE app_settings SET value=$1, updated_at=now() WHERE key='signature_image'", [b64]);
       res.json({ signature_image: b64 });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -4180,9 +4178,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
 
   app.delete("/api/settings/signature-image", requireAuth, async (req, res) => {
     try {
-      const { db } = await import("./db");
-      const { sql } = await import("drizzle-orm");
-      await db.execute(sql`UPDATE app_settings SET value='', updated_at=now() WHERE key='signature_image'`);
+      await pool.query("UPDATE app_settings SET value='', updated_at=now() WHERE key='signature_image'");
       res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
