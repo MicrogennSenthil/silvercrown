@@ -1036,8 +1036,6 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                       <th className="px-2 py-2 text-left">Work Ord no</th>
                       <th className="px-2 py-2 text-left">Process</th>
                       <th className="px-2 py-2 text-left">Inw DN</th>
-                      <th className="px-2 py-2 text-center w-20">No.of Cover</th>
-                      <th className="px-2 py-2 text-center w-20">Packages</th>
                       <th className="px-2 py-2 text-right w-20">Qty</th>
                       <th className="px-2 py-2 text-left w-16">Unit</th>
                       <th className="px-2 py-2 text-right w-24">Rate ₹</th>
@@ -1051,6 +1049,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                           </>
                       }
                       <th className="px-2 py-2 text-right w-28">Tot.Amt ₹</th>
+                      <th className="px-2 py-2 text-center w-20">No.of Cover</th>
+                      <th className="px-2 py-2 text-center w-20">Packages</th>
                       <th className="w-8"></th>
                     </tr>
                   </thead>
@@ -1136,20 +1136,6 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                               : (it.process || "—")}
                           </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.inward_voucher_no || "—"}</td>
-                          <td className="px-2 py-1">
-                            <input type="number" min={0}
-                              data-testid={`input-cover-${idx}`}
-                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
-                              value={it.no_of_cover || ""}
-                              onChange={e => updateItem(realIdx, "no_of_cover", parseInt(e.target.value || "0"))} />
-                          </td>
-                          <td className="px-2 py-1">
-                            <input type="number" min={0}
-                              data-testid={`input-packages-${idx}`}
-                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
-                              value={it.packages || ""}
-                              onChange={e => updateItem(realIdx, "packages", parseInt(e.target.value || "0"))} />
-                          </td>
                           <td className="px-2 py-1 text-right font-semibold">
                             {(isManual || invoiceType === "direct_invoice")
                               ? <input type="number" min={0} step="0.001"
@@ -1233,6 +1219,20 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                               </>
                           }
                           <td className="px-2 py-1 text-right font-bold" style={{ color: SC.orange }}>{fmtAmt(rowTotal)}</td>
+                          <td className="px-2 py-1">
+                            <input type="number" min={0}
+                              data-testid={`input-cover-${idx}`}
+                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
+                              value={it.no_of_cover || ""}
+                              onChange={e => updateItem(realIdx, "no_of_cover", parseInt(e.target.value || "0"))} />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input type="number" min={0}
+                              data-testid={`input-packages-${idx}`}
+                              className="border rounded px-1 py-0.5 text-xs text-center w-16"
+                              value={it.packages || ""}
+                              onChange={e => updateItem(realIdx, "packages", parseInt(e.target.value || "0"))} />
+                          </td>
                           <td className="px-2 py-1 text-center">
                             <button data-testid={`btn-del-row-${idx}`}
                               onClick={() => setItems(prev => prev.filter((_, i) => i !== realIdx))}
