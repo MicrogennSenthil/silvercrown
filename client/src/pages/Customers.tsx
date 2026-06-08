@@ -165,12 +165,51 @@ function LedgerStatusPanel({ subLedgerName, ledgerType }: { subLedgerName: strin
   );
 }
 
+function normalizeCustomer(s: any) {
+  if (!s) return {};
+  return {
+    name:              s.name              || "",
+    shortName:         s.short_name        || s.shortName        || "",
+    email:             s.email             || "",
+    telephone:         s.telephone         || "",
+    websiteUrl:        s.website_url       || s.websiteUrl       || "",
+    address1:          s.address1          || "",
+    address2:          s.address2          || "",
+    city:              s.city              || "",
+    pincode:           s.pincode           || "",
+    state:             s.state             || "",
+    gstStateCode:      s.gst_state_code    || s.gstStateCode     || "",
+    contactName:       s.contact_name      || s.contactName      || "",
+    contactRole:       s.contact_role      || s.contactRole      || "",
+    creditLimit:       s.credit_limit      || s.creditLimit      || "",
+    creditDays:        s.credit_days       || s.creditDays       || "",
+    termOfPayment:     s.term_of_payment   || s.termOfPayment    || "",
+    accountNo:         s.account_no        || s.accountNo        || "",
+    accountHolderName: s.account_holder_name || s.accountHolderName || "",
+    accountType:       s.account_type      || s.accountType      || "",
+    bankName:          s.bank_name         || s.bankName         || "",
+    branchName:        s.branch_name       || s.branchName       || "",
+    ifscCode:          s.ifsc_code         || s.ifscCode         || "",
+    gstin:             s.gstin             || "",
+    gstRegisteredType: s.gst_registered_type || s.gstRegisteredType || "",
+    gstinDate:         s.gstin_date        || s.gstinDate        || "",
+    gstState:          s.gst_state         || s.gstState         || "",
+    category:          s.category          || "",
+    deliveryAddress:   s.delivery_address  || s.deliveryAddress  || "",
+    termOfDelivery:    s.term_of_delivery  || s.termOfDelivery   || "",
+    transport:         s.transport         || "",
+    freight:           s.freight           || "to_pay",
+    sameAsCompany:     s.same_as_company   ?? s.sameAsCompany    ?? false,
+    notes:             s.notes             || "",
+    subLedgerId:       s.sub_ledger_id     || s.subLedgerId      || "",
+  };
+}
+
 // ─── 3-Tab Form ───────────────────────────────────────────────────────────────
 function CustomerForm({ initial, onClose }: any) {
   const [form, setForm] = useState<any>({
     ...EMPTY_FORM,
-    ...initial,
-    subLedgerId: initial?.sub_ledger_id || initial?.subLedgerId || "",
+    ...normalizeCustomer(initial),
   });
   const [tab, setTab] = useState<"address" | "account" | "other">("address");
   const [isAlsoSupplier, setIsAlsoSupplier] = useState(false);
