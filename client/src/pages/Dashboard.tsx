@@ -23,7 +23,6 @@ const JOB_WORK_PIE = [
 
 const AGEING_RANGES = "0-15,15-30,30-45,45-60,60-9999";
 
-// ── Tab definitions ───────────────────────────────────────────────────────────
 type TabKey = "inward" | "despatch" | "invoice" | "purchaseOrder" | "payments";
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -34,7 +33,6 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "payments",      label: "Payments" },
 ];
 
-// ── Column definitions per tab ────────────────────────────────────────────────
 const COLS: Record<TabKey, { key: string; header: string; right?: boolean }[]> = {
   inward: [
     { key: "sno",         header: "S.No" },
@@ -83,7 +81,6 @@ const COLS: Record<TabKey, { key: string; header: string; right?: boolean }[]> =
   ],
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtDate(d: string | null | undefined) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
@@ -105,7 +102,6 @@ function invTypeLabel(t: string) {
   return t || "—";
 }
 
-// ── Stat Card ─────────────────────────────────────────────────────────────────
 function StatCard({ label, value, lastPct, lastUp }: { label: string; value: number; lastPct: string; lastUp: boolean }) {
   return (
     <div className="bg-white rounded-xl p-4 flex items-start gap-3 flex-1" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.12)" }}>
@@ -139,7 +135,6 @@ function StatCard({ label, value, lastPct, lastUp }: { label: string; value: num
   );
 }
 
-// ── Pie label ─────────────────────────────────────────────────────────────────
 const RADIAN = Math.PI / 180;
 function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) {
   const r = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -148,7 +143,6 @@ function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) 
   return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">{`${(percent * 100).toFixed(0)}%`}</text>;
 }
 
-// ── WIP Circle ────────────────────────────────────────────────────────────────
 function WipCircle({ pct }: { pct: number }) {
   const r = 42, circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
@@ -164,7 +158,9 @@ function WipCircle({ pct }: { pct: number }) {
   );
 }
 
-// ── Dashboard ─────────────────────────────────────────────────────────────────
+const SCROLL_Y = { overflowY: "auto" as const };
+const SCROLL_XY = { overflowX: "auto" as const, overflowY: "auto" as const };
+
 export default function Dashboard() {
   const [chartFilter, setChartFilter]  = useState("Last 10-days");
   const [activeTab,   setActiveTab]    = useState<TabKey>("inward");
@@ -215,8 +211,11 @@ export default function Dashboard() {
     return String(v);
   }
 
+  const divisor = ageingUnit === "thousands" ? 1000 : ageingUnit === "crores" ? 10000000 : 100000;
+  const fmtUnit = (v: number) => v > 0 ? `₹ ${(v / divisor).toFixed(2)}` : "";
+
   return (
-    <div className="space-y-4 text-sm">
+    <div className="space-y-4 text-sm" style={{ fontFamily: "Source Sans Pro, sans-serif" }}>
 
       {/* ── Top Stat Cards ── */}
       <div className="flex gap-4">
@@ -225,10 +224,10 @@ export default function Dashboard() {
         <StatCard label="Invoice"  value={tabCounts.invoice}   lastPct="12%" lastUp={true} />
       </div>
 
-      {/* ── Main Grid ── */}
-      <div className="flex gap-4">
+      {/* ── Main Two-Column Grid ── */}
+      <div className="flex gap-4 items-start">
 
-        {/* ── Left column ── */}
+        {/* ── LEFT column ── */}
         <div className="flex-1 min-w-0 space-y-4">
 
           {/* Charts row */}
@@ -261,7 +260,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Over-all Chart */}
+          {/* Over-all Chart card */}
           <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
@@ -277,9 +276,9 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Clickable tab boxes */}
+            {/* Tab selector boxes */}
             <div className="grid grid-cols-5 divide-x divide-gray-100 border-b border-gray-100">
-              {TABS.map((tab, i) => {
+              {TABS.map(tab => {
                 const isActive = tab.key === activeTab;
                 return (
                   <div
@@ -300,16 +299,16 @@ export default function Dashboard() {
               })}
             </div>
 
-            {/* Detail grid */}
-            <div className="overflow-x-auto" style={{ minHeight: 80 }}>
+            {/* Detail table — fixed height, scrolls both axes */}
+            <div style={{ ...SCROLL_XY, minHeight: 80, maxHeight: 280 }}>
               {detailLoading ? (
                 <div className="text-center py-6 text-xs text-gray-400">Loading...</div>
               ) : detail.length === 0 ? (
                 <div className="text-center py-6 text-xs text-gray-400">No records found</div>
               ) : (
                 <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ background: SC.tonal }}>
+                  <thead className="sticky top-0 z-10" style={{ background: SC.tonal }}>
+                    <tr>
                       {cols.map(c => (
                         <th key={c.key} className={`px-3 py-2 font-semibold text-gray-600 whitespace-nowrap ${c.right ? "text-right" : "text-left"}`}>
                           {c.header}
@@ -321,13 +320,15 @@ export default function Dashboard() {
                     {detail.map((row, idx) => (
                       <tr key={idx} className="hover:bg-gray-50">
                         {cols.map(c => (
-                          <td key={c.key} className={`px-3 py-2 ${
-                            c.key === "voucher_no"
-                              ? "font-semibold"
-                              : c.right
-                              ? "text-right font-semibold text-gray-800"
-                              : "text-gray-700"
-                          }`}
+                          <td
+                            key={c.key}
+                            className={`px-3 py-2 ${
+                              c.key === "voucher_no"
+                                ? "font-semibold"
+                                : c.right
+                                ? "text-right font-semibold text-gray-800"
+                                : "text-gray-700"
+                            }`}
                             style={c.key === "voucher_no" ? { color: SC.primary } : undefined}
                           >
                             {cellValue(row, c.key, idx)}
@@ -340,13 +341,15 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-        </div>
 
-        {/* ── Right column ── */}
+        </div>
+        {/* ── end LEFT column ── */}
+
+        {/* ── RIGHT column ── */}
         <div className="w-80 flex-shrink-0 space-y-4">
 
           {/* Ageing List */}
-          <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
+          <div className="bg-white rounded-xl" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)", overflow: "hidden" }}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-gray-700 text-sm">Ageing List</span>
@@ -369,17 +372,18 @@ export default function Dashboard() {
                 <option value="crores">Crores</option>
               </select>
             </div>
-            <div className="overflow-x-auto">
+            {/* Ageing table — fixed height, scrolls both axes */}
+            <div style={{ ...SCROLL_XY, maxHeight: 220 }}>
               <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: SC.tonal }}>
+                <thead className="sticky top-0 z-10" style={{ background: SC.tonal }}>
+                  <tr>
                     <th className="text-left px-3 py-2 font-semibold text-gray-600">Party</th>
                     <th className="text-right px-2 py-2 font-semibold text-gray-600">Total</th>
-                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">0-15<br/>Days</th>
-                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">15-30<br/>Days</th>
-                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">30-45<br/>Days</th>
-                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">45-60<br/>Days</th>
-                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">&gt;60<br/>Days</th>
+                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">0-15<br />Days</th>
+                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">15-30<br />Days</th>
+                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">30-45<br />Days</th>
+                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">45-60<br />Days</th>
+                    <th className="text-right px-2 py-2 font-semibold text-gray-600 whitespace-nowrap">&gt;60<br />Days</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -394,8 +398,6 @@ export default function Dashboard() {
                       </td>
                     </tr>
                   ) : ageingRows.map((r: any) => {
-                    const divisor = ageingUnit === "thousands" ? 1000 : ageingUnit === "crores" ? 10000000 : 100000;
-                    const fmtUnit = (v: number) => v > 0 ? `₹ ${(v / divisor).toFixed(2)}` : "";
                     const total = parseFloat(r.total || 0);
                     const bkts: number[] = r.buckets || [];
                     return (
@@ -417,8 +419,8 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Quick Reminder */}
-          <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
+          {/* Overdue Tasks / Reminders */}
+          <div className="bg-white rounded-xl" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)", overflow: "hidden" }}>
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
               <Bell size={14} style={{ color: SC.orange }} />
               <span className="font-semibold text-gray-700 text-sm">Overdue Tasks / Reminders</span>
@@ -428,47 +430,50 @@ export default function Dashboard() {
                 </span>
               )}
             </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr style={{ background: SC.tonal }}>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">S.No</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Task</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600">Assigned To</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">Due Date</th>
-                  <th className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">Lapsed</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {(overdueTasks as any[]).length === 0 ? (
+            {/* Tasks table — fixed height, scrolls both axes */}
+            <div style={{ ...SCROLL_XY, maxHeight: 200 }}>
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 z-10" style={{ background: SC.tonal }}>
                   <tr>
-                    <td colSpan={5} className="px-3 py-5 text-center text-gray-400">
-                      No overdue tasks — all tasks are on schedule ✓
-                    </td>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">S.No</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Task</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600">Assigned To</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">Due Date</th>
+                    <th className="text-left px-3 py-2 font-semibold text-gray-600 whitespace-nowrap">Lapsed</th>
                   </tr>
-                ) : (overdueTasks as any[]).map((t: any, idx: number) => {
-                  const due = t.due_date || t.dueDate || "";
-                  const lapsed = due ? daysDiff(due) : 0;
-                  return (
-                    <tr key={t.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-500">{String(idx + 1).padStart(2, "0")}</td>
-                      <td className="px-3 py-2 text-gray-700 font-medium">
-                        {t.title}
-                        {t.category && (
-                          <span className="ml-2 text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{t.category}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-gray-500">{t.assigned_employee_name || "—"}</td>
-                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(due)}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: "#fff0e6", color: SC.orange }}>
-                          +{lapsed} Day{lapsed !== 1 ? "s" : ""}
-                        </span>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {(overdueTasks as any[]).length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-5 text-center text-gray-400">
+                        No overdue tasks — all tasks are on schedule ✓
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ) : (overdueTasks as any[]).map((t: any, idx: number) => {
+                    const due = t.due_date || t.dueDate || "";
+                    const lapsed = due ? daysDiff(due) : 0;
+                    return (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-500">{String(idx + 1).padStart(2, "0")}</td>
+                        <td className="px-3 py-2 text-gray-700 font-medium">
+                          {t.title}
+                          {t.category && (
+                            <span className="ml-2 text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{t.category}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">{t.assigned_employee_name || "—"}</td>
+                        <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtDate(due)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="px-1.5 py-0.5 rounded text-xs font-semibold" style={{ background: "#fff0e6", color: SC.orange }}>
+                            +{lapsed} Day{lapsed !== 1 ? "s" : ""}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Work In Process */}
@@ -483,7 +488,11 @@ export default function Dashboard() {
           </div>
 
         </div>
+        {/* ── end RIGHT column ── */}
+
       </div>
+      {/* ── end Main Two-Column Grid ── */}
+
     </div>
   );
 }
