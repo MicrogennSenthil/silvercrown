@@ -276,12 +276,18 @@ export function buildTaxInvoiceHTML(
         Customer's Seal and Signature<br><br><br><br>
       </td>
       <td style="padding:5px 8px;width:65%;vertical-align:top;text-align:center">
-        for SILVER CROWN METAL COATINGS
-        ${doc.signature_image
-          ? `<div style="margin:3px 0 0 0;text-align:center"><img src="${doc.signature_image}" style="max-height:52px;max-width:160px;object-fit:contain" /></div>`
-          : `<br><br><br>`
-        }
-        <div style="padding-top:2px;text-align:center;font-size:9px">Prepared by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Verified by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Authorised Signatory</div>
+        <div style="font-size:9.5px;margin-bottom:4px">for SILVER CROWN METAL COATINGS</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:4px">
+          <div style="flex:1;text-align:center;font-size:9px;padding-top:40px">Prepared by</div>
+          <div style="flex:1;text-align:center;font-size:9px;padding-top:40px">Verified by</div>
+          <div style="flex:1;text-align:center;font-size:9px">
+            ${doc.signature_image
+              ? `<img src="${doc.signature_image}" style="max-height:52px;max-width:120px;object-fit:contain;display:block;margin:0 auto 2px auto" />`
+              : `<div style="height:52px"></div>`
+            }
+            Authorised Signatory
+          </div>
+        </div>
       </td>
     </tr>
   </table>
