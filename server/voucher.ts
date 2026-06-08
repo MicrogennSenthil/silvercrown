@@ -82,16 +82,18 @@ export async function generateVoucherNo(
   // Sync counter with actual max in the target table to recover from counter drift.
   // IMPORTANT: Always use db.execute (a separate pool connection) here — never the client
   // transaction connection — so that a missing table error cannot abort the outer transaction.
+  // Filter by prefix so stale fallback vouchers (e.g. "JOB1780897977569") can't poison the counter.
   const tableName = TYPE_TABLE[transactionType];
-  if (tableName) {
+  if (tableName && prefix) {
     try {
+      const safePrefix = prefix.replace(/'/g, "''");
       const maxRes = await db.execute(sql.raw(
         `SELECT MAX(
            CASE WHEN voucher_no ~ '[0-9]+$'
                 THEN CAST(SUBSTRING(voucher_no FROM '[0-9]+$') AS INTEGER)
                 ELSE 0
            END
-         ) AS max_num FROM "${tableName}"`
+         ) AS max_num FROM "${tableName}" WHERE voucher_no LIKE '${safePrefix}%'`
       ));
       const maxInTable: number = parseInt((maxRes as any).rows?.[0]?.max_num ?? "0", 10) || 0;
       if (maxInTable >= counterNum) {
