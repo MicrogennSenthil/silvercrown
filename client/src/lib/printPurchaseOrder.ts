@@ -171,7 +171,7 @@ export function buildPurchaseOrderHTML(doc: any): string {
   }
   table.items-tbl th:last-child { border-right: none; }
   table.items-tbl td {
-    font-size: 9px; padding: 4px 5px; border-bottom: 1px solid #e5e5e5;
+    font-size: 9px; padding: 4px 5px;
     border-right: 1px solid #e5e5e5; vertical-align: middle;
   }
   table.items-tbl td:last-child { border-right: none; }
