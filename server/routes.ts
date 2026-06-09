@@ -3292,7 +3292,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           LEFT JOIN job_work_invoice_items ii ON ii.invoice_id = jwi.id
           WHERE jwi.invoice_date BETWEEN $1 AND $2
           GROUP BY jwi.id, jwi.voucher_no, jwi.invoice_date, c.name, jwi.party_name_manual, c.email
-          ORDER BY jwi.invoice_date ASC, jwi.voucher_no ASC
+          ORDER BY CAST(NULLIF(REGEXP_REPLACE(SPLIT_PART(jwi.voucher_no, '/', 2), '[^0-9]', '', 'g'), '') AS BIGINT) ASC NULLS LAST, jwi.voucher_no ASC
         `, [from, to])).rows;
 
       } else if (type === "despatch_note") {
@@ -3309,7 +3309,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           LEFT JOIN job_work_despatch_items di ON di.despatch_id = jwd.id
           WHERE jwd.despatch_date BETWEEN $1 AND $2
           GROUP BY jwd.id, jwd.voucher_no, jwd.despatch_date, c.name, jwd.party_name_manual, jwd.party_name_manual2, c.email
-          ORDER BY jwd.despatch_date ASC, jwd.voucher_no ASC
+          ORDER BY CAST(NULLIF(REGEXP_REPLACE(SPLIT_PART(jwd.voucher_no, '/', 2), '[^0-9]', '', 'g'), '') AS BIGINT) ASC NULLS LAST, jwd.voucher_no ASC
         `, [from, to])).rows;
 
       } else if (type === "purchase_order") {
@@ -3323,7 +3323,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           LEFT JOIN purchase_order_items poi ON poi.po_id = po.id
           WHERE po.po_date BETWEEN $1 AND $2
           GROUP BY po.id, po.voucher_no, po.po_date, s.name, po.supplier_name_manual, s.email
-          ORDER BY po.po_date ASC, po.voucher_no ASC
+          ORDER BY CAST(NULLIF(REGEXP_REPLACE(SPLIT_PART(po.voucher_no, '/', 2), '[^0-9]', '', 'g'), '') AS BIGINT) ASC NULLS LAST, po.voucher_no ASC
         `, [from, to])).rows;
       }
 
