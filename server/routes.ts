@@ -84,6 +84,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         `).catch(() => {});
       }
     } catch (_seed) {}
+
+    // ── Self-heal voucher_series counters for all transaction types ──────────
+    // For each series, sync current_number to MAX(seq) in its target table + 1.
+    // This fixes counter drift when saves failed or records were deleted.
+    try {
+      const typeTableMap: Record<string, string> = {
+        purchase_order:           "purchase_orders",
+        job_work_invoice:         "job_work_invoices",
+        job_work_inward:          "job_work_inward",
+        job_work_despatch:        "job_work_despatch",
+        gate_pass:                "gate_pass",
+        store_opening:            "store_openings",
+        store_issue:              "store_issues",
+        store_request:            "store_requests",
+        purchase_receipt:         "purchase_receipts",
+        goods_receipt_return:     "goods_receipt_returns",
+        purchase_order_amendment: "purchase_order_amendments",
+      };
+      const seriesRows = (await _pool.query(`SELECT id, transaction_type, prefix, starting_number, current_number FROM voucher_series WHERE is_active = true`)).rows;
+      for (const s of seriesRows) {
+        const tbl = typeTableMap[s.transaction_type];
+        if (!tbl) continue;
+        try {
+          const safePrefix = (s.prefix || "").replace(/'/g, "''");
+          const maxRes = await _pool.query(
+            `SELECT COALESCE(MAX(CAST(NULLIF(SUBSTRING(voucher_no FROM '^${safePrefix}([0-9]+)'), '') AS INTEGER)), 0) AS max_num FROM "${tbl}" WHERE voucher_no LIKE '${safePrefix}%'`
+          );
+          const maxInTable: number = parseInt(maxRes.rows[0]?.max_num ?? "0", 10) || 0;
+          const correctNext = Math.max(maxInTable + 1, s.starting_number || 1);
+          // Only correct downward (drift fix) or reset when table is empty and counter > 1
+          if (correctNext !== s.current_number) {
+            await _pool.query(
+              `UPDATE voucher_series SET current_number = $1 WHERE id = $2`,
+              [correctNext, s.id]
+            );
+          }
+        } catch (_inner) {}
+      }
+    } catch (_heal) {}
+
   } catch (_) {}
 
   // Auth routes
