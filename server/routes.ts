@@ -3335,15 +3335,39 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
 
       } else if (type === "purchase_order") {
         const h = (await pool.query(`
-          SELECT po.*, COALESCE(s.name, po.supplier_name_manual,'') AS party_name_db,
-            COALESCE(s.email,'') AS party_email, COALESCE(s.phone,'') AS party_phone
+          SELECT po.*,
+            COALESCE(s.name, po.supplier_name_manual,'') AS party_name_db,
+            COALESCE(s.email,'')        AS party_email,
+            COALESCE(s.phone,'')        AS party_phone,
+            COALESCE(s.address1,'')     AS supplier_address1,
+            COALESCE(s.address2,'')     AS supplier_address2,
+            COALESCE(s.city,'')         AS supplier_city,
+            COALESCE(s.state,'')        AS supplier_state,
+            COALESCE(s.pincode,'')      AS supplier_pincode,
+            COALESCE(s.gstin,'')        AS supplier_gstin
           FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id WHERE po.id=$1
         `, [id])).rows[0];
         if (!h) return res.status(404).json({ message: "Not found" });
-        const items = (await pool.query(`SELECT * FROM purchase_order_items WHERE po_id=$1 ORDER BY seq_no`, [id])).rows;
-        const terms = (await pool.query(`SELECT * FROM purchase_order_terms WHERE po_id=$1 ORDER BY seq_no`, [id])).rows;
-        const charges = (await pool.query(`SELECT * FROM purchase_order_charges WHERE po_id=$1 ORDER BY seq_no`, [id])).rows;
-        return res.json({ ...h, items, terms, charges });
+        const [itemsR, termsR, chargesR, settingsR] = await Promise.all([
+          pool.query(`SELECT * FROM purchase_order_items  WHERE po_id=$1 ORDER BY seq_no`, [id]),
+          pool.query(`SELECT * FROM purchase_order_terms  WHERE po_id=$1 ORDER BY seq_no`, [id]),
+          pool.query(`SELECT * FROM purchase_order_charges WHERE po_id=$1 ORDER BY seq_no`, [id]),
+          pool.query(`SELECT key, value FROM app_settings WHERE key IN ('company_name','company_address','company_phone','company_gstin','company_email','signature_image')`),
+        ]);
+        const cfg: Record<string,string> = {};
+        settingsR.rows.forEach((r: any) => { cfg[r.key] = r.value; });
+        return res.json({
+          ...h,
+          items:   itemsR.rows,
+          terms:   termsR.rows,
+          charges: chargesR.rows,
+          company_name:    cfg.company_name    || "",
+          company_address: cfg.company_address || "",
+          company_phone:   cfg.company_phone   || "",
+          company_gstin:   cfg.company_gstin   || "",
+          company_email:   cfg.company_email   || "",
+          signature_image: cfg.signature_image || "",
+        });
       }
       res.status(400).json({ message: "Unknown type" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

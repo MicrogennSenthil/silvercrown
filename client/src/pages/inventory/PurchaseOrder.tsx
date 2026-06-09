@@ -1,11 +1,60 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, PencilLine, Printer, Info, ChevronDown, Search } from "lucide-react";
+import { Plus, Trash2, PencilLine, Printer, Info, ChevronDown, Search, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
+import { buildPurchaseOrderHTML } from "@/lib/printPurchaseOrder";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 const today = () => new Date().toISOString().split("T")[0];
+
+// ── PO Print Dialog ───────────────────────────────────────────────────────────
+function PoPrintDialog({ poId, isNew, onDone }: { poId: string; isNew: boolean; onDone: () => void }) {
+  const [loading, setLoading] = useState(false);
+  async function doPrint() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/reprint/purchase_order/${poId}`, { credentials: "include" });
+      const doc = await res.json();
+      const html = buildPurchaseOrderHTML(doc);
+      const win = window.open("", "_blank", "width=1100,height=780");
+      if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+    } finally { setLoading(false); onDone(); }
+  }
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onDone}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 z-10 p-6">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <h3 className="text-base font-bold text-gray-800">
+              {isNew ? "Purchase Order Saved!" : "Print Purchase Order"}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">Would you like to print this PO?</p>
+          </div>
+          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={15}/></button>
+        </div>
+        <div className="mt-5 flex flex-col gap-3">
+          <button onClick={doPrint} disabled={loading}
+            className="w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-60"
+            style={{ background: SC.orange }}
+            data-testid="btn-print-po">
+            {loading
+              ? <div className="w-4 h-4 rounded-full animate-spin border-2 border-white/30 border-t-white"/>
+              : <Printer size={14}/>}
+            Print Purchase Order (A4)
+          </button>
+          <button onClick={onDone} className="text-xs text-gray-400 hover:text-gray-600 text-center py-1"
+            data-testid="btn-skip-print">
+            Skip — don&apos;t print
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
 const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const n2 = (v: number) => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -245,10 +294,11 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
     onSuccess: (data) => {
       if (!isEdit && data.voucher_no) setVoucherNo(data.voucher_no);
       qc.invalidateQueries({ queryKey: ["/api/purchase-orders"] });
-      onBack();
+      setPrintDialogState({ id: data.id, isNew: !isEdit });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
+  const [printDialogState, setPrintDialogState] = useState<{ id: string; isNew: boolean } | null>(null);
 
   const filteredSuppliers = (suppliers as any[]).filter((s: any) =>
     !suppSearch || s.name?.toLowerCase().includes(suppSearch.toLowerCase())
@@ -262,6 +312,7 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   );
 
   return (
+    <>
     <div ref={containerRef} className="p-4 md:p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
       <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-sm">
 
@@ -718,6 +769,14 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
         </div>
       </div>
     </div>
+    {printDialogState && (
+      <PoPrintDialog
+        poId={printDialogState.id}
+        isNew={printDialogState.isNew}
+        onDone={() => { setPrintDialogState(null); onBack(); }}
+      />
+    )}
+    </>
   );
 }
 
@@ -726,6 +785,18 @@ function PoList({ onNew, onEdit }: { onNew: () => void; onEdit: (d: any) => void
   const { data: list = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/purchase-orders"] });
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [reprintId, setReprintId] = useState<string | null>(null);
+
+  async function handlePrint(id: string) {
+    try {
+      const res = await fetch(`/api/reprint/purchase_order/${id}`, { credentials: "include" });
+      const doc = await res.json();
+      const { buildPurchaseOrderHTML } = await import("@/lib/printPurchaseOrder");
+      const html = buildPurchaseOrderHTML(doc);
+      const win = window.open("", "_blank", "width=1100,height=780");
+      if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+    } catch { /* ignore */ }
+  }
 
   const delMut = useMutation({
     mutationFn: (id: string) => fetch(`/api/purchase-orders/${id}`, { method: "DELETE", credentials: "include" }).then(r => r.json()),
@@ -793,6 +864,7 @@ function PoList({ onNew, onEdit }: { onNew: () => void; onEdit: (d: any) => void
                       ) : (
                         <span className="p-1 text-gray-300 cursor-not-allowed" title="Cannot edit an approved PO"><PencilLine size={14}/></span>
                       )}
+                      <button onClick={() => handlePrint(r.id)} className="text-gray-500 hover:text-[#027fa5] p-1" title="Print PO" data-testid={`btn-print-${r.id}`}><Printer size={14}/></button>
                       {r.grn_count > 0
                         ? <span className="p-1 text-gray-300 cursor-not-allowed" title="Cannot delete — GRN inward already done for this PO"><Trash2 size={14}/></span>
                         : <button onClick={() => delMut.mutate(r.id)} className="text-red-400 hover:text-red-600 p-1" data-testid={`btn-del-${r.id}`}><Trash2 size={14}/></button>

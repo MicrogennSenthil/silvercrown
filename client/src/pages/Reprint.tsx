@@ -4,6 +4,7 @@ import { Printer, Eye, Mail, X, Calendar, AlertCircle, ChevronDown, Send, CheckC
 import { useToast } from "@/hooks/use-toast";
 import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
 import { buildTaxInvoiceHTML } from "@/lib/printTaxInvoice";
+import { buildPurchaseOrderHTML } from "@/lib/printPurchaseOrder";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa" };
 
@@ -56,49 +57,12 @@ async function openPrint(type: DocType, row: ListRow, isEInvoice = false, eInvDa
     return;
   }
 
-  // Purchase Order (generic fallback)
-  const typeLabel = "Purchase Order";
-  const dateField = doc.po_date;
-  const items: any[] = doc.items || [];
-  const itemRows = items.map((it: any, idx: number) => {
-    const qty  = parseFloat(it.qty || it.qty_despatched || "0");
-    const rate = parseFloat(it.rate || "0");
-    const amt  = parseFloat(it.amount || it.total || (qty * rate).toFixed(2) || "0");
-    return `<tr>
-      <td>${idx + 1}</td>
-      <td>${it.item_code || ""}</td>
-      <td>${it.item_name || ""}</td>
-      <td>${it.unit || ""}</td>
-      <td style="text-align:right">${qty.toFixed(3)}</td>
-      <td style="text-align:right">${rate.toFixed(2)}</td>
-      <td style="text-align:right">${fmtAmt(amt)}</td>
-    </tr>`;
-  }).join("");
-  const taxableAmt   = items.reduce((s: number, it: any) => { const q = parseFloat(it.qty||it.qty_despatched||"0"); const r = parseFloat(it.rate||"0"); return s + parseFloat(it.amount||it.total||(q*r).toFixed(2)||"0"); }, 0);
-  const cgstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.cgst_amt || "0"), 0);
-  const sgstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.sgst_amt || "0"), 0);
-  const igstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.igst_amt || "0"), 0);
-  const charges: any[] = doc.charges || [];
-  const chargesTotal = charges.reduce((s: number, ch: any) => s + parseFloat(ch.amount || "0"), 0);
-  const totalAmt     = taxableAmt + cgstTotal + sgstTotal + igstTotal + chargesTotal;
-  const gstRows = [
-    `<tr><td colspan="6" style="text-align:right;color:#555">Taxable Amount</td><td style="text-align:right">${fmtAmt(taxableAmt)}</td></tr>`,
-    cgstTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">CGST</td><td style="text-align:right">${fmtAmt(cgstTotal)}</td></tr>` : "",
-    sgstTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">SGST</td><td style="text-align:right">${fmtAmt(sgstTotal)}</td></tr>` : "",
-    igstTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">IGST</td><td style="text-align:right">${fmtAmt(igstTotal)}</td></tr>` : "",
-    chargesTotal > 0 ? `<tr><td colspan="6" style="text-align:right;color:#555">Additional Charges</td><td style="text-align:right">${fmtAmt(chargesTotal)}</td></tr>` : "",
-  ].join("");
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${typeLabel} — ${doc.voucher_no}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:24px}.header{text-align:center;border-bottom:2px solid #027fa5;padding-bottom:10px;margin-bottom:16px}.header h1{font-size:20px;font-weight:700;color:#027fa5}.header h2{font-size:14px;margin-top:2px;color:#555}.meta{display:flex;justify-content:space-between;margin-bottom:14px}.meta p{margin:2px 0}table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#027fa5;color:#fff;padding:7px 8px;text-align:left;font-size:12px}td{padding:6px 8px;border-bottom:1px solid #e5e5e5;font-size:12px}.total-row td{font-weight:700;border-top:2px solid #027fa5;background:#f0f9ff}</style>
-</head><body>
-<div class="header"><h1>SILVER CROWN METAL COATINGS</h1><h2>${typeLabel}</h2></div>
-<div class="meta"><div><p><b>Doc No:</b> ${doc.voucher_no||"—"}</p><p><b>Date:</b> ${fmtDate(dateField)}</p><p><b>Party:</b> ${doc.party_name_db||row.party_name||"—"}</p></div></div>
-<table><thead><tr><th>#</th><th>Code</th><th>Description</th><th>Unit</th><th style="text-align:right">Qty</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead>
-<tbody>${itemRows||'<tr><td colspan="7" style="text-align:center;color:#999">No items</td></tr>'}</tbody>
-<tfoot>${gstRows}<tr class="total-row"><td colspan="6" style="text-align:right">Grand Total</td><td style="text-align:right">₹ ${fmtAmt(totalAmt)}</td></tr></tfoot></table>
-</body></html>`;
-  const win = window.open("", "_blank", "width=900,height=700");
-  if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
+  if (type === "purchase_order") {
+    const html = buildPurchaseOrderHTML(doc);
+    const win = window.open("", "_blank", "width=1100,height=780");
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+    return;
+  }
 }
 
 /* ── Invoice Print Picker Modal ─────────────────────────────────────── */
