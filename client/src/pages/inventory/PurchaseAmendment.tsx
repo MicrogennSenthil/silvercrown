@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, PencilLine, Printer, Info, ChevronDown, Search, FileEdit } from "lucide-react";
+import { Plus, Trash2, PencilLine, Printer, Info, ChevronDown, Search, FileEdit, Eye, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
 
@@ -68,7 +68,7 @@ function mapPoItems(raw: any[]): PoaItem[] {
 }
 
 // ── Amendment Form ───────────────────────────────────────────────────────────
-function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
+function PoaForm({ editData, onBack, readOnly = false }: { editData?: any; onBack: () => void; readOnly?: boolean }) {
   const qc = useQueryClient();
   const isEdit = !!editData?.id;
 
@@ -296,12 +296,28 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
           <h2 className="font-semibold text-gray-800 flex items-center gap-2">
             <FileEdit size={16} style={{ color: SC.primary }} />
             Purchase Order Amendment
+            {readOnly && (
+              <span className="ml-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+                <Lock size={11}/> GRN Done — View Only
+              </span>
+            )}
           </h2>
           <div className="flex items-center gap-2">
             <button className="p-1.5 text-gray-400 hover:text-gray-600"><Printer size={15}/></button>
             <button className="p-1.5 text-gray-400 hover:text-gray-600"><Info size={15}/></button>
           </div>
         </div>
+
+        {/* GRN locked notice */}
+        {readOnly && (
+          <div className="mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-lg text-sm bg-amber-50 border border-amber-200">
+            <Lock size={15} className="text-amber-600 flex-shrink-0"/>
+            <div>
+              <span className="font-semibold text-amber-800">Amendment locked — Goods Receipt Note (GRN) has been inward for this PO.</span>
+              <span className="text-amber-700 ml-2 text-xs">No further amendments are possible. Showing amendment details for reference.</span>
+            </div>
+          </div>
+        )}
 
         <div className="px-6 py-5 space-y-4">
 
@@ -313,21 +329,22 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                 className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm font-semibold bg-gray-50 outline-none"
                 style={{ color: SC.primary }} data-testid="input-poa-no"/>
             </div>
-            <DatePicker label="POA Date" value={amendDate} onChange={setAmendDate}/>
+            <DatePicker label="POA Date" value={amendDate} onChange={readOnly ? () => {} : setAmendDate}/>
 
             {/* Source PO dropdown */}
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Source PO</label>
               <div className="relative">
                 <input value={sourcePoSearch}
-                  onChange={e => { setSourcePoSearch(e.target.value); setSourcePoOpen(true); }}
-                  onFocus={() => setSourcePoOpen(true)}
+                  onChange={e => { if (!readOnly) { setSourcePoSearch(e.target.value); setSourcePoOpen(true); } }}
+                  onFocus={() => { if (!readOnly) setSourcePoOpen(true); }}
+                  readOnly={readOnly}
                   placeholder="Search PO No..."
-                  className="w-full border border-gray-300 rounded px-3 py-2.5 pr-8 text-sm outline-none focus:border-[#027fa5]"
+                  className={`w-full border border-gray-300 rounded px-3 py-2.5 pr-8 text-sm outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50 cursor-default" : ""}`}
                   data-testid="input-source-po"/>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
               </div>
-              {sourcePoOpen && (
+              {sourcePoOpen && !readOnly && (
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-52 overflow-y-auto mt-0.5">
                   {posLoading ? (
                     <div className="px-3 py-3 text-sm text-gray-400">Loading purchase orders…</div>
@@ -351,8 +368,8 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
 
             <div className="relative">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">PO Type</label>
-              <input value={poType} onChange={e => setPoType(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+              <input value={poType} onChange={e => setPoType(e.target.value)} readOnly={readOnly}
+                className={`w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50" : ""}`}
                 data-testid="input-po-type"/>
             </div>
           </div>
@@ -364,13 +381,14 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Supplier Name</label>
               <div className="relative">
                 <input value={suppSearch}
-                  onChange={e => { setSuppSearch(e.target.value); setSuppId(""); setSuppOpen(true); }}
-                  onFocus={() => setSuppOpen(true)}
-                  className="w-full border border-gray-300 rounded px-3 py-2.5 pr-8 text-sm outline-none focus:border-[#027fa5]"
+                  onChange={e => { if (!readOnly) { setSuppSearch(e.target.value); setSuppId(""); setSuppOpen(true); } }}
+                  onFocus={() => { if (!readOnly) setSuppOpen(true); }}
+                  readOnly={readOnly}
+                  className={`w-full border border-gray-300 rounded px-3 py-2.5 pr-8 text-sm outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50 cursor-default" : ""}`}
                   data-testid="input-supplier"/>
                 <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
               </div>
-              {suppOpen && filteredSuppliers.length > 0 && (
+              {suppOpen && !readOnly && filteredSuppliers.length > 0 && (
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-48 overflow-y-auto mt-0.5">
                   {filteredSuppliers.slice(0, 20).map((s: any) => (
                     <button key={s.id} onClick={() => { setSuppId(s.id); setSuppSearch(s.name); setSuppOpen(false); }}
@@ -382,12 +400,12 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
               )}
             </div>
             <div className="w-44">
-              <DatePicker label="Exp Date" value={schedDate} onChange={setSchedDate}/>
+              <DatePicker label="Exp Date" value={schedDate} onChange={readOnly ? () => {} : setSchedDate}/>
             </div>
             <div className="relative w-36">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Priority</label>
-              <select value={priority} onChange={e => setPriority(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] bg-white appearance-none pr-7"
+              <select value={priority} onChange={e => setPriority(e.target.value)} disabled={readOnly}
+                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] bg-white appearance-none pr-7 disabled:bg-gray-50"
                 data-testid="select-priority">
                 {["High","Medium","Low"].map(p => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -395,9 +413,9 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             </div>
             <div className="flex items-center gap-4 px-2">
               {["Cash","Credit"].map(m => (
-                <label key={m} className="flex items-center gap-1.5 cursor-pointer">
-                  <input type="radio" name="pay_mode" checked={payMode===m} onChange={() => setPayMode(m)}
-                    className="accent-[#d74700]" data-testid={`radio-${m.toLowerCase()}`}/>
+                <label key={m} className={`flex items-center gap-1.5 ${readOnly ? "cursor-default" : "cursor-pointer"}`}>
+                  <input type="radio" name="pay_mode" checked={payMode===m} onChange={() => { if (!readOnly) setPayMode(m); }}
+                    disabled={readOnly} className="accent-[#d74700]" data-testid={`radio-${m.toLowerCase()}`}/>
                   <span className="text-sm font-medium text-gray-700">{m}</span>
                 </label>
               ))}
@@ -406,10 +424,10 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             <div className="flex items-center gap-1 px-1">
               <span className="text-xs text-gray-500 font-medium mr-1">Purchase:</span>
               {[{val:"within_state",label:"Within State"},{val:"inter_state",label:"Inter State"}].map(opt => (
-                <label key={opt.val} className="flex items-center gap-1 cursor-pointer">
+                <label key={opt.val} className={`flex items-center gap-1 ${readOnly ? "cursor-default" : "cursor-pointer"}`}>
                   <input type="radio" name="purchase_type_amend" checked={purchaseType===opt.val}
-                    onChange={() => setPurchaseType(opt.val)}
-                    className="accent-[#027fa5]" data-testid={`radio-amend-${opt.val}`}/>
+                    onChange={() => { if (!readOnly) setPurchaseType(opt.val); }}
+                    disabled={readOnly} className="accent-[#027fa5]" data-testid={`radio-amend-${opt.val}`}/>
                   <span className="text-sm font-medium text-gray-700 mr-2">{opt.label}</span>
                 </label>
               ))}
@@ -426,10 +444,15 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
               style={{ background: SC.tonal, borderLeft: `3px solid ${SC.primary}` }}>
               <FileEdit size={14} style={{ color: SC.primary }}/>
               <span className="font-semibold" style={{ color: SC.primary }}>
-                Amending PO: {sourcePo?.voucher_no || editData?.original_po_no}
+                {readOnly ? "Amended PO:" : "Amending PO:"} {sourcePo?.voucher_no || editData?.original_po_no}
               </span>
               {loading && <span className="text-xs text-gray-500">Loading PO data…</span>}
-              <span className="text-gray-500 text-xs">Edit any fields below and save to record the amendment</span>
+              {!readOnly && <span className="text-gray-500 text-xs">Edit any fields below and save to record the amendment</span>}
+              {readOnly && editData?.status && (
+                <span className="ml-auto px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                  Status: {editData.status}
+                </span>
+              )}
             </div>
           )}
 
@@ -460,10 +483,11 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                       </div>
                       <div className="px-1 py-1 relative">
                         <input value={search}
-                          onChange={e => { setItemSearch(p => ({...p,[row._key]:e.target.value})); updateItemField(row._key,"item_name",e.target.value); setItemDropOpen(row._key); }}
-                          onFocus={() => setItemDropOpen(row._key)}
+                          onChange={e => { if (!readOnly) { setItemSearch(p => ({...p,[row._key]:e.target.value})); updateItemField(row._key,"item_name",e.target.value); setItemDropOpen(row._key); } }}
+                          onFocus={() => { if (!readOnly) setItemDropOpen(row._key); }}
+                          readOnly={readOnly}
                           placeholder="Search item..."
-                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none focus:border-[#027fa5]"
+                          className={`w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50 cursor-default" : ""}`}
                           data-testid={`input-name-${idx}`}/>
                         {itemDropOpen===row._key && filtered.length > 0 && (
                           <div className="absolute top-full left-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto min-w-[260px]">
@@ -479,19 +503,19 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                       </div>
                       <div className="px-1 py-1">
                         <input type="number" value={row.qty}
-                          onChange={e => updateItemField(row._key,"qty",e.target.value)}
-                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs text-right outline-none focus:border-[#027fa5]"
+                          onChange={e => updateItemField(row._key,"qty",e.target.value)} readOnly={readOnly}
+                          className={`w-full border border-gray-200 rounded px-1.5 py-1 text-xs text-right outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50" : ""}`}
                           data-testid={`input-qty-${idx}`}/>
                       </div>
                       <div className="px-1 py-1">
-                        <input value={row.unit} onChange={e => updateItemField(row._key,"unit",e.target.value)}
-                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none focus:border-[#027fa5]"
+                        <input value={row.unit} onChange={e => updateItemField(row._key,"unit",e.target.value)} readOnly={readOnly}
+                          className={`w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50" : ""}`}
                           data-testid={`input-unit-${idx}`}/>
                       </div>
                       <div className="px-1 py-1">
                         <input type="number" value={row.rate}
-                          onChange={e => updateItemField(row._key,"rate",e.target.value)}
-                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs text-right outline-none focus:border-[#027fa5]"
+                          onChange={e => updateItemField(row._key,"rate",e.target.value)} readOnly={readOnly}
+                          className={`w-full border border-gray-200 rounded px-1.5 py-1 text-xs text-right outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50" : ""}`}
                           data-testid={`input-rate-${idx}`}/>
                       </div>
                       <div className="px-1.5 py-1.5 text-xs text-right text-gray-700">
@@ -510,9 +534,9 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                         {parseFloat(row.total) > 0 ? n2(parseFloat(row.total)) : "—"}
                       </div>
                       <div className="px-1 flex justify-center">
-                        {idx === items.length-1
+                        {!readOnly && (idx === items.length-1
                           ? <button onClick={() => setItems(p => [...p, newItem()])} className="text-green-600 hover:text-green-800 p-1" data-testid={`btn-add-${idx}`}><Plus size={13}/></button>
-                          : <button onClick={() => setItems(p => p.filter(r => r._key!==row._key))} className="text-red-400 hover:text-red-600 p-1" data-testid={`btn-rm-${idx}`}><Trash2 size={13}/></button>}
+                          : <button onClick={() => setItems(p => p.filter(r => r._key!==row._key))} className="text-red-400 hover:text-red-600 p-1" data-testid={`btn-rm-${idx}`}><Trash2 size={13}/></button>)}
                       </div>
                     </div>
                   );
@@ -521,7 +545,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
 
               <div className="flex items-center justify-between px-2 py-1 text-sm border-t border-gray-100">
                 <div className="flex items-center gap-4">
-                  <button onClick={() => setItems([newItem()])} className="text-xs text-red-500 hover:text-red-700 font-semibold" data-testid="btn-remove-all">Remove all</button>
+                  {!readOnly && <button onClick={() => setItems([newItem()])} className="text-xs text-red-500 hover:text-red-700 font-semibold" data-testid="btn-remove-all">Remove all</button>}
                   <span className="text-gray-600 text-xs">Total Quantity : <span className="font-bold text-gray-800">{totalQty > 0 ? totalQty.toLocaleString("en-IN",{maximumFractionDigits:3}) : "—"}</span></span>
                   <span className="text-gray-600 text-xs">Tax Amount : <span className="font-bold text-gray-800">{totalTax > 0 ? `₹ ${n2(totalTax)}` : "—"}</span></span>
                 </div>
@@ -547,9 +571,9 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                         style={{ gridTemplateColumns: "36px 1fr 1fr 30px" }}>
                         <div className="px-2 py-1.5 text-xs text-gray-500">{String(idx+1).padStart(2,"0")}</div>
                         <div className="px-1 py-1">
-                          <select value={t.term_type}
+                          <select value={t.term_type} disabled={readOnly}
                             onChange={e => setTerms(prev => prev.map(r => r._key===t._key ? {...r,term_type:e.target.value,terms:""} : r))}
-                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white">
+                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white disabled:bg-gray-50">
                             <option value="">Select Type</option>
                             {(termTypes as any[]).filter((tt: any) => tt.is_active !== false).map((tt: any) => (
                               <option key={tt.id} value={tt.name}>{tt.name}</option>
@@ -557,17 +581,17 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                           </select>
                         </div>
                         <div className="px-1 py-1">
-                          <select value={t.terms}
+                          <select value={t.terms} disabled={readOnly}
                             onChange={e => setTerms(prev => prev.map(r => r._key===t._key ? {...r,terms:e.target.value} : r))}
-                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white">
+                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white disabled:bg-gray-50">
                             <option value="">Select Terms</option>
                             {filteredTerms.map((tr: any) => <option key={tr.id} value={tr.name}>{tr.name}</option>)}
                           </select>
                         </div>
                         <div className="flex justify-center">
-                          {idx===terms.length-1
+                          {!readOnly && (idx===terms.length-1
                             ? <button onClick={() => setTerms(p=>[...p,newTerm()])} className="text-green-600 p-1"><Plus size={12}/></button>
-                            : <button onClick={() => setTerms(p=>p.filter(r=>r._key!==t._key))} className="text-red-400 p-1"><Trash2 size={12}/></button>}
+                            : <button onClick={() => setTerms(p=>p.filter(r=>r._key!==t._key))} className="text-red-400 p-1"><Trash2 size={12}/></button>)}
                         </div>
                       </div>
                     );
@@ -584,9 +608,9 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                       style={{ gridTemplateColumns: "36px 1fr 80px 30px" }}>
                       <div className="px-2 py-1.5 text-xs text-gray-500">{String(idx+1).padStart(2,"0")}</div>
                       <div className="px-1 py-1">
-                        <select value={c.charge_type}
+                        <select value={c.charge_type} disabled={readOnly}
                           onChange={e => setCharges(prev => prev.map(r => r._key===c._key ? {...r,charge_type:e.target.value} : r))}
-                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white">
+                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white disabled:bg-gray-50">
                           <option value="">Select Charges</option>
                           {(expenseSleds as any[]).map((sl: any) => (
                             <option key={sl.id} value={sl.name}>{sl.name}</option>
@@ -594,14 +618,14 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                         </select>
                       </div>
                       <div className="px-1 py-1">
-                        <input type="number" value={c.amount}
+                        <input type="number" value={c.amount} readOnly={readOnly}
                           onChange={e => setCharges(prev => prev.map(r => r._key===c._key ? {...r,amount:e.target.value} : r))}
-                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs text-right outline-none focus:border-[#027fa5]"/>
+                          className={`w-full border border-gray-200 rounded px-1.5 py-1 text-xs text-right outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50" : ""}`}/>
                       </div>
                       <div className="flex justify-center">
-                        {idx===charges.length-1
+                        {!readOnly && (idx===charges.length-1
                           ? <button onClick={() => setCharges(p=>[...p,newCharge()])} className="text-green-600 p-1"><Plus size={12}/></button>
-                          : <button onClick={() => setCharges(p=>p.filter(r=>r._key!==c._key))} className="text-red-400 p-1"><Trash2 size={12}/></button>}
+                          : <button onClick={() => setCharges(p=>p.filter(r=>r._key!==c._key))} className="text-red-400 p-1"><Trash2 size={12}/></button>)}
                       </div>
                     </div>
                   ))}
@@ -612,15 +636,15 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                     { label:"Your Ref No", val:yourRef, set:setYourRef, id:"input-your-ref" }].map(f => (
                     <div key={f.id} className="relative">
                       <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">{f.label}</label>
-                      <input value={f.val} onChange={e => f.set(e.target.value)}
-                        className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+                      <input value={f.val} onChange={e => f.set(e.target.value)} readOnly={readOnly}
+                        className={`w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] ${readOnly ? "bg-gray-50" : ""}`}
                         data-testid={f.id}/>
                     </div>
                   ))}
                   <div className="relative">
                     <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Delivery Location</label>
-                    <textarea value={delivLoc} onChange={e => setDelivLoc(e.target.value)} rows={3}
-                      className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] resize-none"
+                    <textarea value={delivLoc} onChange={e => setDelivLoc(e.target.value)} rows={3} readOnly={readOnly}
+                      className={`w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] resize-none ${readOnly ? "bg-gray-50" : ""}`}
                       data-testid="input-deliv-loc"/>
                   </div>
                 </div>
@@ -657,12 +681,14 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
           <button onClick={onBack}
             className="px-8 py-2 border border-gray-300 rounded text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            data-testid="btn-cancel">Cancel</button>
-          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
-            className="px-10 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
-            style={{ background: SC.orange }} data-testid="btn-save">
-            {saveMut.isPending ? "Saving…" : "Save"}
-          </button>
+            data-testid="btn-cancel">{readOnly ? "Close" : "Cancel"}</button>
+          {!readOnly && (
+            <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
+              className="px-10 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: SC.orange }} data-testid="btn-save">
+              {saveMut.isPending ? "Saving…" : "Save"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -670,7 +696,7 @@ function PoaForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
 }
 
 // ── List View ────────────────────────────────────────────────────────────────
-function PoaList({ onNew, onEdit }: { onNew: () => void; onEdit: (d: any) => void }) {
+function PoaList({ onNew, onEdit, onView }: { onNew: () => void; onEdit: (d: any) => void; onView: (d: any) => void }) {
   const { data: list = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/purchase-order-amendments"] });
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -742,8 +768,16 @@ function PoaList({ onNew, onEdit }: { onNew: () => void; onEdit: (d: any) => voi
                   <td className="px-4 py-3">{badge(r.status)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => onEdit(r)} className="text-[#027fa5] hover:text-[#015f7a] p-1" data-testid={`btn-edit-${r.id}`}><PencilLine size={14}/></button>
-                      <button onClick={() => delMut.mutate(r.id)} className="text-red-400 hover:text-red-600 p-1" data-testid={`btn-del-${r.id}`}><Trash2 size={14}/></button>
+                      {(r.po_grn_count > 0) ? (
+                        <button onClick={() => onView(r)} className="text-[#027fa5] hover:text-[#015f7a] p-1" title="GRN done — view only" data-testid={`btn-view-${r.id}`}>
+                          <Eye size={14}/>
+                        </button>
+                      ) : (
+                        <>
+                          <button onClick={() => onEdit(r)} className="text-[#027fa5] hover:text-[#015f7a] p-1" data-testid={`btn-edit-${r.id}`}><PencilLine size={14}/></button>
+                          <button onClick={() => delMut.mutate(r.id)} className="text-red-400 hover:text-red-600 p-1" data-testid={`btn-del-${r.id}`}><Trash2 size={14}/></button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -760,13 +794,22 @@ function PoaList({ onNew, onEdit }: { onNew: () => void; onEdit: (d: any) => voi
 export default function PurchaseAmendment() {
   const [view, setView] = useState<"list"|"form">("list");
   const [editData, setEditData] = useState<any>(null);
+  const [formReadOnly, setFormReadOnly] = useState(false);
 
   async function handleEdit(row: any) {
     const res = await fetch(`/api/purchase-order-amendments/${row.id}`, { credentials: "include" });
     setEditData(await res.json());
+    setFormReadOnly(false);
     setView("form");
   }
 
-  if (view==="form") return <PoaForm editData={editData} onBack={() => { setEditData(null); setView("list"); }}/>;
-  return <PoaList onNew={() => { setEditData(null); setView("form"); }} onEdit={handleEdit}/>;
+  async function handleView(row: any) {
+    const res = await fetch(`/api/purchase-order-amendments/${row.id}`, { credentials: "include" });
+    setEditData(await res.json());
+    setFormReadOnly(true);
+    setView("form");
+  }
+
+  if (view==="form") return <PoaForm editData={editData} readOnly={formReadOnly} onBack={() => { setEditData(null); setFormReadOnly(false); setView("list"); }}/>;
+  return <PoaList onNew={() => { setEditData(null); setFormReadOnly(false); setView("form"); }} onEdit={handleEdit} onView={handleView}/>;
 }

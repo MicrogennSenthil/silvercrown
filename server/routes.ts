@@ -6423,9 +6423,13 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
-        SELECT poa.*, c.name AS supplier_name_db
+        SELECT poa.*, s.name AS supplier_name_db,
+          COALESCE((
+            SELECT COUNT(*) FROM goods_receipt_notes grn
+            WHERE grn.po_id = poa.original_po_id AND COALESCE(grn.status,'Draft') != 'Cancelled'
+          ), 0)::int AS po_grn_count
         FROM purchase_order_amendments poa
-        LEFT JOIN customers c ON c.id = poa.supplier_id
+        LEFT JOIN suppliers s ON s.id = poa.supplier_id
         ORDER BY poa.created_at DESC
       `);
       res.json(r.rows);
