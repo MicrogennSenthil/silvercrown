@@ -47,7 +47,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const suffix = fyShort ? `/${fyShort}` : "";
         await _pool.query(
           `INSERT INTO voucher_series(id,transaction_label,transaction_type,prefix,suffix,starting_number,current_number,digits,is_active)
-           VALUES(gen_random_uuid()::text,'Job Work Invoice','job_work_invoice','IN/',$1,1,1,3,true)`,
+           VALUES(gen_random_uuid()::text,'Job Work Invoice','job_work_invoice','IN/',$1,1,1,5,true)`,
           [suffix]
         );
       } else {
@@ -61,6 +61,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           WHERE transaction_type='job_work_invoice'
             AND prefix ~ '^IN/[^/]+/$'
             AND (suffix IS NULL OR suffix = '')
+        `).catch(() => {});
+        // Upgrade digits from 3 → 5 if still at old default
+        await _pool.query(`
+          UPDATE voucher_series SET digits = 5
+          WHERE transaction_type = 'job_work_invoice' AND digits < 5
+        `).catch(() => {});
+        // Backfill existing invoices: pad the sequential number to 5 digits
+        // e.g. IN/001/26-27 → IN/00001/26-27
+        await _pool.query(`
+          UPDATE job_work_invoices
+          SET voucher_no = 'IN/' ||
+            LPAD(
+              SUBSTRING(voucher_no FROM 4 FOR POSITION('/' IN SUBSTRING(voucher_no FROM 4)) - 1),
+              5, '0'
+            ) ||
+            SUBSTRING(voucher_no FROM 3 + POSITION('/' IN SUBSTRING(voucher_no FROM 4)))
+          WHERE voucher_no ~ '^IN/[0-9]{1,4}/'
+            AND LENGTH(
+              SUBSTRING(voucher_no FROM 4 FOR POSITION('/' IN SUBSTRING(voucher_no FROM 4)) - 1)
+            ) < 5
         `).catch(() => {});
       }
     } catch (_seed) {}
