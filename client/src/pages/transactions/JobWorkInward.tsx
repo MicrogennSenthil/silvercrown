@@ -670,9 +670,14 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   }
 
   function selectItem(rowKey: string, item: any) {
-    const existing = items.find(r => r._key !== rowKey && r.item_id === item.id);
+    const currentRow = items.find(r => r._key === rowKey);
+    const currentWO = currentRow?.work_order_no || "";
+    const existing = items.find(r => r._key !== rowKey && r.item_id === item.id && (r.work_order_no || "") === currentWO);
     if (existing) {
-      toast({ title: "Duplicate item", description: `${item.name} is already in the list.`, variant: "destructive" });
+      const msg = currentWO
+        ? `${item.name} with Work Order No "${currentWO}" is already in the list.`
+        : `${item.name} is already in the list. Use a different Work Order No to add it again.`;
+      toast({ title: "Duplicate item", description: msg, variant: "destructive" });
       return;
     }
     setItems(prev => prev.map(r => r._key === rowKey ? {
