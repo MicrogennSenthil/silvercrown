@@ -286,11 +286,29 @@ export function buildTaxInvoiceHTML(
         <div style="text-align:right;font-size:9px;font-style:italic;margin-top:2px">E. &amp; O.E</div>
       </td>
       <td style="width:42%;padding:5px 8px;vertical-align:top">
-        <div style="font-weight:600;margin-bottom:3px">Company's Bank Details</div>
-        ${doc.company_name ? `<div style="font-weight:600;margin-bottom:2px">A/c Holder Name : ${doc.company_name}</div>` : ""}
-        <div>Bank Name &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: State Bank Of India</div>
-        <div>A/c No. &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: 3899 256 4002</div>
-        <div>Branch &amp; IFS Code : Treasury Branch, Coimbatore &amp; SBIN0007639</div>
+        <div style="font-weight:600;margin-bottom:4px">Company's Bank Details</div>
+        <table style="border-collapse:collapse;font-size:9.5px;width:100%">
+          ${doc.company_name ? `<tr>
+            <td style="white-space:nowrap;padding:1px 0;vertical-align:top;width:38%">A/c Holder's Name</td>
+            <td style="padding:1px 4px;vertical-align:top;width:4%">:</td>
+            <td style="padding:1px 0;vertical-align:top;font-weight:600">${doc.company_name}</td>
+          </tr>` : ""}
+          <tr>
+            <td style="white-space:nowrap;padding:1px 0;vertical-align:top">Bank Name</td>
+            <td style="padding:1px 4px;vertical-align:top">:</td>
+            <td style="padding:1px 0;vertical-align:top">State Bank Of India</td>
+          </tr>
+          <tr>
+            <td style="white-space:nowrap;padding:1px 0;vertical-align:top">A/c No.</td>
+            <td style="padding:1px 4px;vertical-align:top">:</td>
+            <td style="padding:1px 0;vertical-align:top">3899 256 4002</td>
+          </tr>
+          <tr>
+            <td style="white-space:nowrap;padding:1px 0;vertical-align:top">Branch &amp; IFS Code</td>
+            <td style="padding:1px 4px;vertical-align:top">:</td>
+            <td style="padding:1px 0;vertical-align:top">Treasury Branch, Coimbatore &amp; SBIN0007639</td>
+          </tr>
+        </table>
       </td>
     </tr>
   </table>
