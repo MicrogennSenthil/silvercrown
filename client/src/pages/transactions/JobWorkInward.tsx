@@ -574,10 +574,11 @@ type ItemRow = {
   process_id: string;
   hsn: string;
   remark: string;
+  work_order_no: string;
 };
 
 function newRow(): ItemRow {
-  return { _key: crypto.randomUUID(), item_id: "", item_code: "", item_name: "", qty: "", unit: "", process: "", process_id: "", hsn: "", remark: "" };
+  return { _key: crypto.randomUUID(), item_id: "", item_code: "", item_name: "", qty: "", unit: "", process: "", process_id: "", hsn: "", remark: "", work_order_no: "" };
 }
 
 // ── Inward Form ──────────────────────────────────────────────────────────────
@@ -621,7 +622,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
   const [items, setItems] = useState<ItemRow[]>(
     editData?.items?.length
-      ? editData.items.map((it: any) => ({ _key: crypto.randomUUID(), item_id: it.item_id || "", item_code: it.item_code || "", item_name: it.item_name || "", qty: String(it.qty || ""), unit: it.unit || "", process: it.process || "", process_id: it.process_id || "", hsn: it.hsn || "", remark: it.remark || "" }))
+      ? editData.items.map((it: any) => ({ _key: crypto.randomUUID(), item_id: it.item_id || "", item_code: it.item_code || "", item_name: it.item_name || "", qty: String(it.qty || ""), unit: it.unit || "", process: it.process || "", process_id: it.process_id || "", hsn: it.hsn || "", remark: it.remark || "", work_order_no: it.work_order_no || "" }))
       : [newRow()]
   );
 
@@ -750,7 +751,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
         notes,
         items: items.filter(r => r.item_name || r.qty).map(r => ({
           item_id: r.item_id || null, item_code: r.item_code, item_name: r.item_name,
-          qty: r.qty || "0", unit: r.unit, process: r.process, process_id: r.process_id || null, hsn: r.hsn, remark: r.remark,
+          qty: r.qty || "0", unit: r.unit, process: r.process, process_id: r.process_id || null, hsn: r.hsn, remark: r.remark, work_order_no: r.work_order_no || "",
         })),
       };
       const url = isEdit ? `/api/job-work-inward/${editData.id}` : "/api/job-work-inward";
@@ -877,12 +878,6 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
               data-testid="input-delivery-date"
             />
             <div className="relative col-span-1">
-              <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Work Order No</label>
-              <input value={workOrderNo} onChange={e => setWorkOrderNo(e.target.value)}
-                className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
-                data-testid="input-work-order-no" />
-            </div>
-            <div className="relative col-span-1">
               <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Party PO No</label>
               <input value={partyPoNo} onChange={e => setPartyPoNo(e.target.value)}
                 className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
@@ -907,6 +902,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-32">Qty</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-16">Unit</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-40">Process</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">Work Order No</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-20">HSN</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Remark</th>
                   <th className="w-8"></th>
@@ -1002,6 +998,13 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                         {highlightMissing && !row.process_id && (
                           <p className="text-red-500 text-[10px] mt-0.5 leading-none">Required</p>
                         )}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input value={row.work_order_no}
+                          onChange={e => updateRow(row._key, "work_order_no", e.target.value)}
+                          placeholder="Work Order No"
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
+                          data-testid={`input-work-order-no-${i}`} />
                       </td>
                       <td className="px-2 py-1.5">
                         <input value={row.hsn}
