@@ -296,17 +296,17 @@ export function buildTaxInvoiceHTML(
           <tr>
             <td style="white-space:nowrap;padding:1px 0;vertical-align:top">Bank Name</td>
             <td style="padding:1px 4px;vertical-align:top">:</td>
-            <td style="padding:1px 0;vertical-align:top">State Bank Of India</td>
+            <td style="padding:1px 0;vertical-align:top;font-weight:600">State Bank Of India</td>
           </tr>
           <tr>
             <td style="white-space:nowrap;padding:1px 0;vertical-align:top">A/c No.</td>
             <td style="padding:1px 4px;vertical-align:top">:</td>
-            <td style="padding:1px 0;vertical-align:top">3899 256 4002</td>
+            <td style="padding:1px 0;vertical-align:top;font-weight:600">3899 256 4002</td>
           </tr>
           <tr>
             <td style="white-space:nowrap;padding:1px 0;vertical-align:top">Branch &amp; IFS Code</td>
             <td style="padding:1px 4px;vertical-align:top">:</td>
-            <td style="padding:1px 0;vertical-align:top">Treasury Branch, Coimbatore &amp; SBIN0007639</td>
+            <td style="padding:1px 0;vertical-align:top;font-weight:600">Treasury Branch, Coimbatore &amp; SBIN0007639</td>
           </tr>
         </table>
       </td>
