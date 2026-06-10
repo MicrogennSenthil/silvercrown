@@ -16,8 +16,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Startup: ensure critical GL gl_type values are correct in all environments
   try {
     const { pool: _pool } = await import("./db");
-    await _pool.query(`UPDATE general_ledgers SET gl_type='sundry_creditor' WHERE id='20845da1-6847-43ce-98d5-7e3e3e44b86b' AND gl_type!='sundry_creditor'`);
-    await _pool.query(`UPDATE general_ledgers SET gl_type='sundry_debtor'   WHERE id='29379a58-5e96-4c71-9074-8193877bcfb5' AND gl_type!='sundry_debtor'`);
+    // These two UPDATEs are wrapped separately so any failure doesn't abort the migrations below
+    await _pool.query(`UPDATE general_ledgers SET gl_type='sundry_creditor' WHERE id='20845da1-6847-43ce-98d5-7e3e3e44b86b' AND gl_type!='sundry_creditor'`).catch(()=>{});
+    await _pool.query(`UPDATE general_ledgers SET gl_type='sundry_debtor'   WHERE id='29379a58-5e96-4c71-9074-8193877bcfb5' AND gl_type!='sundry_debtor'`).catch(()=>{});
     // Idempotent column additions — safe to run every startup
     await _pool.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS batch_required  boolean DEFAULT false`).catch(()=>{});
     await _pool.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS expiry_required boolean DEFAULT false`).catch(()=>{});
