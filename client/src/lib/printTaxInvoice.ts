@@ -138,7 +138,7 @@ export function buildTaxInvoiceHTML(
       `<tr>
         <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
         <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left;font-size:9.5px">SGST Output ${r}%</td>
-        <td style="border:1px solid #000;padding:2px 5px;text-align:right;font-size:9.5px">${r} %&nbsp;&nbsp;&nbsp;&nbsp;${fmtAmt(a)}</td>
+        <td style="border:1px solid #000;padding:2px 5px;text-align:right;font-size:9.5px">${fmtAmt(a)}</td>
       </tr>`
     ),
     ...[...igstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
