@@ -440,6 +440,7 @@ export const products = pgTable("products", {
   unit: text("unit").default(""),
   uom: text("uom").default(""),
   hsnCode: text("hsn_code").default(""),
+  hsnCodeEway: text("hsn_code_eway").default(""),
   sapNo: text("sap_no").default(""),
   drgNo: text("drg_no").default(""),
   location: text("location").default(""),

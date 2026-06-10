@@ -36,6 +36,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS igst_rate        decimal(5,2)     DEFAULT 0`).catch(()=>{});
     await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS max_stock_level  decimal(15,3)    DEFAULT 0`).catch(()=>{});
     await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS is_active        boolean          DEFAULT true`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS hsn_code_eway    text             DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS is_eway_bill boolean DEFAULT false`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS irn text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_no text DEFAULT ''`).catch(()=>{});
@@ -4922,12 +4924,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const hRes = await client.query(`
         INSERT INTO job_work_invoices
           (id, voucher_no, invoice_date, party_id, party_name_manual, vehicle_no, invoice_type,
-           is_inter_state, term_of_delivery, transport, freight, delivery_address, same_as_company, remark, status)
-        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'Saved') RETURNING *
+           is_inter_state, is_eway_bill, term_of_delivery, transport, freight, delivery_address, same_as_company, remark, status)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'Saved') RETURNING *
       `, [voucherNo, data.invoice_date || new Date().toISOString().split("T")[0],
           resolvedPartyId, data.party_name_manual || "",
           (data.vehicle_no || "").toUpperCase(), data.invoice_type || "despatch_notes",
-          data.is_inter_state || false,
+          data.is_inter_state || false, data.is_eway_bill || false,
           data.term_of_delivery || "", data.transport || "",
           data.freight || "to_pay", data.delivery_address || "",
           data.same_as_company || false, data.remark || ""]);
@@ -4990,12 +4992,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query(`
         UPDATE job_work_invoices SET
           invoice_date=$1, party_id=$2, party_name_manual=$3, vehicle_no=$4, invoice_type=$5,
-          is_inter_state=$6, term_of_delivery=$7, transport=$8, freight=$9,
-          delivery_address=$10, same_as_company=$11, remark=$12
-        WHERE id=$13
+          is_inter_state=$6, is_eway_bill=$7, term_of_delivery=$8, transport=$9, freight=$10,
+          delivery_address=$11, same_as_company=$12, remark=$13
+        WHERE id=$14
       `, [data.invoice_date, resolvedPartyId, data.party_name_manual || "",
           (data.vehicle_no || "").toUpperCase(), data.invoice_type || "despatch_notes",
-          data.is_inter_state || false,
+          data.is_inter_state || false, data.is_eway_bill || false,
           data.term_of_delivery || "", data.transport || "",
           data.freight || "to_pay", data.delivery_address || "",
           data.same_as_company || false, data.remark || "", req.params.id]);

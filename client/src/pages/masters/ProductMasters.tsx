@@ -380,7 +380,7 @@ function QuickAddSubCategoryModal({ categories, defaultCategoryId, onCreated, on
 // ─── New Product Modal ────────────────────────────────────────────────────────
 const EMPTY_PRODUCT = {
   name: "", unit: "", categoryId: "", subCategoryId: "",
-  drgNo: "", sapNo: "", hsnCode: "", location: "",
+  drgNo: "", sapNo: "", hsnCode: "", hsnCodeEway: "", location: "",
   rate: "", costPrice: "", minStockLevel: "", maxStockLevel: "",
   cgstRate: "", sgstRate: "", igstRate: "",
   isActive: true, code: "", description: "",
@@ -497,12 +497,17 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
               options={subOptions} onPlus={() => setShowQuickSub(true)} className="flex-1" error={hasError("subCategoryId")} />
           </div>
 
-          {/* Row 3: DRG No, SAP No, HSN Code, Location */}
-          <div className="grid grid-cols-4 gap-3">
+          {/* Row 3: DRG No, SAP No, Location */}
+          <div className="grid grid-cols-3 gap-3">
             <FField label="DRG No"   value={form.drgNo}    onChange={f("drgNo")}    placeholder="e.g. A1B2-XZ75" />
             <FField label="SAP No"   value={form.sapNo}    onChange={f("sapNo")}    placeholder="e.g. Z5SAEXTZ4B" />
-            <FField label="HSN Code" value={form.hsnCode}  onChange={f("hsnCode")}  placeholder="HSN0000" />
             <FField label="Location" value={form.location} onChange={f("location")} placeholder="x-00-00" />
+          </div>
+
+          {/* Row 3b: HSN Code (Normal Bill) + HSN Code (E-Way Bill) */}
+          <div className="grid grid-cols-2 gap-3">
+            <FField label="HSN Code (Normal Bill)" value={form.hsnCode}     onChange={f("hsnCode")}     placeholder="HSN0000" />
+            <FField label="HSN Code (E-Way Bill)"  value={form.hsnCodeEway} onChange={f("hsnCodeEway")} placeholder="HSN0000" />
           </div>
 
           {/* Row 4: Rate ₹, Cost ₹, Min Qty, Max Qty */}
@@ -590,10 +595,10 @@ export function Products() {
   });
 
   const filtered = rows.filter((r: any) =>
-    !search || [r.name, r.sapNo, r.drgNo, r.hsnCode].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))
+    !search || [r.name, r.sapNo, r.drgNo, r.hsnCode, r.hsnCodeEway].some(v => String(v || "").toLowerCase().includes(search.toLowerCase()))
   );
 
-  const COLS = ["S.no", "SAP No", "DRG No", "HSN Code", "Name", "Unit", "Rate", "Live Stock", "Min No", "Max No", "Status", "Location", ""];
+  const COLS = ["S.no", "SAP No", "DRG No", "HSN (Normal / E-Way)", "Name", "Unit", "Rate", "Live Stock", "Min No", "Max No", "Status", "Location", ""];
 
   return (
     <div className="flex flex-col h-full">
@@ -635,7 +640,14 @@ export function Products() {
                   <td className="px-3 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
                   <td className="px-3 py-2.5 font-mono text-xs font-semibold" style={{ color: SC.primary }}>{r.sapNo || "—"}</td>
                   <td className="px-3 py-2.5 text-gray-600">{r.drgNo || "—"}</td>
-                  <td className="px-3 py-2.5 text-gray-600">{r.hsnCode || "—"}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="text-gray-700 font-mono text-xs leading-tight">
+                      <div>{r.hsnCode || "—"}</div>
+                      {r.hsnCodeEway && r.hsnCodeEway !== r.hsnCode && (
+                        <div className="text-orange-500">{r.hsnCodeEway}</div>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-3 py-2.5 font-medium text-gray-800">{r.name}</td>
                   <td className="px-3 py-2.5 text-gray-600">{r.unit || r.uom || "—"}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-gray-700">{r.rate ? Number(r.rate).toFixed(2) : "—"}</td>

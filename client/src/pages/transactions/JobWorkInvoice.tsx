@@ -296,6 +296,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [vehP4,        setVehP4]        = useState("");
   const [invoiceType,  setInvoiceType]  = useState<"despatch_notes" | "direct_invoice">("despatch_notes");
   const [isInterState, setIsInterState] = useState(false);
+  const [isEwayBill,   setIsEwayBill]   = useState(false);
   const [remark,       setRemark]       = useState("");
 
   // Party
@@ -513,6 +514,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       setVehP1(vParts.p1); setVehP2(vParts.p2); setVehP3(vParts.p3); setVehP4(vParts.p4);
       setInvoiceType(data.invoice_type || "despatch_notes");
       setIsInterState(data.is_inter_state || false);
+      setIsEwayBill(data.is_eway_bill || false);
       setRemark(data.remark || "");
       setTermOfDel(data.term_of_delivery || "");
       setTransport(data.transport || "");
@@ -631,7 +633,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       item_code: product.code || "",
       item_name: product.name || "",
       unit:      (product.unit || product.uom || "").toUpperCase(),
-      hsn:       product.hsnCode ?? product.hsn_code ?? "",
+      hsn: isEwayBill
+        ? (product.hsnCodeEway ?? product.hsn_code_eway ?? product.hsnCode ?? product.hsn_code ?? "")
+        : (product.hsnCode ?? product.hsn_code ?? ""),
       rate,
       amount:    taxable,
       cgst_rate: cgstR,
@@ -739,6 +743,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       vehicle_no:       vehicleNo,
       invoice_type:     invoiceType,
       is_inter_state:   isInterState,
+      is_eway_bill:     isEwayBill,
       term_of_delivery: termOfDel,
       transport,
       freight,
@@ -1100,6 +1105,24 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                     </span>
                   </label>
                 ))}
+                <label className="flex items-center gap-1.5 cursor-pointer text-sm font-medium ml-4 pl-4 border-l border-gray-200">
+                  <input type="checkbox" data-testid="chk-eway-bill" className="accent-orange-600 w-4 h-4"
+                    checked={isEwayBill}
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setIsEwayBill(checked);
+                      setItems(prev => prev.map(it => {
+                        if (!it.item_id) return it;
+                        const prod = (allProducts as any[]).find((p: any) => p.id === it.item_id);
+                        if (!prod) return it;
+                        const hsn = checked
+                          ? (prod.hsnCodeEway ?? prod.hsn_code_eway ?? prod.hsnCode ?? prod.hsn_code ?? "")
+                          : (prod.hsnCode ?? prod.hsn_code ?? "");
+                        return hsn ? { ...it, hsn } : it;
+                      }));
+                    }} />
+                  <span style={isEwayBill ? { color: SC.orange, fontWeight: 700 } : { color: "#555" }}>E-Way Bill HSN</span>
+                </label>
               </div>
             </div>
           )}
@@ -1118,6 +1141,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                       <th className="px-2 py-2 text-left">PO No</th>
                       <th className="px-2 py-2 text-left">Item Code</th>
                       <th className="px-2 py-2 text-left">Item Name</th>
+                      <th className="px-2 py-2 text-left w-20">HSN</th>
                       <th className="px-2 py-2 text-left">Desp No</th>
                       <th className="px-2 py-2 text-left">Party DC</th>
                       <th className="px-2 py-2 text-left">Work Ord no</th>
@@ -1143,7 +1167,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                   <tbody>
                     {filteredItems.length === 0 && (
                       <tr>
-                        <td colSpan={isInterState ? 18 : 19} className="text-center py-8 text-gray-400 text-sm">
+                        <td colSpan={isInterState ? 19 : 20} className="text-center py-8 text-gray-400 text-sm">
                           {invoiceType === "direct_invoice"
                             ? "Click \"+ Add Row\" below to add items, or check an inward from the panel"
                             : "Select a despatch or inward from the panel to load items"}
@@ -1203,6 +1227,14 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                                   onBlur={() => setTimeout(() => { setDirectDrop(null); setDropPos(null); }, 200)}
                                 />
                               : it.item_name}
+                          </td>
+                          <td className="px-2 py-1">
+                            <input type="text"
+                              data-testid={`input-hsn-${idx}`}
+                              className="border rounded px-1 py-0.5 text-xs w-20 font-mono"
+                              placeholder="HSN"
+                              value={it.hsn || ""}
+                              onChange={e => updateItem(realIdx, "hsn", e.target.value)} />
                           </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.despatch_voucher_no || "—"}</td>
                           <td className="px-2 py-1 text-gray-600">{it.party_dc || "—"}</td>
