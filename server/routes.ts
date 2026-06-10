@@ -21,8 +21,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Idempotent column additions — safe to run every startup
     await _pool.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS batch_required  boolean DEFAULT false`).catch(()=>{});
     await _pool.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS expiry_required boolean DEFAULT false`).catch(()=>{});
-    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS batch_required  boolean DEFAULT false`).catch(()=>{});
-    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS expiry_required boolean DEFAULT false`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS batch_required    boolean          DEFAULT false`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS expiry_required  boolean          DEFAULT false`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS sub_category_id  varchar`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS uom              text             DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS sap_no           text             DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS drg_no           text             DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS location         text             DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS cost_price       decimal(15,2)    DEFAULT 0`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS purchase_price   decimal(15,2)    DEFAULT 0`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS cgst_rate        decimal(5,2)     DEFAULT 0`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS sgst_rate        decimal(5,2)     DEFAULT 0`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS igst_rate        decimal(5,2)     DEFAULT 0`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS max_stock_level  decimal(15,3)    DEFAULT 0`).catch(()=>{});
+    await _pool.query(`ALTER TABLE products        ADD COLUMN IF NOT EXISTS is_active        boolean          DEFAULT true`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS paid_amount decimal(15,2) DEFAULT 0`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS irn text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_no text DEFAULT ''`).catch(()=>{});
