@@ -202,6 +202,11 @@ export function SubCategories() {
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
                 data-testid="input-search" />
             </div>
+            <button onClick={() => { setEditing(null); setShowForm(true); }}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="button-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           {/* Table */}
@@ -236,14 +241,6 @@ export function SubCategories() {
             </tbody>
           </table>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
-            <button onClick={() => { setEditing(null); setShowForm(true); }}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="button-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -612,6 +609,11 @@ export function Products() {
               className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
               data-testid="input-search" />
           </div>
+          <button onClick={() => { setEditing(null); setShowForm(true); }}
+            className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+            style={{ background: SC.orange }} data-testid="button-add">
+            <Plus size={14} /> Add
+          </button>
           <button className="p-1.5 rounded border hover:bg-gray-50" style={{ borderColor: "#d1d5db" }}><Info size={15} className="text-gray-500" /></button>
         </div>
 
@@ -670,20 +672,13 @@ export function Products() {
           </table>
         </div>
 
-        {/* Notes + Footer */}
-        <div className="px-5 py-3 border-t border-gray-100 space-y-3">
+        {/* Notes */}
+        <div className="px-5 py-3 border-t border-gray-100">
           <div className="relative">
             <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10 leading-none">Notes</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
               className="w-full border border-gray-300 rounded px-3 pt-4 pb-2 text-sm text-gray-700 focus:outline-none resize-none"
               data-testid="textarea-notes" />
-          </div>
-          <div className="flex justify-end gap-3">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
-            <button onClick={() => { setEditing(null); setShowForm(true); }}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="button-add">Add</button>
           </div>
         </div>
       </div>

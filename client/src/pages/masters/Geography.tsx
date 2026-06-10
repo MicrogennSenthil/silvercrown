@@ -50,14 +50,19 @@ function GeoCard({ title, search, setSearch, placeholder, onAdd, onCancel, error
     <div className="max-w-2xl">
       <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 4px rgba(0,0,0,0.12)" }}>
         {/* Header */}
-        <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-gray-100">
-          <span className="font-semibold text-gray-800">{title}</span>
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100">
+          <span className="font-semibold text-gray-800 whitespace-nowrap">{title}</span>
           <div className="relative flex-1 max-w-xs">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder={placeholder}
               className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:border-blue-300"
               data-testid="input-search" />
           </div>
+          <button onClick={onAdd}
+            className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+            style={{ background: SC.orange }} data-testid="button-add">
+            <Plus size={14} /> Add
+          </button>
         </div>
 
         {/* Inline error banner */}
@@ -70,19 +75,6 @@ function GeoCard({ title, search, setSearch, placeholder, onAdd, onCancel, error
         {/* Table */}
         {children}
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-          <button onClick={onCancel}
-            className="px-7 py-2 rounded border text-sm font-medium text-gray-600 hover:bg-gray-50"
-            style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">
-            Cancel
-          </button>
-          <button onClick={onAdd}
-            className="px-8 py-2 rounded text-sm font-semibold text-white"
-            style={{ background: SC.orange }} data-testid="button-add">
-            Add
-          </button>
-        </div>
       </div>
     </div>
   );

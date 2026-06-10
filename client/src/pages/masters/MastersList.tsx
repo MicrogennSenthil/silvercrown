@@ -251,6 +251,11 @@ export function UnitsOfMeasure() {
                 data-testid="input-search"
               />
             </div>
+            <button onClick={() => setShowAdd(true)}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           {/* Table */}
@@ -285,14 +290,6 @@ export function UnitsOfMeasure() {
             </tbody>
           </table>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-            <button onClick={() => setShowAdd(true)}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -473,6 +470,11 @@ export function Categories() {
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
                 data-testid="input-search" />
             </div>
+            <button onClick={() => setShowAdd(true)}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="button-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           {/* Table */}
@@ -509,14 +511,6 @@ export function Categories() {
             </tbody>
           </table>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="button-cancel">Cancel</button>
-            <button onClick={() => setShowAdd(true)}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="button-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -621,6 +615,11 @@ export function VoucherTypes() {
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
                 data-testid="input-search" />
             </div>
+            <button onClick={() => setShowAdd(true)}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           <table className="w-full text-sm">
@@ -660,13 +659,6 @@ export function VoucherTypes() {
             </tbody>
           </table>
 
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-            <button onClick={() => setShowAdd(true)}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -774,6 +766,11 @@ export function PayModeTypes() {
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
                 data-testid="input-search" />
             </div>
+            <button onClick={() => setShowAdd(true)}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           {/* Table */}
@@ -814,14 +811,6 @@ export function PayModeTypes() {
             </tbody>
           </table>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-            <button onClick={() => setShowAdd(true)}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -908,6 +897,11 @@ export function LedgerCategories() {
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none"
                 data-testid="input-search" />
             </div>
+            <button onClick={() => setShowAdd(true)}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           <table className="w-full text-sm">
@@ -943,13 +937,6 @@ export function LedgerCategories() {
             </tbody>
           </table>
 
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-            <button onClick={() => setShowAdd(true)}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -1053,6 +1040,11 @@ export function Departments() {
                 data-testid="input-search"
               />
             </div>
+            <button onClick={() => setShowAdd(true)}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           {/* Table */}
@@ -1089,14 +1081,6 @@ export function Departments() {
             </tbody>
           </table>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-            <button onClick={() => setShowAdd(true)}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -1186,6 +1170,11 @@ export function StoreItemGroups() {
                 data-testid="input-search"
               />
             </div>
+            <button onClick={() => setShowAdd(true)}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           {/* Table */}
@@ -1222,14 +1211,6 @@ export function StoreItemGroups() {
             </tbody>
           </table>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-            <button onClick={() => setShowAdd(true)}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -1341,6 +1322,11 @@ export function StoreItemSubGroups() {
                 data-testid="input-search"
               />
             </div>
+            <button onClick={() => setShowAdd(true)}
+              className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+              style={{ background: SC.orange }} data-testid="btn-add">
+              <Plus size={14} /> Add
+            </button>
           </div>
 
           {/* Table */}
@@ -1375,14 +1361,6 @@ export function StoreItemSubGroups() {
             </tbody>
           </table>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-            <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-              style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-            <button onClick={() => setShowAdd(true)}
-              className="px-8 py-2 rounded text-sm font-semibold text-white"
-              style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-          </div>
         </div>
       </div>
 
@@ -1499,15 +1477,20 @@ export function GeneralLedgers() {
     <div className="p-6" style={{ background: SC.bg, minHeight: "100vh", fontFamily: "Source Sans Pro, sans-serif" }}>
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h1 className="font-semibold text-gray-800 text-base">General Ledger</h1>
-          <div className="relative w-72">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
+          <h1 className="font-semibold text-gray-800 text-base whitespace-nowrap">General Ledger</h1>
+          <div className="relative flex-1 max-w-72">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search Ledger name..."
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded w-full outline-none focus:border-[#027fa5]"
               data-testid="input-search" />
           </div>
+          <button onClick={() => setShowAdd(true)}
+            className="px-5 py-1.5 rounded text-sm font-semibold text-white flex items-center gap-1.5 flex-shrink-0"
+            style={{ background: SC.orange }} data-testid="btn-add">
+            <Plus size={14} /> Add
+          </button>
         </div>
 
         {/* Table */}
@@ -1551,14 +1534,6 @@ export function GeneralLedgers() {
           </tbody>
         </table>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-5 py-3 border-t border-gray-100">
-          <button className="px-8 py-2 rounded border text-sm font-medium text-gray-700 hover:bg-gray-50"
-            style={{ borderColor: "#9ca3af" }} data-testid="btn-cancel">Cancel</button>
-          <button onClick={() => setShowAdd(true)}
-            className="px-8 py-2 rounded text-sm font-semibold text-white"
-            style={{ background: SC.orange }} data-testid="btn-add">Add</button>
-        </div>
       </div>
 
       {showAdd && <GeneralLedgerModal categories={categories} onClose={() => setShowAdd(false)} />}
