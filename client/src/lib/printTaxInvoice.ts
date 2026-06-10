@@ -84,14 +84,37 @@ export function buildTaxInvoiceHTML(
       const rate = parseFloat(it.rate || "0");
       const amt = parseFloat(it.amount || "0");
       const desc = it.item_code ? `${it.item_code} - ${it.item_name || ""}` : (it.item_name || "");
-      const subParts: string[] = [];
-      const cover = parseInt(it.no_of_cover || "0");
-      if (cover > 0) subParts.push(String(cover));
-      if (it.remark) subParts.push(it.remark);
-      const subRow = subParts.join("  ");
+
+      // ── Sub-detail sections (shown below item name) ──────────────────
+      const sections: string[] = [];
+
+      // Section 1: packing details / remark
+      const packing = (it.packing_details || it.remark || "").trim();
+      if (packing) sections.push(packing);
+
+      // Section 2: DC No + PO No with dates
+      const dcNo   = (it.party_dc || it.dc_no_from_inward || "").trim();
+      const dcDate = it.dc_date ? fmtDate(it.dc_date) : "";
+      const poNo   = (it.po_no || it.po_no_from_inward || "").trim();
+      const poDate = it.inward_entry_date ? fmtDate(it.inward_entry_date) : "";
+      const dcPoLines: string[] = [];
+      if (dcNo) dcPoLines.push(`DC.NO.: ${dcNo}${dcDate ? " &ndash; " + dcDate : ""}`);
+      if (poNo) dcPoLines.push(`PO.NO.: ${poNo}${poDate ? " &ndash; " + poDate : ""}`);
+      if (dcPoLines.length) sections.push(dcPoLines.join("<br>"));
+
+      // Section 3: process name
+      const process = (it.process || "").trim();
+      if (process) sections.push(process);
+
+      const subHTML = sections.length
+        ? `<div style="font-size:9px;color:#333;margin-top:3px;line-height:1.6">
+             ${sections.join(`<div style="color:#aaa;margin:1px 0">&ndash;</div>`)}
+           </div>`
+        : "";
+
       return `<tr>
         <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:4%">${idx + 1}</td>
-        <td style="border:1px solid #000;padding:3px 5px;vertical-align:top">${desc}${subRow ? `<div style="font-size:9.5px;color:#333;margin-top:2px">${subRow}</div>` : ""}</td>
+        <td style="border:1px solid #000;padding:3px 5px;vertical-align:top"><strong>${desc}</strong>${subHTML}</td>
         <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:9%">${it.hsn || ""}</td>
         <td style="border:1px solid #000;padding:3px 5px;text-align:right;vertical-align:top;width:10%">${qty > 0 ? qty.toFixed(2) + " " + (it.unit || "") : "&nbsp;"}</td>
         <td style="border:1px solid #000;padding:3px 5px;text-align:right;vertical-align:top;width:9%">${rate > 0 ? rate.toFixed(2) : "&nbsp;"}</td>

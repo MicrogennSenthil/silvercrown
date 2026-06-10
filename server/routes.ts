@@ -3376,7 +3376,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM job_work_invoices jwi LEFT JOIN customers c ON c.id = jwi.party_id WHERE jwi.id=$1
         `, [id])).rows[0];
         if (!h) return res.status(404).json({ message: "Not found" });
-        const items = (await pool.query(`SELECT * FROM job_work_invoice_items WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
+        const items = (await pool.query(`
+          SELECT ii.*,
+            COALESCE(jwi.party_dc_no, ii.party_dc, '')  AS dc_no_from_inward,
+            jwi.party_dc_date                           AS dc_date,
+            jwi.inward_date                             AS inward_entry_date,
+            COALESCE(jwi.party_po_no, ii.po_no, '')     AS po_no_from_inward
+          FROM job_work_invoice_items ii
+          LEFT JOIN job_work_inward jwi ON jwi.id = ii.inward_id
+          WHERE ii.invoice_id=$1 ORDER BY ii.seq_no
+        `, [id])).rows;
         const charges = (await pool.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
         const sigRow = (await pool.query(`SELECT value FROM app_settings WHERE key='signature_image' LIMIT 1`)).rows[0];
         const companyNameRow = (await pool.query(`SELECT value FROM app_settings WHERE key='company_name' LIMIT 1`)).rows[0];
