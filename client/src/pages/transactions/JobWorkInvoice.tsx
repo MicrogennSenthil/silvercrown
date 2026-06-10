@@ -266,7 +266,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const { data: inwardList = [] }   = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
   const { data: despatchList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-despatch"] });
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
-  const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers"] });
+  const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
   const { data: uomList = [] }      = useQuery<any[]>({ queryKey: ["/api/uom"] });
   const { data: allProducts = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
