@@ -104,21 +104,21 @@ export function buildTaxInvoiceHTML(
   const itemRowsHTML = buildItemRows();
 
   const taxRows = [
-    ...[...cgstRates.entries()].map(([r, a]) =>
+    ...[...cgstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
         <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
         <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left;font-size:9.5px">CGST Output ${r}%</td>
         <td style="border:1px solid #000;padding:2px 5px;text-align:right;font-size:9.5px">${r} %&nbsp;&nbsp;&nbsp;&nbsp;${fmtAmt(a)}</td>
       </tr>`
     ),
-    ...[...sgstRates.entries()].map(([r, a]) =>
+    ...[...sgstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
         <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
         <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left;font-size:9.5px">SGST Output ${r}%</td>
         <td style="border:1px solid #000;padding:2px 5px;text-align:right;font-size:9.5px">${r} %&nbsp;&nbsp;&nbsp;&nbsp;${fmtAmt(a)}</td>
       </tr>`
     ),
-    ...[...igstRates.entries()].map(([r, a]) =>
+    ...[...igstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
         <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
         <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left;font-size:9.5px">IGST Output ${r}%</td>
