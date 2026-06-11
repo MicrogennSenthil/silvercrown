@@ -456,9 +456,14 @@ function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> 
   const [removing, setRemoving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const { data: rawSettings = [] } = useQuery<Setting[]>({ queryKey: ["/api/settings"] });
+  const { data: rawSettings = [], isLoading: sigLoading } = useQuery<Setting[]>({ queryKey: ["/api/settings"] });
   const sigSetting = (rawSettings as Setting[]).find(s => s.key === "signature_image");
   const savedSig = sigSetting?.value || "";
+
+  // Sync preview from DB value as soon as it loads (handles navigation back)
+  useEffect(() => {
+    if (savedSig && !preview) setPreview(savedSig);
+  }, [savedSig]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
