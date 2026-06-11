@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -503,99 +503,77 @@ function VoucherSeriesInline() {
   );
 }
 
-function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
+function SignatureUploadSection({
+  savedSig,
+  pendingSig,
+  onPendingChange,
+  onRemove,
+  removing,
+}: {
+  savedSig: string;
+  pendingSig: string | null;
+  onPendingChange: (dataUrl: string | null) => void;
+  onRemove: () => void;
+  removing: boolean;
+}) {
   const inputId = "sig-file-input";
-  const [localPreview, setLocalPreview] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [sizeErr, setSizeErr] = useState("");
 
-  const { data: rawSettings = [] } = useQuery<Setting[]>({ queryKey: ["/api/settings"] });
-  const sigSetting = (rawSettings as Setting[]).find(s => s.key === "signature_image");
-  const savedSig = sigSetting?.value || "";
-
-  const displayImg = localPreview ?? (savedSig || null);
+  const displayImg = pendingSig ?? (savedSig || null);
+  const isPending = !!pendingSig;
 
   const MAX_SIG_MB = 2;
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    setSizeErr("");
     if (file.size > MAX_SIG_MB * 1024 * 1024) {
-      setMsg({ text: `File too large — max ${MAX_SIG_MB} MB. (This file: ${(file.size / 1024 / 1024).toFixed(1)} MB)`, ok: false });
+      setSizeErr(`File too large — this file is ${(file.size / 1024 / 1024).toFixed(1)} MB. Max allowed: ${MAX_SIG_MB} MB.`);
       return;
     }
-    setUploading(true);
-    setMsg(null);
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = ev => resolve(ev.target?.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      setLocalPreview(dataUrl);
-      const res = await fetch("/api/settings/signature-upload", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data_url: dataUrl }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
-      await qc.invalidateQueries({ queryKey: ["/api/settings"] });
-      setMsg({ text: "Signature saved!", ok: true });
-    } catch (err: any) {
-      setLocalPreview(null);
-      setMsg({ text: "Upload failed: " + err.message, ok: false });
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function handleRemove() {
-    setRemoving(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/settings/signature-image", { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setLocalPreview(null);
-      await qc.invalidateQueries({ queryKey: ["/api/settings"] });
-      setMsg({ text: "Signature removed.", ok: true });
-    } catch (err: any) {
-      setMsg({ text: "Remove failed: " + err.message, ok: false });
-    } finally {
-      setRemoving(false);
-    }
+    const reader = new FileReader();
+    reader.onload = ev => onPendingChange(ev.target?.result as string);
+    reader.onerror = () => setSizeErr("Could not read file. Please try again.");
+    reader.readAsDataURL(file);
   }
 
   return (
     <div className="px-6 py-4 border-t border-gray-50 flex gap-6">
       <div className="w-48 flex-shrink-0 pt-0.5">
         <div className="text-sm font-medium text-gray-700">Digital Signature</div>
-        <div className="text-xs text-gray-400 mt-0.5 leading-relaxed">
-          Upload company authorised signature image for invoice print. Max size: 2 MB.
+        <div className="text-xs text-gray-400 mt-1 leading-relaxed space-y-0.5">
+          <div>For invoice print.</div>
+          <div className="font-medium text-gray-500">Format: PNG or JPG</div>
+          <div className="font-medium text-gray-500">Max size: 2 MB</div>
+          <div className="font-medium text-gray-500">Recommended: 400×150 px</div>
         </div>
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pt-0.5">
         {displayImg ? (
           <div className="flex items-start gap-4">
-            <div className="border rounded-lg p-2 bg-gray-50 inline-block">
+            <div className="relative border rounded-lg p-2 bg-gray-50 inline-block">
               <img src={displayImg} alt="Signature" className="max-h-20 max-w-48 object-contain" />
+              {isPending && (
+                <span className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                  Unsaved
+                </span>
+              )}
             </div>
             <div className="flex flex-col gap-2 mt-1">
               <label
                 htmlFor={inputId}
                 data-testid="btn-upload-signature"
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-white cursor-pointer select-none ${uploading ? "opacity-60 pointer-events-none" : ""}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-white cursor-pointer select-none"
                 style={{ background: SC.primary }}
               >
-                <Upload size={12} /> {uploading ? "Uploading…" : "Replace"}
+                <Upload size={12} /> Replace
               </label>
               <button
+                type="button"
                 data-testid="btn-remove-signature"
-                onClick={handleRemove}
+                onClick={onRemove}
                 disabled={removing}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-red-600 border border-red-200 bg-white hover:bg-red-50 disabled:opacity-60"
               >
@@ -607,23 +585,26 @@ function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> 
           <label
             htmlFor={inputId}
             data-testid="btn-upload-signature"
-            className={`flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-[#027fa5] hover:text-[#027fa5] transition-colors cursor-pointer select-none ${uploading ? "opacity-60 pointer-events-none" : ""}`}
+            className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-[#027fa5] hover:text-[#027fa5] transition-colors cursor-pointer select-none inline-flex"
           >
-            <Upload size={14} /> {uploading ? "Uploading…" : "Click to upload signature image"}
+            <Upload size={14} /> Click to select signature image
           </label>
         )}
         <input
           id={inputId}
           type="file"
-          accept="image/*"
+          accept="image/png,image/jpeg,image/jpg"
           className="hidden"
           onChange={handleFile}
           data-testid="input-signature-file"
         />
-        {msg && (
-          <p className={`text-xs mt-2 font-medium ${msg.ok ? "text-green-600" : "text-red-500"}`}>
-            {msg.text}
+        {isPending && !sizeErr && (
+          <p className="text-xs mt-2 text-amber-600 font-medium">
+            Image selected — click <strong>Save Changes</strong> below to save it.
           </p>
+        )}
+        {sizeErr && (
+          <p className="text-xs mt-2 text-red-500 font-medium">{sizeErr}</p>
         )}
       </div>
     </div>
@@ -640,6 +621,10 @@ export default function SoftwareSetup() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("AI Configuration");
+
+  // Signature state — pendingSig is selected locally but not yet saved
+  const [pendingSig, setPendingSig] = useState<string | null>(null);
+  const [removingSig, setRemovingSig] = useState(false);
 
   useEffect(() => {
     if (!rawSettings.length) return;
@@ -659,6 +644,20 @@ export default function SoftwareSetup() {
     byCategory[s.category].push(s);
   });
 
+  const savedSig = (rawSettings as Setting[]).find(s => s.key === "signature_image")?.value || "";
+
+  async function handleRemoveSig() {
+    setRemovingSig(true);
+    try {
+      const res = await fetch("/api/settings/signature-image", { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setPendingSig(null);
+      await qc.invalidateQueries({ queryKey: ["/api/settings"] });
+    } finally {
+      setRemovingSig(false);
+    }
+  }
+
   const saveMut = useMutation({
     mutationFn: async (category: string) => {
       const items = (byCategory[category] || []).map(s => ({
@@ -672,6 +671,20 @@ export default function SoftwareSetup() {
         body: JSON.stringify(items),
       });
       if (!res.ok) throw new Error("Save failed");
+      // Also save pending signature when saving Company settings
+      if (category === "Company" && pendingSig) {
+        const sigRes = await fetch("/api/settings/signature-upload", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data_url: pendingSig }),
+        });
+        if (!sigRes.ok) {
+          const body = await sigRes.json();
+          throw new Error("Signature save failed: " + (body.message || sigRes.status));
+        }
+        setPendingSig(null);
+      }
       return res.json();
     },
     onSuccess: (_, category) => {
@@ -764,7 +777,15 @@ export default function SoftwareSetup() {
                       </div>
                     </div>
                   ))}
-                  {cat === "Company" && <SignatureUploadSection qc={qc} />}
+                  {cat === "Company" && (
+                    <SignatureUploadSection
+                      savedSig={savedSig}
+                      pendingSig={pendingSig}
+                      onPendingChange={setPendingSig}
+                      onRemove={handleRemoveSig}
+                      removing={removingSig}
+                    />
+                  )}
                 </div>
               )}
 
