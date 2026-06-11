@@ -465,9 +465,16 @@ function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> 
     if (savedSig && !preview) setPreview(savedSig);
   }, [savedSig]);
 
+  const MAX_SIG_MB = 2;
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_SIG_MB * 1024 * 1024) {
+      setMsg(`File too large. Maximum allowed size is ${MAX_SIG_MB} MB.`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     setUploading(true);
     setMsg("");
     try {
@@ -517,7 +524,7 @@ function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> 
       <div className="w-48 flex-shrink-0 pt-0.5">
         <div className="text-sm font-medium text-gray-700">Digital Signature</div>
         <div className="text-xs text-gray-400 mt-0.5 leading-relaxed">
-          Upload company authorised signature image for invoice print.
+          Upload company authorised signature image for invoice print. Max size: 2 MB.
         </div>
       </div>
       <div className="flex-1 min-w-0">
