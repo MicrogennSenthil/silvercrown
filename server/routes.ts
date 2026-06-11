@@ -4410,7 +4410,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const { data_url } = req.body;
       if (!data_url || !data_url.startsWith("data:")) return res.status(400).json({ message: "Invalid image data" });
-      await pool.query("UPDATE app_settings SET value=$1, updated_at=now() WHERE key='signature_image'", [data_url]);
+      await pool.query(
+        `INSERT INTO app_settings (key, value, label, category, input_type, description, updated_at)
+         VALUES ('signature_image', $1, 'Digital Signature', 'Company', 'image', 'Company authorised signature for invoice print', now())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+        [data_url]
+      );
       res.json({ signature_image: data_url });
     } catch (e: any) {
       res.status(500).json({ message: e.message });

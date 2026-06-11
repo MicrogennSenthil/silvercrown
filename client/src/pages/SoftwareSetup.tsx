@@ -450,33 +450,30 @@ function VoucherSeriesInline() {
 }
 
 function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const inputId = "sig-file-input";
+  const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
-  const { data: rawSettings = [], isLoading: sigLoading } = useQuery<Setting[]>({ queryKey: ["/api/settings"] });
+  const { data: rawSettings = [] } = useQuery<Setting[]>({ queryKey: ["/api/settings"] });
   const sigSetting = (rawSettings as Setting[]).find(s => s.key === "signature_image");
   const savedSig = sigSetting?.value || "";
 
-  // Sync preview from DB value as soon as it loads (handles navigation back)
-  useEffect(() => {
-    if (savedSig && !preview) setPreview(savedSig);
-  }, [savedSig]);
+  const displayImg = localPreview ?? (savedSig || null);
 
   const MAX_SIG_MB = 2;
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     if (file.size > MAX_SIG_MB * 1024 * 1024) {
-      setMsg(`File too large. Maximum allowed size is ${MAX_SIG_MB} MB.`);
-      if (fileRef.current) fileRef.current.value = "";
+      setMsg({ text: `File too large — max ${MAX_SIG_MB} MB. (This file: ${(file.size / 1024 / 1024).toFixed(1)} MB)`, ok: false });
       return;
     }
     setUploading(true);
-    setMsg("");
+    setMsg(null);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -484,40 +481,40 @@ function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> 
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      setPreview(dataUrl);
+      setLocalPreview(dataUrl);
       const res = await fetch("/api/settings/signature-upload", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data_url: dataUrl }),
       });
-      if (!res.ok) throw new Error((await res.json()).message);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
       await qc.invalidateQueries({ queryKey: ["/api/settings"] });
-      setMsg("Signature saved!");
+      setMsg({ text: "Signature saved!", ok: true });
     } catch (err: any) {
-      setMsg("Upload failed: " + err.message);
+      setLocalPreview(null);
+      setMsg({ text: "Upload failed: " + err.message, ok: false });
     } finally {
       setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
   async function handleRemove() {
     setRemoving(true);
-    setMsg("");
+    setMsg(null);
     try {
-      await fetch("/api/settings/signature-image", { method: "DELETE", credentials: "include" });
-      setPreview(null);
+      const res = await fetch("/api/settings/signature-image", { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setLocalPreview(null);
       await qc.invalidateQueries({ queryKey: ["/api/settings"] });
-      setMsg("Signature removed.");
-    } catch {
-      setMsg("Remove failed.");
+      setMsg({ text: "Signature removed.", ok: true });
+    } catch (err: any) {
+      setMsg({ text: "Remove failed: " + err.message, ok: false });
     } finally {
       setRemoving(false);
     }
   }
-
-  const displayImg = preview || savedSig || null;
 
   return (
     <div className="px-6 py-4 border-t border-gray-50 flex gap-6">
@@ -534,37 +531,46 @@ function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> 
               <img src={displayImg} alt="Signature" className="max-h-20 max-w-48 object-contain" />
             </div>
             <div className="flex flex-col gap-2 mt-1">
-              <button
+              <label
+                htmlFor={inputId}
                 data-testid="btn-upload-signature"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-white disabled:opacity-60"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-white cursor-pointer select-none ${uploading ? "opacity-60 pointer-events-none" : ""}`}
                 style={{ background: SC.primary }}
               >
-                <Upload size={12} /> Replace
-              </button>
+                <Upload size={12} /> {uploading ? "Uploading…" : "Replace"}
+              </label>
               <button
                 data-testid="btn-remove-signature"
                 onClick={handleRemove}
                 disabled={removing}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold text-red-600 border border-red-200 bg-white hover:bg-red-50 disabled:opacity-60"
               >
-                <ImageOff size={12} /> Remove
+                <ImageOff size={12} /> {removing ? "Removing…" : "Remove"}
               </button>
             </div>
           </div>
         ) : (
-          <button
+          <label
+            htmlFor={inputId}
             data-testid="btn-upload-signature"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-[#027fa5] hover:text-[#027fa5] transition-colors disabled:opacity-60"
+            className={`flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-[#027fa5] hover:text-[#027fa5] transition-colors cursor-pointer select-none ${uploading ? "opacity-60 pointer-events-none" : ""}`}
           >
             <Upload size={14} /> {uploading ? "Uploading…" : "Click to upload signature image"}
-          </button>
+          </label>
         )}
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} data-testid="input-signature-file" />
-        {msg && <p className={`text-xs mt-1.5 ${msg.startsWith("Upload failed") || msg.startsWith("Remove") && msg !== "Signature removed." ? "text-red-500" : "text-green-600"}`}>{msg}</p>}
+        <input
+          id={inputId}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFile}
+          data-testid="input-signature-file"
+        />
+        {msg && (
+          <p className={`text-xs mt-2 font-medium ${msg.ok ? "text-green-600" : "text-red-500"}`}>
+            {msg.text}
+          </p>
+        )}
       </div>
     </div>
   );
