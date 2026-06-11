@@ -92,14 +92,16 @@ export function buildTaxInvoiceHTML(
       const packing = (it.packing_details || it.remark || "").trim();
       if (packing) sections.push(packing);
 
-      // Section 2: DC No + PO No with dates
+      // Section 2: DC No + PO No + WO No with dates
       const dcNo   = (it.party_dc || it.dc_no_from_inward || "").trim();
       const dcDate = it.dc_date ? fmtDate(it.dc_date) : "";
       const poNo   = (it.po_no || it.po_no_from_inward || "").trim();
-      const poDate = it.inward_entry_date ? fmtDate(it.inward_entry_date) : "";
+      const woNo   = (it.work_order_no || "").trim();
+      const refDate = it.inward_entry_date ? fmtDate(it.inward_entry_date) : "";
       const dcPoLines: string[] = [];
       if (dcNo) dcPoLines.push(`DC.NO.: ${dcNo}${dcDate ? " &ndash; " + dcDate : ""}`);
-      if (poNo) dcPoLines.push(`PO.NO.: ${poNo}${poDate ? " &ndash; " + poDate : ""}`);
+      if (poNo) dcPoLines.push(`PO.NO.: ${poNo}${refDate ? " &ndash; " + refDate : ""}`);
+      if (woNo) dcPoLines.push(`WO.NO.: ${woNo}${refDate ? " &ndash; " + refDate : ""}`);
       if (dcPoLines.length) sections.push(dcPoLines.join("<br>"));
 
       // Section 3: process name
