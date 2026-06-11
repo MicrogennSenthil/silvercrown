@@ -4405,17 +4405,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  app.post("/api/settings/signature-upload", requireAuth, upload.single("signature"), async (req, res) => {
+  app.post("/api/settings/signature-upload", requireAuth, async (req, res) => {
     try {
-      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const { pool } = await import("./db");
-      const { readFileSync, unlinkSync } = await import("fs");
-      const buf = readFileSync(req.file.path);
-      const mime = req.file.mimetype || "image/png";
-      const b64 = `data:${mime};base64,${buf.toString("base64")}`;
-      try { unlinkSync(req.file.path); } catch {}
-      await pool.query("UPDATE app_settings SET value=$1, updated_at=now() WHERE key='signature_image'", [b64]);
-      res.json({ signature_image: b64 });
+      const { data_url } = req.body;
+      if (!data_url || !data_url.startsWith("data:")) return res.status(400).json({ message: "Invalid image data" });
+      await pool.query("UPDATE app_settings SET value=$1, updated_at=now() WHERE key='signature_image'", [data_url]);
+      res.json({ signature_image: data_url });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }

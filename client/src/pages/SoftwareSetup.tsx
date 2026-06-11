@@ -468,15 +468,22 @@ function SignatureUploadSection({ qc }: { qc: ReturnType<typeof useQueryClient> 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => setPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
     setUploading(true);
     setMsg("");
     try {
-      const fd = new FormData();
-      fd.append("signature", file);
-      const res = await fetch("/api/settings/signature-upload", { method: "POST", credentials: "include", body: fd });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = ev => resolve(ev.target?.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      setPreview(dataUrl);
+      const res = await fetch("/api/settings/signature-upload", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data_url: dataUrl }),
+      });
       if (!res.ok) throw new Error((await res.json()).message);
       await qc.invalidateQueries({ queryKey: ["/api/settings"] });
       setMsg("Signature saved!");
