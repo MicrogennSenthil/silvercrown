@@ -49,6 +49,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_inward_items ADD COLUMN IF NOT EXISTS work_order_no TEXT DEFAULT ''`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('signature_image','','Digital Signature','Company','image','Upload company authorised signature image for invoice print') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
+    await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('company_timezone','Asia/Kolkata','Timezone','Company','select','Timezone used for all dates and timestamps in the system') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     // Add suffix column to voucher_series if missing (format: IN/0001/26-27)
     await _pool.query(`ALTER TABLE voucher_series ADD COLUMN IF NOT EXISTS suffix TEXT DEFAULT ''`).catch(() => {});
 

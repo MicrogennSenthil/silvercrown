@@ -32,6 +32,43 @@ const AI_PROVIDER_OPTIONS = [
   { value: "groq", label: "Groq" },
 ];
 
+const TIMEZONE_OPTIONS = [
+  { group: "India", options: [
+    { value: "Asia/Kolkata",   label: "India Standard Time (IST) — UTC+5:30" },
+  ]},
+  { group: "Asia / Pacific", options: [
+    { value: "Asia/Dubai",      label: "Gulf Standard Time (GST) — UTC+4:00" },
+    { value: "Asia/Karachi",    label: "Pakistan Standard Time (PKT) — UTC+5:00" },
+    { value: "Asia/Dhaka",      label: "Bangladesh Time (BST) — UTC+6:00" },
+    { value: "Asia/Colombo",    label: "Sri Lanka Time (SLT) — UTC+5:30" },
+    { value: "Asia/Kathmandu",  label: "Nepal Time (NPT) — UTC+5:45" },
+    { value: "Asia/Singapore",  label: "Singapore Time (SGT) — UTC+8:00" },
+    { value: "Asia/Tokyo",      label: "Japan Standard Time (JST) — UTC+9:00" },
+    { value: "Asia/Shanghai",   label: "China Standard Time (CST) — UTC+8:00" },
+    { value: "Australia/Sydney",label: "Australian Eastern Time (AET) — UTC+10:00/11:00" },
+  ]},
+  { group: "Europe", options: [
+    { value: "Europe/London",   label: "Greenwich Mean Time (GMT) — UTC+0:00/+1:00" },
+    { value: "Europe/Paris",    label: "Central European Time (CET) — UTC+1:00/+2:00" },
+    { value: "Europe/Moscow",   label: "Moscow Time (MSK) — UTC+3:00" },
+  ]},
+  { group: "Americas", options: [
+    { value: "America/New_York",    label: "Eastern Time (ET) — UTC-5:00/-4:00" },
+    { value: "America/Chicago",     label: "Central Time (CT) — UTC-6:00/-5:00" },
+    { value: "America/Denver",      label: "Mountain Time (MT) — UTC-7:00/-6:00" },
+    { value: "America/Los_Angeles", label: "Pacific Time (PT) — UTC-8:00/-7:00" },
+    { value: "America/Sao_Paulo",   label: "Brasilia Time (BRT) — UTC-3:00" },
+  ]},
+  { group: "Africa / Middle East", options: [
+    { value: "Africa/Nairobi",  label: "East Africa Time (EAT) — UTC+3:00" },
+    { value: "Africa/Lagos",    label: "West Africa Time (WAT) — UTC+1:00" },
+    { value: "Asia/Riyadh",     label: "Arabia Standard Time (AST) — UTC+3:00" },
+  ]},
+  { group: "UTC", options: [
+    { value: "UTC", label: "Coordinated Universal Time (UTC) — UTC+0:00" },
+  ]},
+];
+
 const AI_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
   gemini: [
     { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash (Fast, Free)" },
@@ -78,7 +115,6 @@ function SettingInput({
   }
 
   if (setting.input_type === "select") {
-    // AI Provider select
     if (setting.key === "ai_provider") {
       return (
         <select
@@ -89,6 +125,24 @@ function SettingInput({
         >
           {AI_PROVIDER_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      );
+    }
+    if (setting.key === "company_timezone") {
+      return (
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:border-[#027fa5]"
+          data-testid="select-company_timezone"
+        >
+          {TIMEZONE_OPTIONS.map(group => (
+            <optgroup key={group.group} label={group.group}>
+              {group.options.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </optgroup>
           ))}
         </select>
       );
