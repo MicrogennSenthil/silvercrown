@@ -117,7 +117,7 @@ export function buildTaxInvoiceHTML(
       return `<tr>
         <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:4%">${idx + 1}</td>
         <td style="border:1px solid #000;padding:3px 5px;vertical-align:top"><strong>${desc}</strong>${subHTML}</td>
-        <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:9%">${it.hsn_code || it.hsn || ""}</td>
+        <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:9%">${it.resolved_hsn || it.hsn || ""}</td>
         <td style="border:1px solid #000;padding:3px 5px;text-align:right;vertical-align:top;width:10%">${qty > 0 ? qty.toFixed(2) + " " + (it.unit || "") : "&nbsp;"}</td>
         <td style="border:1px solid #000;padding:3px 5px;text-align:right;vertical-align:top;width:9%">${rate > 0 ? rate.toFixed(2) : "&nbsp;"}</td>
         <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:7%">${it.unit || ""}</td>

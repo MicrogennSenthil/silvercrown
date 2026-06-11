@@ -3378,11 +3378,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         if (!h) return res.status(404).json({ message: "Not found" });
         const items = (await pool.query(`
           SELECT ii.*,
+            COALESCE(NULLIF(ii.hsn,''), p.hsn_code, '') AS resolved_hsn,
             COALESCE(jwi.party_dc_no, ii.party_dc, '')  AS dc_no_from_inward,
             jwi.party_dc_date                           AS dc_date,
             jwi.inward_date                             AS inward_entry_date,
             COALESCE(jwi.party_po_no, ii.po_no, '')     AS po_no_from_inward
           FROM job_work_invoice_items ii
+          LEFT JOIN products p ON p.id = ii.item_id
           LEFT JOIN job_work_inward jwi ON jwi.id = ii.inward_id
           WHERE ii.invoice_id=$1 ORDER BY ii.seq_no
         `, [id])).rows;
@@ -4078,6 +4080,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   // ── Shared helper: resolve or auto-create UOM + item in masters ──────────────
+  async function resolveHsn(client: any, hsn: string | undefined, itemId: string | null | undefined): Promise<string> {
+    if (hsn && hsn.trim()) return hsn.trim();
+    if (!itemId) return "";
+    const r = await client.query(`SELECT hsn_code FROM products WHERE id=$1 LIMIT 1`, [itemId]);
+    return r.rows[0]?.hsn_code || "";
+  }
+
   async function resolveItemMasters(client: any, it: any): Promise<{ itemId: string | null }> {
     if (!it.item_name?.trim()) return { itemId: null };
 
@@ -4964,7 +4973,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
         `, [invoiceId, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
-            (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
+            (it.unit || "").toUpperCase(), it.process || "", await resolveHsn(client, it.hsn, it.item_id),
             iqty, irate, itaxable,
             it.po_no || "", it.party_dc || "", it.work_order_no || "",
             it.despatch_voucher_no || "", it.inward_voucher_no || "",
@@ -5033,7 +5042,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
         `, [req.params.id, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
-            (it.unit || "").toUpperCase(), it.process || "", it.hsn || "",
+            (it.unit || "").toUpperCase(), it.process || "", await resolveHsn(client, it.hsn, it.item_id),
             iqty, irate, itaxable,
             it.po_no || "", it.party_dc || "", it.work_order_no || "",
             it.despatch_voucher_no || "", it.inward_voucher_no || "",
