@@ -4408,6 +4408,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   app.post("/api/settings/signature-upload", requireAuth, upload.single("signature"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const { pool } = await import("./db");
       const { readFileSync, unlinkSync } = await import("fs");
       const buf = readFileSync(req.file.path);
       const mime = req.file.mimetype || "image/png";
@@ -4422,6 +4423,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
 
   app.delete("/api/settings/signature-image", requireAuth, async (req, res) => {
     try {
+      const { pool } = await import("./db");
       await pool.query("UPDATE app_settings SET value='', updated_at=now() WHERE key='signature_image'");
       res.json({ ok: true });
     } catch (e: any) {
