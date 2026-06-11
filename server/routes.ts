@@ -3376,9 +3376,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM job_work_invoices jwi LEFT JOIN customers c ON c.id = jwi.party_id WHERE jwi.id=$1
         `, [id])).rows[0];
         if (!h) return res.status(404).json({ message: "Not found" });
+        const isEway = h.is_eway_bill || false;
         const items = (await pool.query(`
           SELECT ii.*,
-            COALESCE(NULLIF(ii.hsn,''), p.hsn_code, '') AS resolved_hsn,
+            CASE
+              WHEN $2 = true THEN COALESCE(NULLIF(ii.hsn,''), NULLIF(p.hsn_code_eway,''), p.hsn_code, '')
+              ELSE                 COALESCE(NULLIF(ii.hsn,''), p.hsn_code, '')
+            END                                         AS resolved_hsn,
             COALESCE(jwi.party_dc_no, ii.party_dc, '')  AS dc_no_from_inward,
             jwi.party_dc_date                           AS dc_date,
             jwi.inward_date                             AS inward_entry_date,
@@ -3387,7 +3391,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           LEFT JOIN products p ON p.id = ii.item_id
           LEFT JOIN job_work_inward jwi ON jwi.id = ii.inward_id
           WHERE ii.invoice_id=$1 ORDER BY ii.seq_no
-        `, [id])).rows;
+        `, [id, isEway])).rows;
         const charges = (await pool.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
         const sigRow = (await pool.query(`SELECT value FROM app_settings WHERE key='signature_image' LIMIT 1`)).rows[0];
         const companyNameRow = (await pool.query(`SELECT value FROM app_settings WHERE key='company_name' LIMIT 1`)).rows[0];
@@ -4080,11 +4084,14 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   // ── Shared helper: resolve or auto-create UOM + item in masters ──────────────
-  async function resolveHsn(client: any, hsn: string | undefined, itemId: string | null | undefined): Promise<string> {
+  async function resolveHsn(client: any, hsn: string | undefined, itemId: string | null | undefined, isEway = false): Promise<string> {
     if (hsn && hsn.trim()) return hsn.trim();
     if (!itemId) return "";
-    const r = await client.query(`SELECT hsn_code FROM products WHERE id=$1 LIMIT 1`, [itemId]);
-    return r.rows[0]?.hsn_code || "";
+    const r = await client.query(`SELECT hsn_code, hsn_code_eway FROM products WHERE id=$1 LIMIT 1`, [itemId]);
+    if (!r.rows[0]) return "";
+    const { hsn_code, hsn_code_eway } = r.rows[0];
+    if (isEway) return hsn_code_eway?.trim() || hsn_code?.trim() || "";
+    return hsn_code?.trim() || "";
   }
 
   async function resolveItemMasters(client: any, it: any): Promise<{ itemId: string | null }> {
@@ -4973,7 +4980,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
         `, [invoiceId, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
-            (it.unit || "").toUpperCase(), it.process || "", await resolveHsn(client, it.hsn, it.item_id),
+            (it.unit || "").toUpperCase(), it.process || "", await resolveHsn(client, it.hsn, it.item_id, data.is_eway_bill || false),
             iqty, irate, itaxable,
             it.po_no || "", it.party_dc || "", it.work_order_no || "",
             it.despatch_voucher_no || "", it.inward_voucher_no || "",
@@ -5042,7 +5049,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
         `, [req.params.id, it.despatch_id || null, it.inward_id || null, it.inward_item_id || null, seq++,
             it.item_id || null, it.item_code || "", it.item_name,
-            (it.unit || "").toUpperCase(), it.process || "", await resolveHsn(client, it.hsn, it.item_id),
+            (it.unit || "").toUpperCase(), it.process || "", await resolveHsn(client, it.hsn, it.item_id, data.is_eway_bill || false),
             iqty, irate, itaxable,
             it.po_no || "", it.party_dc || "", it.work_order_no || "",
             it.despatch_voucher_no || "", it.inward_voucher_no || "",
