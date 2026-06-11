@@ -282,16 +282,16 @@ export function buildTaxInvoiceHTML(
   </table>
   <table style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:9.5px">
     <tr>
-      <td style="width:58%;border-right:1px solid #000;padding:5px 8px;vertical-align:top">
+      <td style="width:52%;border-right:1px solid #000;padding:5px 8px;vertical-align:top">
         <div style="font-style:italic;font-size:9px">Amount Chargeable (in words)</div>
         <div style="font-weight:600;margin-top:2px">${amountInWords(grandTotal)}</div>
         <div style="text-align:right;font-size:9px;font-style:italic;margin-top:2px">E. &amp; O.E</div>
       </td>
-      <td style="width:42%;padding:5px 8px;vertical-align:top">
+      <td style="width:48%;padding:5px 8px;vertical-align:top">
         <div style="font-weight:600;margin-bottom:4px">Company's Bank Details</div>
         <table style="border-collapse:collapse;font-size:9.5px;width:100%">
           ${doc.company_name ? `<tr>
-            <td style="white-space:nowrap;padding:1px 0;vertical-align:top;width:38%">A/c Holder's Name</td>
+            <td style="white-space:nowrap;padding:1px 0;vertical-align:top;width:35%">A/c Holder's Name</td>
             <td style="padding:1px 4px;vertical-align:top;width:4%">:</td>
             <td style="padding:1px 0;vertical-align:top;font-weight:600">${doc.company_name}</td>
           </tr>` : ""}
@@ -308,7 +308,7 @@ export function buildTaxInvoiceHTML(
           <tr>
             <td style="white-space:nowrap;padding:1px 0;vertical-align:top">Branch &amp; IFS Code</td>
             <td style="padding:1px 4px;vertical-align:top">:</td>
-            <td style="padding:1px 0;vertical-align:top;font-weight:600">Treasury Branch, Coimbatore &amp; SBIN0007639</td>
+            <td style="white-space:nowrap;padding:1px 0;vertical-align:top;font-weight:600;font-size:9px">Treasury Branch, Coimbatore &amp; SBIN0007639</td>
           </tr>
         </table>
       </td>
