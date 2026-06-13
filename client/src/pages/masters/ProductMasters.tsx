@@ -402,7 +402,7 @@ function PToggle({ label, name, value, onChange }: { label: string; name: string
   );
 }
 
-function ProductModal({ initial, categories, subCategories, uomList, onClose }: any) {
+function ProductModal({ initial, categories, subCategories, uomList, allProducts, onClose }: any) {
   const [form, setForm] = useState<any>({ ...EMPTY_PRODUCT, ...initial });
   const [showQuickCat, setShowQuickCat] = useState(false);
   const [showQuickSub, setShowQuickSub] = useState(false);
@@ -484,7 +484,33 @@ function ProductModal({ initial, categories, subCategories, uomList, onClose }: 
         <div className="px-6 py-5 space-y-4">
           {/* Row 1: Item Name + Unit */}
           <div className="flex gap-3">
-            <FField label="Item Name" value={form.name} onChange={f("name")} placeholder="Enter Item name Here..." className="flex-1" error={hasError("name")} />
+            {/* Item Name with live duplicate hint */}
+            <div className="relative flex-1">
+              <FField label="Item Name" value={form.name} onChange={e => { clearError("name"); setForm((p: any) => ({ ...p, name: e.target.value })); }} placeholder="Enter Item name Here..." error={hasError("name")} />
+              {(() => {
+                const q = (form.name || "").trim().toLowerCase();
+                if (q.length < 2) return null;
+                const matches = (allProducts as any[] || []).filter(
+                  (p: any) => p.id !== initial?.id && p.name?.toLowerCase().includes(q)
+                );
+                if (!matches.length) return null;
+                return (
+                  <div className="absolute top-full left-0 right-0 z-30 mt-0.5 bg-white border border-amber-300 rounded-lg shadow-lg overflow-hidden">
+                    <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-amber-700">⚠ Similar item names already exist</span>
+                    </div>
+                    <div className="max-h-36 overflow-y-auto">
+                      {matches.slice(0, 8).map((p: any) => (
+                        <div key={p.id} className="flex items-center justify-between px-3 py-2 text-xs border-b last:border-0 border-gray-100 hover:bg-amber-50">
+                          <span className="font-medium text-gray-800">{p.name}</span>
+                          <span className="text-gray-400 ml-2">{p.sapNo || p.drgNo || ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
             <FSelect label="Unit" value={form.unit} onChange={f("unit")} options={unitOptions} className="w-36" error={hasError("unit")} />
           </div>
 
@@ -697,7 +723,7 @@ export function Products() {
 
       {/* Modal */}
       {showForm && (
-        <ProductModal initial={editing} categories={cats} subCategories={subs} uomList={uoms}
+        <ProductModal initial={editing} categories={cats} subCategories={subs} uomList={uoms} allProducts={rows}
           onClose={() => { setShowForm(false); setEditing(null); }} />
       )}
     </div>
