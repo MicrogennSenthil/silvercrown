@@ -817,12 +817,13 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                   value={partySearch}
                   onChange={e => { setPartySearch(e.target.value); setPartyId(""); setPartyDropOpen(true); }}
                   onFocus={() => setPartyDropOpen(true)}
+                  onBlur={() => setTimeout(() => setPartyDropOpen(false), 150)}
                   placeholder="Search or type customer..."
                   className="flex-1 border border-gray-300 rounded-l px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
                   data-testid="input-party-search"
                 />
                 <button
-                  onClick={() => setQuickParty(partySearch)}
+                  onMouseDown={() => setQuickParty(partySearch)}
                   className="border border-l-0 border-gray-300 rounded-r px-2.5 text-gray-500 hover:bg-[#d2f1fa] hover:text-[#027fa5] transition-colors"
                   title="Quick add new party"
                   data-testid="btn-quick-add-party"
@@ -830,10 +831,12 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                   <Plus size={14} />
                 </button>
               </div>
-              {partyDropOpen && filteredCustomers.length > 0 && (
-                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-52 overflow-y-auto mt-0.5">
-                  {filteredCustomers.map((s: any) => (
-                    <button key={s.id} onClick={() => { setPartyId(s.id); setPartySearch(s.name); setPartyDropOpen(false); }}
+              {partyDropOpen && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-52 overflow-y-auto mt-0.5">
+                  {filteredCustomers.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-gray-400">No customers found</div>
+                  ) : filteredCustomers.map((s: any) => (
+                    <button key={s.id} onMouseDown={() => { setPartyId(s.id); setPartySearch(s.name); setPartyDropOpen(false); }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-[#d2f1fa] transition-colors"
                       data-testid={`opt-party-${s.id}`}>
                       {s.name}

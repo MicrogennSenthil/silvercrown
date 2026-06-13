@@ -866,16 +866,17 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           {/* Left: Party dropdown */}
           <div className="flex-1 relative" ref={partyRef}>
             <label className="text-xs text-gray-500 mb-1 block">Party Name</label>
-            <div className="border rounded-lg px-3 py-2 flex items-center justify-between cursor-pointer bg-white"
-              onClick={() => setPartyDropOpen(p => !p)}>
+            <div className="border rounded-lg px-3 py-2 flex items-center justify-between bg-white">
               <input
                 data-testid="input-party-name"
                 className="outline-none flex-1 text-sm"
-                placeholder="Select Party..."
+                placeholder="Type to search party..."
                 value={partySearch}
                 onChange={e => { setPartySearch(e.target.value); setPartyDropOpen(true); setPartyId(""); }}
+                onFocus={() => setPartyDropOpen(true)}
+                onBlur={() => setTimeout(() => setPartyDropOpen(false), 150)}
               />
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
@@ -883,7 +884,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
               <div className="absolute left-0 top-full mt-1 bg-white border rounded-lg shadow-xl z-50 w-full max-h-48 overflow-y-auto">
                 {filteredParties.map((c: any) => (
                   <div key={c.id} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm"
-                    onClick={() => { setPartyId(c.id); setPartySearch(c.name); setPartyDropOpen(false); setItems([]); setCheckedIds(new Set()); }}>
+                    onMouseDown={() => { setPartyId(c.id); setPartySearch(c.name); setPartyDropOpen(false); setItems([]); setCheckedIds(new Set()); }}>
                     {c.name}
                   </div>
                 ))}
