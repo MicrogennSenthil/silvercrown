@@ -489,7 +489,7 @@ function ProductModal({ initial, categories, subCategories, uomList, allProducts
               <FField label="Item Name" value={form.name} onChange={e => { clearError("name"); setForm((p: any) => ({ ...p, name: e.target.value })); }} placeholder="Enter Item name Here..." error={hasError("name")} />
               {(() => {
                 const q = (form.name || "").trim().toLowerCase();
-                if (q.length < 2) return null;
+                if (q.length < 1) return null;
                 const matches = (allProducts as any[] || []).filter(
                   (p: any) => p.id !== initial?.id && p.name?.toLowerCase().includes(q)
                 );
