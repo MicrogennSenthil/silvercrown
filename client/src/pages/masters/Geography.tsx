@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, PencilLine, Trash2, Check, X } from "lucide-react";
+import { Search, PencilLine, Trash2, Check, X, Plus } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
