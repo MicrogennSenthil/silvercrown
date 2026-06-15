@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2, AlertCircle, CheckCircle2, Trash2, Plus, PencilLine, Printer, X } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
@@ -28,178 +27,6 @@ function parseVehicle(s: string) {
   return { p1: clean.slice(0,2), p2: clean.slice(2,4), p3: clean.slice(4,6), p4: clean.slice(6) };
 }
 
-/* ── Generic item-pick modal — works for both Inward and Despatch ── */
-function ItemPickModal({ record, rawItems, isInterState, isDespatch, onConfirm, onCancel }: {
-  record: any;
-  rawItems: any[];
-  isInterState: boolean;
-  isDespatch: boolean;
-  onConfirm: (rows: any[]) => void;
-  onCancel: () => void;
-}) {
-  const safeItems = Array.isArray(rawItems) ? rawItems : [];
-  const keys = safeItems.map((r, i) => r.id || r.inward_item_id || String(i));
-  const initPicks = () => Object.fromEntries(
-    safeItems.map((r, i) => {
-      const k = keys[i];
-      return [k, { checked: true, qty: String(parseFloat(r.qty_despatched || r.qty || 0)), rate: String(parseFloat(r.rate || 0)) }];
-    })
-  );
-  const [picks, setPicks] = useState<Record<string, { checked: boolean; qty: string; rate: string }>>(initPicks);
-
-  function toggle(k: string) { setPicks(p => ({ ...p, [k]: { ...p[k], checked: !p[k].checked } })); }
-  function setQty(k: string, v: string) { setPicks(p => ({ ...p, [k]: { ...p[k], qty: v } })); }
-  function setRate(k: string, v: string) { setPicks(p => ({ ...p, [k]: { ...p[k], rate: v } })); }
-  function selectAll() { setPicks(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, { ...v, checked: true }]))); }
-  function deselectAll() { setPicks(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, { ...v, checked: false }]))); }
-
-  const selectedCount = Object.values(picks).filter(p => p.checked).length;
-
-  const label    = isDespatch ? "Despatch" : "Inward";
-  const voucherNo = isDespatch ? (record.voucher_no || record.despatch_voucher_no) : record.voucher_no;
-  const dateSub  = isDespatch ? (record.despatch_date ? fmtDate(record.despatch_date) : "") : (record.inward_date ? fmtDate(record.inward_date) : "");
-  const subRef   = isDespatch ? (record.vehicle_no ? `· Vehicle ${record.vehicle_no}` : "") : (record.party_dc_no ? `· DC ${record.party_dc_no}` : "");
-
-  function confirm() {
-    const selected = safeItems
-      .filter((_, i) => picks[keys[i]]?.checked)
-      .map(r => {
-        const k = keys[safeItems.indexOf(r)];
-        const qty    = parseFloat(picks[k]?.qty  || "0") || 0;
-        const rate   = parseFloat(picks[k]?.rate || "0") || 0;
-        const taxable = qty * rate;
-        const cgstR  = parseFloat(r.cgst_rate || 0);
-        const sgstR  = parseFloat(r.sgst_rate || 0);
-        const igstR  = parseFloat(r.igst_rate || 0) || (cgstR + sgstR);
-        return {
-          despatch_id:         isDespatch ? record.id : null,
-          inward_id:           isDespatch ? (r.inward_id || null) : (record.id || null),
-          inward_item_id:      r.inward_item_id || r.id || null,
-          item_id:             r.item_id || null,
-          item_code:           r.item_code || "",
-          item_name:           r.item_name || "",
-          unit:                r.unit || "",
-          process:             r.process || "",
-          hsn:                 r.hsn || "",
-          qty_despatched:      qty,
-          rate,
-          amount:              taxable,
-          po_no:               r.party_po_no || "",
-          party_dc:            r.party_dc_no || "",
-          work_order_no:       r.work_order_no || "",
-          despatch_voucher_no: r.despatch_voucher_no || (isDespatch ? record.voucher_no : "") || "",
-          inward_voucher_no:   r.inward_voucher_no || (!isDespatch ? record.voucher_no : "") || "",
-          packing_details:     "",
-          cgst_rate: cgstR, sgst_rate: sgstR, igst_rate: igstR,
-          cgst_amt:  isInterState ? 0 : taxable * cgstR / 100,
-          sgst_amt:  isInterState ? 0 : taxable * sgstR / 100,
-          igst_amt:  isInterState ? taxable * igstR / 100 : 0,
-        };
-      });
-    onConfirm(selected);
-  }
-
-  return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.55)", fontFamily: "Source Sans Pro, sans-serif" }}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 flex flex-col" style={{ maxHeight: "85vh" }}>
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between" style={{ background: "#f0f9ff" }}>
-          <div>
-            <h3 className="font-bold text-gray-800 text-sm">Select Items to Invoice</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              <span className="font-semibold" style={{ color: "#027fa5" }}>{label}:</span>{" "}
-              <span className="font-semibold text-gray-700">{voucherNo}</span>
-              {dateSub ? ` · ${dateSub}` : ""}
-              {subRef ? ` ${subRef}` : ""}
-            </p>
-          </div>
-          <button onClick={onCancel} className="p-1.5 rounded hover:bg-gray-100 text-gray-400"><X size={16}/></button>
-        </div>
-
-        {/* Select all / none */}
-        <div className="px-5 py-2.5 border-b border-gray-50 flex items-center gap-4 bg-gray-50/60">
-          <span className="text-xs text-gray-500 font-medium">{selectedCount} of {safeItems.length} selected</span>
-          <button onClick={selectAll}   className="text-xs font-semibold hover:underline" style={{ color: "#027fa5" }}>Select All</button>
-          <button onClick={deselectAll} className="text-xs text-gray-400 font-semibold hover:underline">Deselect All</button>
-        </div>
-
-        {/* Items table */}
-        <div className="overflow-y-auto flex-1">
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ background: "#d2f1fa" }}>
-                <th className="px-3 py-2 w-8 text-center">✓</th>
-                <th className="px-3 py-2 text-left font-semibold text-gray-700">#</th>
-                <th className="px-3 py-2 text-left font-semibold text-gray-700">Item Name</th>
-                <th className="px-3 py-2 text-left font-semibold text-gray-700">Process</th>
-                <th className="px-3 py-2 text-left font-semibold text-gray-700 w-20">WO No</th>
-                <th className="px-3 py-2 text-right font-semibold text-gray-700 w-24">Orig Qty</th>
-                <th className="px-3 py-2 text-right font-semibold text-gray-700 w-28">Bill Qty</th>
-                <th className="px-3 py-2 text-right font-semibold text-gray-700 w-28">Rate ₹</th>
-                <th className="px-3 py-2 text-left font-semibold text-gray-700 w-14">Unit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {safeItems.map((r, i) => {
-                const k = keys[i];
-                const pick = picks[k] || { checked: false, qty: "0", rate: "0" };
-                const origQty = parseFloat(r.qty_despatched || r.qty || 0);
-                return (
-                  <tr key={k} className={`border-t border-gray-50 transition-colors ${!pick.checked ? "opacity-40 bg-gray-50/40" : "hover:bg-blue-50/30"}`}>
-                    <td className="px-3 py-2 text-center">
-                      <input type="checkbox" className="accent-orange-600 cursor-pointer w-4 h-4"
-                        checked={pick.checked} onChange={() => toggle(k)} />
-                    </td>
-                    <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                    <td className="px-3 py-2">
-                      <div className="font-medium text-gray-800">{r.item_name || r.item_code || "—"}</div>
-                      {r.item_code && r.item_name && <div className="text-gray-400 font-mono text-[10px]">{r.item_code}</div>}
-                    </td>
-                    <td className="px-3 py-2 text-gray-600">{r.process || "—"}</td>
-                    <td className="px-3 py-2 text-gray-500 font-mono">{r.work_order_no || "—"}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-gray-700">{origQty.toLocaleString("en-IN")}</td>
-                    <td className="px-3 py-2">
-                      <input type="number" min={0} step="0.001"
-                        value={pick.qty} onChange={e => setQty(k, e.target.value)}
-                        disabled={!pick.checked}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right outline-none focus:border-[#027fa5] disabled:bg-gray-100" />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input type="number" min={0} step="0.01"
-                        value={pick.rate} onChange={e => setRate(k, e.target.value)}
-                        disabled={!pick.checked}
-                        className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-right outline-none focus:border-[#027fa5] disabled:bg-gray-100" />
-                    </td>
-                    <td className="px-3 py-2 text-gray-600">{r.unit || "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/60">
-          <span className="text-xs text-gray-500">
-            {selectedCount === 0 ? "Select at least one item" : `${selectedCount} item${selectedCount > 1 ? "s" : ""} will be added to invoice`}
-          </span>
-          <div className="flex gap-3">
-            <button onClick={onCancel}
-              className="px-5 py-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50">
-              Cancel
-            </button>
-            <button onClick={confirm} disabled={selectedCount === 0}
-              className="px-6 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
-              style={{ background: "#027fa5" }} data-testid="btn-pick-items-confirm">
-              Add {selectedCount > 0 ? `${selectedCount} Item${selectedCount > 1 ? "s" : ""}` : "Items"} →
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 /* ── Invoice Print Dialog ──────────────────────────────────────────── */
 function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; isNew: boolean; onDone: () => void }) {
@@ -367,7 +194,6 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [directSearch, setDirectSearch] = useState<Record<number, string>>({});
   const [directDrop,   setDirectDrop]   = useState<number | null>(null);
   const [dropPos,      setDropPos]      = useState<{ top: number; left: number; width: number } | null>(null);
-  const [pendingPick, setPendingPick] = useState<{ record: any; rawItems: any[]; isDespatch: boolean } | null>(null);
 
   // Charges tab
   const [charges,      setCharges]      = useState<any[]>([{ subledger_id: "", charge_name: "", amount: "" }]);
@@ -500,8 +326,53 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
         const res = await fetch(endpoint, { credentials: "include" });
         const data = await res.json();
         const rows: any[] = Array.isArray(data) ? data : [];
-        // Always show item-pick modal so user can choose items and adjust qty/rate
-        setPendingPick({ record, rawItems: rows, isDespatch: isDespatchMode });
+        // Build invoice rows directly — no modal
+        const built = rows.map(r => {
+          const qty    = parseFloat(r.qty_despatched || r.qty || 0);
+          const rate   = parseFloat(r.rate || 0);
+          const taxable = qty * rate;
+          const cgstR  = parseFloat(r.cgst_rate || 0);
+          const sgstR  = parseFloat(r.sgst_rate || 0);
+          const igstR  = parseFloat(r.igst_rate || 0) || (cgstR + sgstR);
+          return {
+            despatch_id:         isDespatchMode ? record.id : null,
+            inward_id:           isDespatchMode ? (r.inward_id || null) : (record.id || null),
+            inward_item_id:      r.inward_item_id || r.id || null,
+            item_id:             r.item_id || null,
+            item_code:           r.item_code || "",
+            item_name:           r.item_name || "",
+            unit:                r.unit || "",
+            process:             r.process || "",
+            hsn:                 r.hsn || "",
+            qty_despatched:      qty,
+            rate,
+            amount:              taxable,
+            po_no:               r.party_po_no || "",
+            party_dc:            r.party_dc_no || "",
+            work_order_no:       r.work_order_no || "",
+            despatch_voucher_no: r.despatch_voucher_no || (isDespatchMode ? record.voucher_no : "") || "",
+            inward_voucher_no:   r.inward_voucher_no || (!isDespatchMode ? record.voucher_no : "") || "",
+            packing_details:     "",
+            cgst_rate: cgstR, sgst_rate: sgstR, igst_rate: igstR,
+            cgst_amt:  isInterState ? 0 : taxable * cgstR / 100,
+            sgst_amt:  isInterState ? 0 : taxable * sgstR / 100,
+            igst_amt:  isInterState ? taxable * igstR / 100 : 0,
+          };
+        });
+        // Auto-fill vehicle no from despatch record
+        if (isDespatchMode) {
+          const veh = (record.vehicle_no || "").trim();
+          if (veh) {
+            const parts = parseVehicle(veh);
+            setVehP1(p => p || parts.p1);
+            setVehP2(p => p || parts.p2);
+            setVehP3(p => p || parts.p3);
+            setVehP4(p => p || parts.p4);
+          }
+          setItems(prev => [...prev.filter(it => it.despatch_id !== record.id), ...built]);
+        } else {
+          setItems(prev => [...prev.filter(it => it.inward_id !== record.id), ...built]);
+        }
       } catch {}
       setLoadingId(null);
     } else {
@@ -606,47 +477,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   }
   function addDirectRow() { setItems(prev => [...prev, newDirectRow()]); }
 
-  function confirmPick(confirmedRows: any[]) {
-    if (!pendingPick) return;
-    const { record, isDespatch } = pendingPick;
-    // If despatch: auto-fill vehicle no from despatch record
-    if (isDespatch) {
-      const veh = (record.vehicle_no || "").trim();
-      if (veh) {
-        const parts = parseVehicle(veh);
-        setVehP1(p => p || parts.p1);
-        setVehP2(p => p || parts.p2);
-        setVehP3(p => p || parts.p3);
-        setVehP4(p => p || parts.p4);
-      }
-      setItems(prev => [
-        ...prev.filter(it => it.despatch_id !== record.id),
-        ...confirmedRows,
-      ]);
-    } else {
-      setItems(prev => [
-        ...prev.filter(it => it.inward_id !== record.id),
-        ...confirmedRows,
-      ]);
-    }
-    setPendingPick(null);
-  }
-
-  function cancelPick() {
-    if (!pendingPick) return;
-    const { record, isDespatch } = pendingPick;
-    setCheckedIds(prev => { const n = new Set(prev); n.delete(record.id); return n; });
-    setItems(prev => prev.filter(it => isDespatch
-      ? it.despatch_id !== record.id
-      : it.inward_id !== record.id));
-    setPendingPick(null);
-  }
 
   function switchFlow(f: FlowMode) {
     setActiveFlow(f);
     setCheckedIds(new Set());
     setItems([]);
-    setPendingPick(null);
   }
 
   function selectDirectItem(realIdx: number, product: any) {
@@ -815,17 +650,6 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // ── Shared header + panel layout ──────────────────────────────────────────────
   return (
     <div style={{ background: SC.bg, minHeight: "100vh", padding: "24px" }}>
-      {/* Item-pick modal — fires for both despatch and inward selections */}
-      {pendingPick && (
-        <ItemPickModal
-          record={pendingPick.record}
-          rawItems={pendingPick.rawItems}
-          isInterState={isInterState}
-          isDespatch={pendingPick.isDespatch}
-          onConfirm={confirmPick}
-          onCancel={cancelPick}
-        />
-      )}
 
       {/* Print dialog (shown after save) */}
       {printDialogState && (
@@ -1321,14 +1145,12 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                           </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.inward_voucher_no || "—"}</td>
                           <td className="px-2 py-1 text-right font-semibold">
-                            {(isManual || invoiceType === "direct_invoice" || activeFlow === "direct_only")
-                              ? <input type="number" min={0} step="0.001"
-                                  data-testid={`input-qty-${idx}`}
-                                  className="border rounded px-1 py-0.5 text-xs text-right w-20"
-                                  value={it.qty_despatched || ""}
-                                  placeholder="0"
-                                  onChange={e => updateItem(realIdx, "qty_despatched", parseFloat(e.target.value || "0"))} />
-                              : qty.toLocaleString("en-IN")}
+                            <input type="number" min={0} step="0.001"
+                                data-testid={`input-qty-${idx}`}
+                                className="border rounded px-1 py-0.5 text-xs text-right w-20"
+                                value={it.qty_despatched || ""}
+                                placeholder="0"
+                                onChange={e => updateItem(realIdx, "qty_despatched", parseFloat(e.target.value || "0"))} />
                           </td>
                           <td className="px-2 py-1 text-gray-600">
                             {isManual
