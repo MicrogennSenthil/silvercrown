@@ -4798,44 +4798,89 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   });
 
   // GET /api/job-work-invoice/invoiced-ids — despatch + inward IDs already covered by invoices
-  // Optional ?exclude_invoice_id=xxx to allow the current invoice's own records through (for edit mode)
+  // Uses CTEs to aggregate totals independently before comparing (avoids JOIN-inflation bug).
   app.get("/api/job-work-invoice/invoiced-ids", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
       const excludeId = (req.query.exclude_invoice_id as string) || null;
 
-      // Despatch IDs that are FULLY invoiced:
-      // total invoiced qty (across all invoice_items for that despatch) >= total despatched qty
-      // Partially invoiced despatches are NOT returned so they keep appearing in the panel.
+      // Fully-invoiced despatch IDs (CTE: totals computed independently, no cross-product)
       const dq = await pool.query(`
-        SELECT di.despatch_id
-        FROM job_work_despatch_items di
-        LEFT JOIN job_work_invoice_items ii
-          ON ii.despatch_id = di.despatch_id
-         ${excludeId ? "AND ii.invoice_id <> $1" : ""}
-        GROUP BY di.despatch_id
-        HAVING SUM(di.qty_despatched) <= COALESCE(SUM(ii.qty_despatched), 0)
+        WITH desp_totals AS (
+          SELECT despatch_id, SUM(qty_despatched) AS total_qty
+          FROM job_work_despatch_items
+          GROUP BY despatch_id
+        ),
+        inv_totals AS (
+          SELECT despatch_id, SUM(qty_despatched) AS invoiced_qty
+          FROM job_work_invoice_items
+          WHERE despatch_id IS NOT NULL
+            ${excludeId ? "AND invoice_id <> $1" : ""}
+          GROUP BY despatch_id
+        )
+        SELECT d.despatch_id
+        FROM desp_totals d
+        LEFT JOIN inv_totals i ON i.despatch_id = d.despatch_id
+        WHERE d.total_qty <= COALESCE(i.invoiced_qty, 0)
       `, excludeId ? [excludeId] : []);
 
-      // Direct inward IDs that are FULLY invoiced:
-      // total invoiced qty (direct — no despatch) >= total inward qty for every item in that inward
+      // Fully-invoiced direct inward IDs (no despatch path)
       const iq = await pool.query(`
-        SELECT jwii.inward_id
-        FROM job_work_inward_items jwii
-        LEFT JOIN job_work_invoice_items ii
-          ON ii.inward_item_id = jwii.id
-         AND ii.despatch_id IS NULL
-         ${excludeId ? "AND ii.invoice_id <> $1" : ""}
-        GROUP BY jwii.inward_id
-        HAVING SUM(jwii.qty) <= COALESCE(SUM(ii.qty_despatched), 0)
+        WITH inward_totals AS (
+          SELECT inward_id, SUM(qty) AS total_qty
+          FROM job_work_inward_items
+          GROUP BY inward_id
+        ),
+        inv_totals AS (
+          SELECT jwii.inward_id, SUM(ii.qty_despatched) AS invoiced_qty
+          FROM job_work_invoice_items ii
+          JOIN job_work_inward_items jwii ON jwii.id = ii.inward_item_id
+          WHERE ii.despatch_id IS NULL
+            ${excludeId ? "AND ii.invoice_id <> $1" : ""}
+          GROUP BY jwii.inward_id
+        )
+        SELECT i.inward_id
+        FROM inward_totals i
+        LEFT JOIN inv_totals inv ON inv.inward_id = i.inward_id
+        WHERE i.total_qty <= COALESCE(inv.invoiced_qty, 0)
       `, excludeId ? [excludeId] : []);
 
       res.json({
-        despatch_ids:       dq.rows.map((r: any) => r.despatch_id),
-        direct_inward_ids:  iq.rows.map((r: any) => r.inward_id),
+        despatch_ids:      dq.rows.map((r: any) => r.despatch_id),
+        direct_inward_ids: iq.rows.map((r: any) => r.inward_id),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+
+  // ── Helper: refresh despatch status to 'Invoiced' or 'Saved' ─────────────
+  // Recalculates and updates job_work_despatch.status for a list of despatch IDs.
+  // Must be called AFTER invoice items are committed/deleted (uses current DB state).
+  async function refreshDespatchInvoicedStatus(client: any, despatchIds: string[]) {
+    const ids = despatchIds.filter(Boolean);
+    if (!ids.length) return;
+    await client.query(`
+      WITH desp_totals AS (
+        SELECT despatch_id, SUM(qty_despatched) AS total_qty
+        FROM job_work_despatch_items
+        WHERE despatch_id = ANY($1::text[])
+        GROUP BY despatch_id
+      ),
+      inv_totals AS (
+        SELECT despatch_id, SUM(qty_despatched) AS inv_qty
+        FROM job_work_invoice_items
+        WHERE despatch_id = ANY($1::text[])
+        GROUP BY despatch_id
+      )
+      UPDATE job_work_despatch d
+      SET status = CASE
+        WHEN dt.total_qty <= COALESCE(it.inv_qty, 0) THEN 'Invoiced'
+        ELSE 'Saved'
+      END
+      FROM desp_totals dt
+      LEFT JOIN inv_totals it ON it.despatch_id = dt.despatch_id
+      WHERE d.id = dt.despatch_id
+    `, [ids]);
+  }
 
   // ── Job Work Invoice voucher posting helper ──────────────────────────────
   // Called on CREATE and UPDATE (re-posts); caller is inside a DB transaction.
@@ -5052,6 +5097,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       }
       // Post to ledger: DR Sundry Debtors, CR Job Work Income + Output GST
       await postInvoiceVoucher(client, invoiceId, hRes.rows[0]);
+      // Update despatch status to 'Invoiced' for any fully-invoiced despatches
+      const despIds = [...new Set(items.map((it: any) => it.despatch_id).filter(Boolean))];
+      await refreshDespatchInvoicedStatus(client, despIds);
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
     } catch (e: any) {
@@ -5125,6 +5173,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       `, [req.params.id]);
       // Re-post to ledger (function reverses old entries first, then re-posts)
       await postInvoiceVoucher(client, req.params.id, hRes.rows[0]);
+      // Refresh despatch invoiced status after re-inserting items
+      const despIdsP = [...new Set(items.map((it: any) => it.despatch_id).filter(Boolean))];
+      await refreshDespatchInvoicedStatus(client, despIdsP);
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
     } catch (e: any) {
@@ -5154,6 +5205,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      // Capture despatch IDs BEFORE deleting items (needed to refresh status after)
+      const despIdRows = await client.query(
+        `SELECT DISTINCT despatch_id FROM job_work_invoice_items WHERE invoice_id=$1 AND despatch_id IS NOT NULL`,
+        [req.params.id]
+      );
+      const despIdsD = despIdRows.rows.map((r: any) => r.despatch_id);
       // Reverse ledger entries before deleting the invoice
       const invRow = (await client.query(
         `SELECT jwi.*, COALESCE(c.sub_ledger_id,'') AS customer_sl_id
@@ -5173,6 +5230,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query(`DELETE FROM job_work_invoice_items   WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoice_charges WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoices WHERE id=$1`, [req.params.id]);
+      // After deletion, refresh despatch status (no longer fully invoiced → back to 'Saved')
+      await refreshDespatchInvoicedStatus(client, despIdsD);
       await client.query("COMMIT");
       res.json({ ok: true });
     } catch (e: any) {
