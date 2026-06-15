@@ -134,6 +134,12 @@ function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; i
 function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editId?: string | null }) {
   const qc = useQueryClient();
 
+  // Read URL params (set by "Make Invoice" button on inward screen)
+  const _urlParams = new URLSearchParams(window.location.search);
+  const urlPartyId  = _urlParams.get("party_id")  || "";
+  const urlInwardId = _urlParams.get("inward_id") || "";
+  const urlFlow     = _urlParams.get("flow")      || "";
+
   // Lightweight queries — always fetch on mount
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
@@ -143,7 +149,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
 
   // Heavy queries — only fire once a party is chosen (or when editing an existing invoice)
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [partyId, setPartyId] = useState("");
+  const [partyId, setPartyId] = useState(() => urlPartyId);
 
   const { data: inwardList = [], isFetching: inwardFetching } = useQuery<any[]>({
     queryKey: ["/api/job-work-inward", partyId],
@@ -234,11 +240,34 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // When settings load/change, reset activeFlow to first enabled flow
+  // When settings load/change, reset activeFlow — prefer URL flow param if valid
   useEffect(() => {
-    const first = enabledFlows[0] || "inward_despatch_invoice";
-    setActiveFlow(first);
+    if (urlFlow && enabledFlows.includes(urlFlow as FlowMode)) {
+      setActiveFlow(urlFlow as FlowMode);
+    } else {
+      const first = enabledFlows[0] || "inward_despatch_invoice";
+      setActiveFlow(first);
+    }
   }, [rawFlowSetting]);
+
+  // Auto-fill party name in search input when coming from URL (needs customerList to load)
+  useEffect(() => {
+    if (!urlPartyId || partySearch) return;
+    const c = (customerList as any[]).find((c: any) => c.id === urlPartyId);
+    if (c) setPartySearch(c.name);
+  }, [urlPartyId, customerList]);
+
+  // Auto-select inward from URL once panel has loaded (runs once)
+  const _autoInwardDone = useRef(false);
+  useEffect(() => {
+    if (!urlInwardId || _autoInwardDone.current || !partyDespatchPanel.length) return;
+    const rec = partyDespatchPanel.find((r: any) => r.id === urlInwardId);
+    if (rec) {
+      _autoInwardDone.current = true;
+      toggleRecord(rec, true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlInwardId, partyDespatchPanel]);
 
   // Sync invoiceType and reset grid whenever activeFlow changes (new invoices only)
   useEffect(() => {

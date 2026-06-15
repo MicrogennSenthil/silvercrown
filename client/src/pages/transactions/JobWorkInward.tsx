@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
   Plus, Trash2, Info, Upload, Camera, FolderOpen, X,
-  Search, PencilLine, Loader2, AlertCircle, CheckCircle2
+  Search, PencilLine, Loader2, AlertCircle, CheckCircle2, Receipt
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DatePicker from "@/components/DatePicker";
@@ -1143,9 +1144,15 @@ export default function JobWorkInward() {
   const [view, setView] = useState<"list" | "add" | "edit">("list");
   const [editData, setEditData] = useState<any>(null);
   const [search, setSearch] = useState("");
+  const [, navigate] = useLocation();
 
   const { data: records = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
+  const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
   const qc = useQueryClient();
+
+  const enabledFlows: string[] = ((settingsList as any[]).find((s: any) => s.key === "jobwork_invoice_flow")?.value || "inward_despatch_invoice")
+    .split(",").filter(Boolean);
+  const canDirectInvoice = enabledFlows.includes("inward_direct");
 
   const deleteMut = useMutation({
     mutationFn: (id: string) =>
@@ -1208,7 +1215,7 @@ export default function JobWorkInward() {
               <th className="px-5 py-2.5 text-left font-semibold text-gray-700">DC No</th>
               <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Vehicle</th>
               <th className="px-5 py-2.5 text-left font-semibold text-gray-700">Status</th>
-              <th className="px-3 py-2.5 w-10"></th>
+              <th className="px-3 py-2.5"></th>
             </tr>
           </thead>
           <tbody>
@@ -1241,11 +1248,23 @@ export default function JobWorkInward() {
                   </span>
                 </td>
                 <td className="px-3 py-2.5">
-                  <button onClick={() => handleEdit(r)}
-                    className="p-1.5 rounded hover:bg-blue-50 transition-colors" style={{ color: SC.primary }}
-                    data-testid={`btn-edit-${r.id}`}>
-                    <PencilLine size={14} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {canDirectInvoice && r.despatch_status !== "Invoiced" && r.status === "Saved" && (
+                      <button
+                        onClick={() => navigate(`/engineering/job-work-invoice?party_id=${r.party_id || ""}&inward_id=${r.id}&flow=inward_direct`)}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold transition-colors hover:bg-orange-50"
+                        style={{ color: SC.orange, border: `1px solid ${SC.orange}` }}
+                        title="Make Invoice (Direct)"
+                        data-testid={`btn-make-invoice-${r.id}`}>
+                        <Receipt size={12} /> Invoice
+                      </button>
+                    )}
+                    <button onClick={() => handleEdit(r)}
+                      className="p-1.5 rounded hover:bg-blue-50 transition-colors" style={{ color: SC.primary }}
+                      data-testid={`btn-edit-${r.id}`}>
+                      <PencilLine size={14} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
