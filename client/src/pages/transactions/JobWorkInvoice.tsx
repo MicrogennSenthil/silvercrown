@@ -134,21 +134,38 @@ function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; i
 function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editId?: string | null }) {
   const qc = useQueryClient();
 
-  const { data: inwardList = [] }   = useQuery<any[]>({ queryKey: ["/api/job-work-inward"] });
-  const { data: despatchList = [] } = useQuery<any[]>({ queryKey: ["/api/job-work-despatch"] });
+  // Lightweight queries — always fetch on mount
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
-  const { data: uomList = [] }      = useQuery<any[]>({ queryKey: ["/api/uom"] });
   const { data: allProducts = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: processList = [] }  = useQuery<any[]>({ queryKey: ["/api/processes"] });
 
-  // IDs already covered by existing invoices (excluded when editing own invoice)
+  // Heavy queries — only fire once a party is chosen (or when editing an existing invoice)
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [partyId, setPartyId] = useState("");
+
+  const { data: inwardList = [] } = useQuery<any[]>({
+    queryKey: ["/api/job-work-inward", partyId],
+    queryFn: () => fetch(`/api/job-work-inward?party_id=${partyId}`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!partyId,
+    staleTime: 30_000,
+  });
+  const { data: despatchList = [] } = useQuery<any[]>({
+    queryKey: ["/api/job-work-despatch", partyId],
+    queryFn: () => fetch(`/api/job-work-despatch?party_id=${partyId}`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!partyId,
+    staleTime: 30_000,
+  });
+
+  // invoiced-ids — only needed once party is known, lazy too
   const invoicedIdsKey = editId
     ? `/api/job-work-invoice/invoiced-ids?exclude_invoice_id=${editId}`
     : "/api/job-work-invoice/invoiced-ids";
   const { data: invoicedIds } = useQuery<{ despatch_ids: string[]; direct_inward_ids: string[] }>({
-    queryKey: [invoicedIdsKey],
+    queryKey: [invoicedIdsKey, partyId],
+    enabled: !!partyId,
+    staleTime: 30_000,
   });
   const invoicedDespatchIds  = new Set(invoicedIds?.despatch_ids || []);
   const invoicedDirectInwIds = new Set(invoicedIds?.direct_inward_ids || []);
@@ -175,7 +192,6 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [remark,       setRemark]       = useState("");
 
   // Party
-  const [partyId,       setPartyId]       = useState("");
   const [partySearch,   setPartySearch]   = useState("");
   const [partyDropOpen, setPartyDropOpen] = useState(false);
   const partyRef = useRef<HTMLDivElement>(null);
