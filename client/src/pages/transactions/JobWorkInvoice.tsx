@@ -257,6 +257,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     (!r.despatch_status || r.despatch_status === "Pending") &&
     !invoicedDirectInwIds.has(r.id)
   );
+  // Combined panel (inward_despatch_invoice): despatches + inwards-without-despatch, each tagged with _type
+  const partyDespatchPanel = [
+    ...partyDespatches.map((d: any) => ({ ...d, _type: "despatch" as const })),
+    ...partyDirectInwards.map((r: any) => ({ ...r, _type: "inward" as const })),
+  ];
 
   // Filtered items in grid
   const filteredItems = gridSearch.trim()
@@ -310,17 +315,18 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     return () => { cancelled = true; clearTimeout(t); };
   }, [partyId, grandTotal]);
 
-  // ── Toggle despatch or inward — always opens the item-pick modal ─────────────
+  // ── Toggle despatch or inward — loads items directly into grid ───────────────
   async function toggleRecord(record: any, checked: boolean) {
     const newSet = new Set(checkedIds);
-    const isDespatchMode = invoiceType === "despatch_notes";
+    // Use _type tag if present; fall back to invoiceType for legacy paths
+    const isDespatch = record._type === "despatch" || (record._type === undefined && invoiceType === "despatch_notes");
 
     if (checked) {
       newSet.add(record.id);
       setCheckedIds(newSet);
       setLoadingId(record.id);
       try {
-        const endpoint = isDespatchMode
+        const endpoint = isDespatch
           ? `/api/job-work-despatch/${record.id}/items-for-invoice`
           : `/api/job-work-inward/${record.id}/direct-items-for-invoice`;
         const res = await fetch(endpoint, { credentials: "include" });
@@ -335,8 +341,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           const sgstR  = parseFloat(r.sgst_rate || 0);
           const igstR  = parseFloat(r.igst_rate || 0) || (cgstR + sgstR);
           return {
-            despatch_id:         isDespatchMode ? record.id : null,
-            inward_id:           isDespatchMode ? (r.inward_id || null) : (record.id || null),
+            despatch_id:         isDespatch ? record.id : null,
+            inward_id:           isDespatch ? (r.inward_id || null) : (record.id || null),
             inward_item_id:      r.inward_item_id || r.id || null,
             item_id:             r.item_id || null,
             item_code:           r.item_code || "",
@@ -350,8 +356,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             po_no:               r.party_po_no || "",
             party_dc:            r.party_dc_no || "",
             work_order_no:       r.work_order_no || "",
-            despatch_voucher_no: r.despatch_voucher_no || (isDespatchMode ? record.voucher_no : "") || "",
-            inward_voucher_no:   r.inward_voucher_no || (!isDespatchMode ? record.voucher_no : "") || "",
+            despatch_voucher_no: r.despatch_voucher_no || (isDespatch ? record.voucher_no : "") || "",
+            inward_voucher_no:   r.inward_voucher_no || (!isDespatch ? record.voucher_no : "") || "",
             packing_details:     "",
             cgst_rate: cgstR, sgst_rate: sgstR, igst_rate: igstR,
             cgst_amt:  isInterState ? 0 : taxable * cgstR / 100,
@@ -360,7 +366,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           };
         });
         // Auto-fill vehicle no from despatch record
-        if (isDespatchMode) {
+        if (isDespatch) {
           const veh = (record.vehicle_no || "").trim();
           if (veh) {
             const parts = parseVehicle(veh);
@@ -378,7 +384,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     } else {
       newSet.delete(record.id);
       setCheckedIds(newSet);
-      setItems(prev => prev.filter(it => isDespatchMode
+      setItems(prev => prev.filter(it => isDespatch
         ? it.despatch_id !== record.id
         : it.inward_id !== record.id));
     }
@@ -842,9 +848,10 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
               {activeFlow === "inward_despatch_invoice" && (
                 <>
                   <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
-                    style={{ gridTemplateColumns: "100px 90px 1fr 90px 44px" }}>
+                    style={{ gridTemplateColumns: "110px 90px 100px 1fr 90px 44px" }}>
                     <div className="px-2 py-1.5">Desp No</div>
                     <div className="px-2 py-1.5">Date</div>
+                    <div className="px-2 py-1.5">Inward No</div>
                     <div className="px-2 py-1.5">Inward Ref</div>
                     <div className="px-2 py-1.5">Vehicle</div>
                     <div className="px-2 py-1.5 text-center">✓</div>
@@ -853,34 +860,54 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                     {!partyId && (
                       <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party first</div>
                     )}
-                    {partyId && partyDespatches.length === 0 && (
+                    {partyId && partyDespatchPanel.length === 0 && (
                       <div className="px-3 py-4 text-center">
                         <div className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block">
-                          ⚠ No pending despatch notes for this party.
+                          ⚠ No pending despatch notes or inwards for this party.
                         </div>
                       </div>
                     )}
-                    {partyDespatches.map((d: any) => (
-                      <div key={d.id}
-                        className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
-                        style={{ gridTemplateColumns: "100px 90px 1fr 90px 44px" }}>
-                        <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{d.voucher_no}</div>
-                        <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(d.despatch_date)}</div>
-                        <div className="px-2 py-1.5 text-xs text-gray-500">{d.inward_voucher_no || "—"}</div>
-                        <div className="px-2 py-1.5 text-xs font-mono text-gray-600">{d.vehicle_no || "—"}</div>
-                        <div className="px-2 py-1.5 flex justify-center">
-                          {loadingId === d.id
-                            ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
-                            : <input type="checkbox"
-                                data-testid={`chk-despatch-${d.id}`}
-                                className="accent-orange-600 cursor-pointer w-4 h-4"
-                                checked={checkedIds.has(d.id)}
-                                onChange={e => toggleRecord(d, e.target.checked)}
-                              />
-                          }
+                    {partyDespatchPanel.map((row: any) => {
+                      const isDesp = row._type === "despatch";
+                      const rowId  = row.id;
+                      return (
+                        <div key={rowId}
+                          className={`grid items-center border-b last:border-0 transition-colors ${isDesp ? "hover:bg-blue-50" : "hover:bg-amber-50 bg-amber-50/30"}`}
+                          style={{ gridTemplateColumns: "110px 90px 100px 1fr 90px 44px" }}>
+                          {/* Desp No — blank for inward-only rows */}
+                          <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>
+                            {isDesp ? row.voucher_no : <span className="text-gray-300 italic text-xs">No Despatch</span>}
+                          </div>
+                          {/* Date */}
+                          <div className="px-2 py-1.5 text-xs text-gray-600">
+                            {isDesp ? fmtDate(row.despatch_date) : fmtDate(row.inward_date)}
+                          </div>
+                          {/* Inward No */}
+                          <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: isDesp ? "#555" : SC.primary }}>
+                            {isDesp ? (row.inward_voucher_no || "—") : row.voucher_no}
+                          </div>
+                          {/* Inward Ref (DC / PO) */}
+                          <div className="px-2 py-1.5 text-xs text-gray-500">
+                            {isDesp ? (row.party_dc_no || "—") : (row.party_dc_no || row.party_po_no || "—")}
+                          </div>
+                          {/* Vehicle */}
+                          <div className="px-2 py-1.5 text-xs font-mono text-gray-600">
+                            {isDesp ? (row.vehicle_no || "—") : "—"}
+                          </div>
+                          <div className="px-2 py-1.5 flex justify-center">
+                            {loadingId === rowId
+                              ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
+                              : <input type="checkbox"
+                                  data-testid={`chk-${isDesp ? "despatch" : "inward"}-${rowId}`}
+                                  className="accent-orange-600 cursor-pointer w-4 h-4"
+                                  checked={checkedIds.has(rowId)}
+                                  onChange={e => toggleRecord(row, e.target.checked)}
+                                />
+                            }
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
