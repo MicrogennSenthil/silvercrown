@@ -10,11 +10,11 @@ function apiReq(url: string, method: string, body?: any) {
 }
 
 // ─── Floating label field ─────────────────────────────────────────────────────
-function FField({ label, value, onChange, type = "text", placeholder = "", className = "", error = false }: any) {
+function FField({ label, value, onChange, onKeyDown, type = "text", placeholder = "", className = "", error = false }: any) {
   return (
     <div className={`relative ${className}`}>
       <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>{label}{error && " *"}</label>
-      <input type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder}
+      <input type={type} value={value ?? ""} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder}
         className={`w-full rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none bg-white border ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-blue-400"}`}
         data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />
     </div>
@@ -406,6 +406,7 @@ function ProductModal({ initial, categories, subCategories, uomList, allProducts
   const [form, setForm] = useState<any>({ ...EMPTY_PRODUCT, ...initial });
   const [showQuickCat, setShowQuickCat] = useState(false);
   const [showQuickSub, setShowQuickSub] = useState(false);
+  const [showSimilar, setShowSimilar] = useState(true);
   const qc = useQueryClient();
   const { validate, hasError, clearError, showApiError } = useFormValidation();
 
@@ -486,8 +487,19 @@ function ProductModal({ initial, categories, subCategories, uomList, allProducts
           <div className="flex gap-3">
             {/* Item Name with live duplicate hint */}
             <div className="relative flex-1">
-              <FField label="Item Name" value={form.name} onChange={e => { clearError("name"); setForm((p: any) => ({ ...p, name: e.target.value })); }} placeholder="Enter Item name Here..." error={hasError("name")} />
-              {(() => {
+              <FField
+                label="Item Name"
+                value={form.name}
+                onChange={(e: any) => {
+                  clearError("name");
+                  setForm((p: any) => ({ ...p, name: e.target.value }));
+                  setShowSimilar(true);
+                }}
+                onKeyDown={(e: any) => { if (e.key === "Escape") setShowSimilar(false); }}
+                placeholder="Enter Item name Here..."
+                error={hasError("name")}
+              />
+              {showSimilar && (() => {
                 const q = (form.name || "").trim().toLowerCase();
                 if (q.length < 1) return null;
                 const matches = (allProducts as any[] || []).filter(
@@ -496,8 +508,9 @@ function ProductModal({ initial, categories, subCategories, uomList, allProducts
                 if (!matches.length) return null;
                 return (
                   <div className="absolute top-full left-0 right-0 z-30 mt-0.5 bg-white border border-amber-300 rounded-lg shadow-lg overflow-hidden">
-                    <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 flex items-center gap-1.5">
+                    <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 flex items-center justify-between gap-1.5">
                       <span className="text-xs font-semibold text-amber-700">⚠ Similar item names already exist</span>
+                      <button type="button" onClick={() => setShowSimilar(false)} className="text-amber-500 hover:text-amber-700 text-xs leading-none" title="Dismiss (Esc)">✕</button>
                     </div>
                     <div className="max-h-36 overflow-y-auto">
                       {matches.slice(0, 8).map((p: any) => (
