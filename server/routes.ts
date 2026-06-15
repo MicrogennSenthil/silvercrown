@@ -171,6 +171,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Credit limit / days check for a party
   app.get("/api/credit-check", requireAuth, async (req, res) => {
     try {
+      const { pool } = await import("./db");
       const { party_id, amount = "0", module: mod = "job_work_invoice" } = req.query as any;
       if (!party_id) return res.json({ warning: null });
 
