@@ -48,6 +48,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_name text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_inward_items ADD COLUMN IF NOT EXISTS work_order_no TEXT DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_inward_items ADD COLUMN IF NOT EXISTS rate DECIMAL(12,2) DEFAULT 0`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('signature_image','','Digital Signature','Company','image','Upload company authorised signature image for invoice print') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('company_timezone','Asia/Kolkata','Timezone','Company','select','Timezone used for all dates and timestamps in the system') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     // Add suffix column to voucher_series if missing (format: IN/0001/26-27)
@@ -4253,10 +4254,10 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         const { itemId } = await resolveItemMasters(client, it);
         await client.query(
           `INSERT INTO job_work_inward_items
-             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, process_id, hsn, remark, work_order_no)
-           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+             (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, process_id, hsn, remark, work_order_no, rate)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
           [inwardId, seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
-           (it.unit || "").toUpperCase(), it.process || "", it.process_id || null, it.hsn || "", it.remark || "", it.work_order_no || ""]
+           (it.unit || "").toUpperCase(), it.process || "", it.process_id || null, it.hsn || "", it.remark || "", it.work_order_no || "", parseFloat(it.rate || 0) || 0]
         );
       }
 
@@ -4330,20 +4331,20 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           await client.query(
             `UPDATE job_work_inward_items SET
                seq_no=$1, item_code=$2, item_id=$3, item_name=$4, qty=$5,
-               unit=$6, process=$7, process_id=$8, hsn=$9, remark=$10, work_order_no=$12
+               unit=$6, process=$7, process_id=$8, hsn=$9, remark=$10, work_order_no=$12, rate=$13
              WHERE id=$11`,
             [seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
              (it.unit || "").toUpperCase(), it.process || "", it.process_id || null,
-             it.hsn || "", it.remark || "", refRowId, it.work_order_no || ""]
+             it.hsn || "", it.remark || "", refRowId, it.work_order_no || "", parseFloat(it.rate || 0) || 0]
           );
           remainingRefs.delete(itemId);
         } else {
           await client.query(
             `INSERT INTO job_work_inward_items
-               (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, process_id, hsn, remark, work_order_no)
-             VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+               (id, inward_id, seq_no, item_code, item_id, item_name, qty, unit, process, process_id, hsn, remark, work_order_no, rate)
+             VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
             [req.params.id, seq++, it.item_code || "", itemId, it.item_name || "", it.qty || 0,
-             (it.unit || "").toUpperCase(), it.process || "", it.process_id || null, it.hsn || "", it.remark || "", it.work_order_no || ""]
+             (it.unit || "").toUpperCase(), it.process || "", it.process_id || null, it.hsn || "", it.remark || "", it.work_order_no || "", parseFloat(it.rate || 0) || 0]
           );
         }
       }
@@ -4738,7 +4739,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
                i.qty as qty_despatched, i.unit, i.remark,
                COALESCE(NULLIF(i.hsn,''), prod.hsn_code, '')                            AS hsn,
                COALESCE(p.name,'')                                                       as process,
-               COALESCE(NULLIF(prod.rate,0), prod.selling_price, 0)                    as rate,
+               COALESCE(NULLIF(i.rate,0), NULLIF(prod.rate,0), prod.selling_price, 0)    as rate,
                iw.party_dc_no,
                COALESCE(NULLIF(i.work_order_no,''), iw.work_order_no, '')               AS work_order_no,
                iw.party_po_no, iw.voucher_no as inward_voucher_no,
