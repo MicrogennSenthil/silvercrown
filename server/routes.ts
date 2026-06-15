@@ -4825,6 +4825,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       `, excludeId ? [excludeId] : []);
 
       // Fully-invoiced direct inward IDs (no despatch path)
+      // Uses inward_id directly on invoice items — inward_item_id may be null so avoid that JOIN.
       const iq = await pool.query(`
         WITH inward_totals AS (
           SELECT inward_id, SUM(qty) AS total_qty
@@ -4832,17 +4833,17 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           GROUP BY inward_id
         ),
         inv_totals AS (
-          SELECT jwii.inward_id, SUM(ii.qty_despatched) AS invoiced_qty
+          SELECT ii.inward_id, SUM(ii.qty_despatched) AS invoiced_qty
           FROM job_work_invoice_items ii
-          JOIN job_work_inward_items jwii ON jwii.id = ii.inward_item_id
           WHERE ii.despatch_id IS NULL
+            AND ii.inward_id IS NOT NULL
             ${excludeId ? "AND ii.invoice_id <> $1" : ""}
-          GROUP BY jwii.inward_id
+          GROUP BY ii.inward_id
         )
-        SELECT i.inward_id
-        FROM inward_totals i
-        LEFT JOIN inv_totals inv ON inv.inward_id = i.inward_id
-        WHERE i.total_qty <= COALESCE(inv.invoiced_qty, 0)
+        SELECT it.inward_id
+        FROM inward_totals it
+        LEFT JOIN inv_totals inv ON inv.inward_id = it.inward_id
+        WHERE it.total_qty <= COALESCE(inv.invoiced_qty, 0)
       `, excludeId ? [excludeId] : []);
 
       res.json({
