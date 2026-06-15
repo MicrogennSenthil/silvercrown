@@ -123,17 +123,33 @@ function SettingInput({
 
   if (setting.input_type === "select") {
     if (setting.key === "jobwork_invoice_flow") {
+      const selected = (value || "inward_despatch_invoice").split(",").filter(Boolean);
       return (
-        <select
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:border-[#027fa5]"
-          data-testid="select-jobwork_invoice_flow"
-        >
-          {JW_INVOICE_FLOW_OPTIONS.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
+        <div className="flex flex-col gap-3" data-testid="select-jobwork_invoice_flow">
+          {JW_INVOICE_FLOW_OPTIONS.map(o => {
+            const checked = selected.includes(o.value);
+            return (
+              <label key={o.value} className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    let next = checked
+                      ? selected.filter(v => v !== o.value)
+                      : [...selected, o.value];
+                    if (next.length === 0) next = [o.value];
+                    onChange(next.join(","));
+                  }}
+                  className="w-4 h-4 cursor-pointer rounded accent-[#027fa5]"
+                />
+                <span className="text-sm text-gray-700 group-hover:text-gray-900 select-none">{o.label}</span>
+              </label>
+            );
+          })}
+          <p className="text-xs text-gray-400 mt-1">
+            All checked flows will be available as options when creating a job work invoice.
+          </p>
+        </div>
       );
     }
     if (setting.key === "ai_provider") {

@@ -326,7 +326,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const invoicedDirectInwIds = new Set(invoicedIds?.direct_inward_ids || []);
   const settingsMap = (settingsList as any[]).reduce((m: any, s: any) => { m[s.key] = s.value; return m; }, {});
   type FlowMode = "inward_despatch_invoice" | "inward_direct" | "direct_only";
-  const flowMode: FlowMode = (settingsMap.jobwork_invoice_flow as FlowMode) || "inward_despatch_invoice";
+  const rawFlowSetting: string = settingsMap.jobwork_invoice_flow || "inward_despatch_invoice";
+  const enabledFlows: FlowMode[] = rawFlowSetting.split(",").filter(Boolean) as FlowMode[];
 
   // ── Tab ───────────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"invoice" | "charges">("invoice");
@@ -339,6 +340,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [vehP2,        setVehP2]        = useState("");
   const [vehP3,        setVehP3]        = useState("");
   const [vehP4,        setVehP4]        = useState("");
+  const [activeFlow,   setActiveFlow]   = useState<FlowMode>("inward_despatch_invoice");
   const [invoiceType,  setInvoiceType]  = useState<"despatch_notes" | "direct_invoice">("despatch_notes");
   const [isInterState, setIsInterState] = useState(false);
   const [isEwayBill,   setIsEwayBill]   = useState(false);
@@ -388,14 +390,20 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // Sync invoice type when flow mode changes (only for new invoices)
+  // When settings load/change, reset activeFlow to first enabled flow
   useEffect(() => {
+    const first = enabledFlows[0] || "inward_despatch_invoice";
+    setActiveFlow(first);
+  }, [rawFlowSetting]);
+
+  // Sync invoiceType and reset grid whenever activeFlow changes (new invoices only)
+  useEffect(() => {
+    setInvoiceType(activeFlow === "inward_despatch_invoice" ? "despatch_notes" : "direct_invoice");
     if (!editingId) {
-      setInvoiceType(flowMode === "inward_despatch_invoice" ? "despatch_notes" : "direct_invoice");
       setItems([]);
       setCheckedIds(new Set());
     }
-  }, [flowMode]);
+  }, [activeFlow]);
 
   // Auto-generate voucher number
   useEffect(() => {
@@ -629,6 +637,13 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     setItems(prev => prev.filter(it => isDespatch
       ? it.despatch_id !== record.id
       : it.inward_id !== record.id));
+    setPendingPick(null);
+  }
+
+  function switchFlow(f: FlowMode) {
+    setActiveFlow(f);
+    setCheckedIds(new Set());
+    setItems([]);
     setPendingPick(null);
   }
 
@@ -957,21 +972,48 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             )}
           </div>
 
-          {/* Right: selection panel — shown only when flow needs inward or despatch */}
-          {flowMode !== "direct_only" && (
-            <div className="border rounded-lg overflow-hidden" style={{ minWidth: 440 }}>
-              {/* Panel label — no radio, locked by flow mode */}
+          {/* Right: flow switcher + selection panel */}
+          {(enabledFlows.length > 0) && (
+            <div style={{ minWidth: 440 }}>
+
+              {/* Flow switcher — shown when multiple flows are enabled (new invoices only) */}
+              {enabledFlows.length > 1 && !editingId && (
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="text-xs text-gray-500 font-medium">Invoice via:</span>
+                  {([ "inward_despatch_invoice", "inward_direct", "direct_only" ] as FlowMode[]).filter(f => enabledFlows.includes(f)).map(f => {
+                    const labels: Record<FlowMode, string> = {
+                      inward_despatch_invoice: "Despatch → Invoice",
+                      inward_direct:           "Inward → Invoice",
+                      direct_only:             "Direct (Manual)",
+                    };
+                    return (
+                      <button key={f} onClick={() => switchFlow(f)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
+                        style={activeFlow === f
+                          ? { background: SC.primary, color: "#fff", borderColor: "transparent" }
+                          : { background: "#fff", color: "#374151", borderColor: "#d1d5db" }}>
+                        {labels[f]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Panel box — only when not in direct_only mode */}
+              {activeFlow !== "direct_only" && (
+              <div className="border rounded-lg overflow-hidden">
+              {/* Panel header — static label (switcher lives above) */}
               <div className="px-3 py-2 border-b bg-gray-50 flex items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-wide" style={{ color: SC.primary }}>
-                  {flowMode === "inward_despatch_invoice" ? "Job Work Despatch Notes" : "Job Work Inward"}
+                  {activeFlow === "inward_despatch_invoice" ? "Job Work Despatch Notes" : "Job Work Inward"}
                 </span>
                 <span className="text-xs text-gray-400">
-                  {flowMode === "inward_despatch_invoice" ? "(select despatch to load items)" : "(select inward to load items)"}
+                  {activeFlow === "inward_despatch_invoice" ? "(select despatch to load items)" : "(select inward to load items)"}
                 </span>
               </div>
 
               {/* ── Despatch Notes panel ── */}
-              {flowMode === "inward_despatch_invoice" && (
+              {activeFlow === "inward_despatch_invoice" && (
                 <>
                   <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
                     style={{ gridTemplateColumns: "100px 90px 1fr 90px 44px" }}>
@@ -1018,7 +1060,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
               )}
 
               {/* ── Inward Direct panel ── */}
-              {flowMode === "inward_direct" && (
+              {activeFlow === "inward_direct" && (
                 <>
                   <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
                     style={{ gridTemplateColumns: "100px 80px 1fr 1fr 44px" }}>
@@ -1064,6 +1106,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                 </>
               )}
             </div>
+            )}
+          </div>
           )}
         </div>
 
@@ -1186,9 +1230,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                     {filteredItems.length === 0 && (
                       <tr>
                         <td colSpan={isInterState ? 19 : 20} className="text-center py-8 text-gray-400 text-sm">
-                          {flowMode === "direct_only"
+                          {activeFlow === "direct_only"
                             ? "Click \"+ Add Row\" below to add items manually"
-                            : flowMode === "inward_direct"
+                            : activeFlow === "inward_direct"
                             ? "Check an inward from the panel above to load items, or click \"+ Add Row\""
                             : "Select a despatch from the panel above to load items"}
                         </td>
@@ -1203,7 +1247,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                       const sgstAmt  = parseFloat(it.sgst_amt || 0);
                       const igstAmt  = parseFloat(it.igst_amt || 0);
                       const rowTotal = isInterState ? taxable + igstAmt : taxable + cgstAmt + sgstAmt;
-                      const isManual = it._manual || !it.inward_item_id || flowMode === "direct_only";
+                      const isManual = it._manual || !it.inward_item_id || activeFlow === "direct_only";
                       return (
                         <tr key={idx} className="border-b hover:bg-blue-50 transition-colors">
                           <td className="px-2 py-1 text-gray-500">{idx + 1}</td>
@@ -1275,7 +1319,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                           </td>
                           <td className="px-2 py-1" style={{ color: SC.primary }}>{it.inward_voucher_no || "—"}</td>
                           <td className="px-2 py-1 text-right font-semibold">
-                            {(isManual || invoiceType === "direct_invoice" || flowMode === "direct_only")
+                            {(isManual || invoiceType === "direct_invoice" || activeFlow === "direct_only")
                               ? <input type="number" min={0} step="0.001"
                                   data-testid={`input-qty-${idx}`}
                                   className="border rounded px-1 py-0.5 text-xs text-right w-20"
@@ -1389,7 +1433,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded hover:bg-red-50 transition-colors">
                   <Trash2 size={13} /> Remove all
                 </button>
-                {(invoiceType === "direct_invoice" || flowMode === "direct_only") && (
+                {(invoiceType === "direct_invoice" || activeFlow === "direct_only") && (
                   <button
                     data-testid="btn-add-direct-row"
                     onClick={addDirectRow}
