@@ -45,13 +45,15 @@ function RInwardForm({ editData, onBack }: { editData?: any; onBack: () => void 
 
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: products = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] } = useQuery<any[]>({ queryKey: ["/api/categories"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
 
   const settingsMap = (settingsList as any[]).reduce((m: any, s: any) => { m[s.key] = s.value; return m; }, {});
+  const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
 
-  // All products available for engineering screens
+  // Engineering screens: exclude raw material categories
   const filteredProducts = (products as any[]).filter(
-    (p: any) => p.isActive !== false
+    (p: any) => p.isActive !== false && (rawMatCatIds.size === 0 || !rawMatCatIds.has(p.categoryId))
   );
 
   // ── Header state ────────────────────────────────────────────────────────────

@@ -74,8 +74,10 @@ function GpForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const isEdit = !!editData?.id;
 
   const { data: customers = [] }    = useQuery<any[]>({ queryKey: ["/api/customers"] });
-  const { data: products = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: productsRaw = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: categories = [] }   = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const rawMatCatIds = new Set((categories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
+  const products = rawMatCatIds.size > 0 ? (productsRaw as any[]).filter((p: any) => !rawMatCatIds.has(p.categoryId)) : productsRaw as any[];
   const { data: rInwards = [] }     = useQuery<any[]>({ queryKey: ["/api/returnable-inward"] });
   const { data: rOutwards = [] }    = useQuery<any[]>({ queryKey: ["/api/returnable-outward"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });

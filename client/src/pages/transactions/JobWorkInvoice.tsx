@@ -144,8 +144,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const { data: customerList = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: subledgerList = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
   const { data: settingsList = [] } = useQuery<any[]>({ queryKey: ["/api/settings"] });
-  const { data: allProducts = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
-  const { data: processList = [] }  = useQuery<any[]>({ queryKey: ["/api/processes"] });
+  const { data: allProductsRaw = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const { data: processList = [] }    = useQuery<any[]>({ queryKey: ["/api/processes"] });
+  const _rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
+  const allProducts = _rawMatCatIds.size > 0 ? (allProductsRaw as any[]).filter((p: any) => !_rawMatCatIds.has(p.categoryId)) : allProductsRaw as any[];
 
   // Heavy queries — only fire once a party is chosen (or when editing an existing invoice)
   // eslint-disable-next-line react-hooks/rules-of-hooks

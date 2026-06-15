@@ -590,11 +590,13 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
   const { data: allProducts = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] } = useQuery<any[]>({ queryKey: ["/api/categories"] });
   const { data: processes = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
   const { data: uomList = [] } = useQuery<any[]>({ queryKey: ["/api/uom"] });
-  // All products available for engineering screens
+  const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
+  // Engineering screens: exclude raw material categories
   const storeItems = (allProducts as any[]).filter(
-    (p: any) => p.isActive !== false
+    (p: any) => p.isActive !== false && (rawMatCatIds.size === 0 || !rawMatCatIds.has(p.categoryId))
   );
 
   const [partyId, setPartyId] = useState(editData?.party_id || "");
