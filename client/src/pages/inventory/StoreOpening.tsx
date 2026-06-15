@@ -185,7 +185,9 @@ export default function StoreOpening() {
   const { data: stores = [] }          = useQuery<any[]>({ queryKey: ["/api/stores"] });
   const { data: allInvItems = [] }     = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] }     = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] }   = useQuery<any[]>({ queryKey: ["/api/categories"] });
   const { data: financialYears = [] }  = useQuery<any[]>({ queryKey: ["/api/financial-years"] });
+  const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
   const currentFY = (financialYears as any[]).find((y: any) => y.is_current);
 
   // Merged product list for dropdown — inventory items first, then engineering products
@@ -202,7 +204,7 @@ export default function StoreOpening() {
       _source: "inventory",
     })),
     ...(allProducts as any[])
-      .filter((p: any) => p.isActive !== false)
+      .filter((p: any) => p.isActive !== false && (rawMatCatIds.size === 0 || rawMatCatIds.has(p.categoryId)))
       .map((p: any) => ({ ...p, _source: "product" })),
   ];
 

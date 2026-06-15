@@ -135,7 +135,9 @@ export default function StoreIssueIndent() {
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/stores"] });
   const { data: departments = [] } = useQuery<any[]>({ queryKey: ["/api/departments"] });
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
+  const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
   const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
+  const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
   const { data: allSrns = [] }        = useQuery<any[]>({ queryKey: ["/api/store-request-notes"] });
   // Live stock + SOP rate per item_code
   const { data: liveStockMap = {} }   = useQuery<Record<string, { stock: number; rate: number }>>({ queryKey: ["/api/item-stock-summary"] });
@@ -154,7 +156,7 @@ export default function StoreIssueIndent() {
       isActive: it.isActive ?? it.is_active ?? true,
     })),
     ...(allProducts as any[])
-      .filter((p: any) => p.isActive !== false && p.is_active !== false)
+      .filter((p: any) => p.isActive !== false && p.is_active !== false && (rawMatCatIds.size === 0 || rawMatCatIds.has(p.categoryId)))
       .map((p: any) => ({
         ...p,
         purchase_price: String((liveStockMap as any)[p.code]?.rate ?? p.purchasePrice ?? p.purchase_price ?? p.rate ?? "0"),
