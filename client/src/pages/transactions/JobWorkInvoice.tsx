@@ -37,14 +37,15 @@ function ItemPickModal({ record, rawItems, isInterState, isDespatch, onConfirm, 
   onConfirm: (rows: any[]) => void;
   onCancel: () => void;
 }) {
+  const safeItems = Array.isArray(rawItems) ? rawItems : [];
+  const keys = safeItems.map((r, i) => r.id || r.inward_item_id || String(i));
   const initPicks = () => Object.fromEntries(
-    rawItems.map((r, i) => {
-      const k = r.id || r.inward_item_id || String(i);
+    safeItems.map((r, i) => {
+      const k = keys[i];
       return [k, { checked: true, qty: String(parseFloat(r.qty_despatched || r.qty || 0)), rate: String(parseFloat(r.rate || 0)) }];
     })
   );
   const [picks, setPicks] = useState<Record<string, { checked: boolean; qty: string; rate: string }>>(initPicks);
-  const keys = rawItems.map((r, i) => r.id || r.inward_item_id || String(i));
 
   function toggle(k: string) { setPicks(p => ({ ...p, [k]: { ...p[k], checked: !p[k].checked } })); }
   function setQty(k: string, v: string) { setPicks(p => ({ ...p, [k]: { ...p[k], qty: v } })); }
@@ -60,10 +61,10 @@ function ItemPickModal({ record, rawItems, isInterState, isDespatch, onConfirm, 
   const subRef   = isDespatch ? (record.vehicle_no ? `· Vehicle ${record.vehicle_no}` : "") : (record.party_dc_no ? `· DC ${record.party_dc_no}` : "");
 
   function confirm() {
-    const selected = rawItems
+    const selected = safeItems
       .filter((_, i) => picks[keys[i]]?.checked)
       .map(r => {
-        const k = keys[rawItems.indexOf(r)];
+        const k = keys[safeItems.indexOf(r)];
         const qty    = parseFloat(picks[k]?.qty  || "0") || 0;
         const rate   = parseFloat(picks[k]?.rate || "0") || 0;
         const taxable = qty * rate;
@@ -117,7 +118,7 @@ function ItemPickModal({ record, rawItems, isInterState, isDespatch, onConfirm, 
 
         {/* Select all / none */}
         <div className="px-5 py-2.5 border-b border-gray-50 flex items-center gap-4 bg-gray-50/60">
-          <span className="text-xs text-gray-500 font-medium">{selectedCount} of {rawItems.length} selected</span>
+          <span className="text-xs text-gray-500 font-medium">{selectedCount} of {safeItems.length} selected</span>
           <button onClick={selectAll}   className="text-xs font-semibold hover:underline" style={{ color: "#027fa5" }}>Select All</button>
           <button onClick={deselectAll} className="text-xs text-gray-400 font-semibold hover:underline">Deselect All</button>
         </div>
@@ -139,7 +140,7 @@ function ItemPickModal({ record, rawItems, isInterState, isDespatch, onConfirm, 
               </tr>
             </thead>
             <tbody>
-              {rawItems.map((r, i) => {
+              {safeItems.map((r, i) => {
                 const k = keys[i];
                 const pick = picks[k] || { checked: false, qty: "0", rate: "0" };
                 const origQty = parseFloat(r.qty_despatched || r.qty || 0);
@@ -497,7 +498,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           ? `/api/job-work-despatch/${record.id}/items-for-invoice`
           : `/api/job-work-inward/${record.id}/direct-items-for-invoice`;
         const res = await fetch(endpoint, { credentials: "include" });
-        const rows: any[] = await res.json();
+        const data = await res.json();
+        const rows: any[] = Array.isArray(data) ? data : [];
         // Always show item-pick modal so user can choose items and adjust qty/rate
         setPendingPick({ record, rawItems: rows, isDespatch: isDespatchMode });
       } catch {}
