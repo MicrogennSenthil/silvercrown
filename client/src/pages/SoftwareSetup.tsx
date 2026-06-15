@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bot, Building2, Hash, Plug, CheckCircle2, Eye, EyeOff,
   Save, RefreshCw, AlertCircle, ExternalLink, Trash2, ShieldAlert, X,
-  Upload, ImageOff
+  Upload, ImageOff, Wrench
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -25,7 +25,14 @@ const CATEGORY_ICONS: Record<string, any> = {
   "Voucher Numbering": Hash,
   "Tally Integration": Plug,
   "Data Purging": Trash2,
+  "Engineering": Wrench,
 };
+
+const JW_INVOICE_FLOW_OPTIONS = [
+  { value: "inward_despatch_invoice", label: "Inward → Despatch → Invoice (full flow)" },
+  { value: "inward_direct",           label: "Inward → Direct Invoice (skip despatch)" },
+  { value: "direct_only",             label: "Direct Invoice (no inward / despatch)" },
+];
 
 const AI_PROVIDER_OPTIONS = [
   { value: "gemini", label: "Google Gemini" },
@@ -115,6 +122,20 @@ function SettingInput({
   }
 
   if (setting.input_type === "select") {
+    if (setting.key === "jobwork_invoice_flow") {
+      return (
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:border-[#027fa5]"
+          data-testid="select-jobwork_invoice_flow"
+        >
+          {JW_INVOICE_FLOW_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      );
+    }
     if (setting.key === "ai_provider") {
       return (
         <select

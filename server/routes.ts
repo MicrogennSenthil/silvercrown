@@ -51,6 +51,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE job_work_inward_items ADD COLUMN IF NOT EXISTS rate DECIMAL(12,2) DEFAULT 0`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('signature_image','','Digital Signature','Company','image','Upload company authorised signature image for invoice print') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('company_timezone','Asia/Kolkata','Timezone','Company','select','Timezone used for all dates and timestamps in the system') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
+    await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('jobwork_invoice_flow','inward_despatch_invoice','Job Work Invoice Flow','Engineering','select','Controls the invoice creation flow: via Inward+Despatch, Inward only (direct), or fully manual (no inward/despatch)') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     // Add suffix column to voucher_series if missing (format: IN/0001/26-27)
     await _pool.query(`ALTER TABLE voucher_series ADD COLUMN IF NOT EXISTS suffix TEXT DEFAULT ''`).catch(() => {});
 
