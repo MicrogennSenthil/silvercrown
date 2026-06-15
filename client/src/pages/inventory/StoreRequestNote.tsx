@@ -119,7 +119,7 @@ export default function StoreRequestNote() {
   const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
   // Live stock + SOP rate per item_code
   const { data: liveStockMap = {} }   = useQuery<Record<string, { stock: number; rate: number }>>({ queryKey: ["/api/item-stock-summary"] });
-  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
+  const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
 
   // Merge store inventory items + engineering products — normalise all to snake_case
   const products = [
@@ -136,7 +136,7 @@ export default function StoreRequestNote() {
       _source: "inventory",
     })),
     ...(allProducts as any[])
-      .filter((p: any) => p.isActive !== false)
+      .filter((p: any) => p.isActive !== false && (rawMatCatIds.size === 0 || rawMatCatIds.has(p.categoryId)))
       .map((p: any) => ({
         ...p,
         _source: "product",

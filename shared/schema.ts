@@ -410,6 +410,7 @@ export const categories = pgTable("categories", {
   name: text("name").notNull(),
   description: text("description").default(""),
   isActive: boolean("is_active").default(true),
+  isRawMaterial: boolean("is_raw_material").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true, createdAt: true });

@@ -69,8 +69,8 @@ export default function GoodsReceiptReturn() {
   const { data: grns = [] }            = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
   const { data: allProductsRaw = [] }  = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allCategories = [] }   = useQuery<any[]>({ queryKey: ["/api/categories"] });
-  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
-  const allProducts = rawMatCatId ? (allProductsRaw as any[]).filter((p: any) => p.categoryId === rawMatCatId) : allProductsRaw;
+  const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
+  const allProducts = rawMatCatIds.size > 0 ? (allProductsRaw as any[]).filter((p: any) => rawMatCatIds.has(p.categoryId)) : allProductsRaw;
 
   // Totals
   const totalQty     = form.items.reduce((s, it) => s + p2(it.return_qty), 0);

@@ -76,8 +76,8 @@ function PoaForm({ editData, onBack, readOnly = false }: { editData?: any; onBac
   const { data: suppliers = [] }      = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
   const { data: allProductsRaw = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
-  const rawMatCatId = (allCategories as any[]).find((c: any) => c.name === "Raw Material")?.id || "";
-  const products = rawMatCatId ? (allProductsRaw as any[]).filter((p: any) => p.categoryId === rawMatCatId) : allProductsRaw;
+  const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
+  const products = rawMatCatIds.size > 0 ? (allProductsRaw as any[]).filter((p: any) => rawMatCatIds.has(p.categoryId)) : allProductsRaw;
   const { data: termTypes = [] }      = useQuery<any[]>({ queryKey: ["/api/term-types"] });
   const { data: allTerms = [] }       = useQuery<any[]>({ queryKey: ["/api/terms"] });
   const { data: expenseSleds = [] }   = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });

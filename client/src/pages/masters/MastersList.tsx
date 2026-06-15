@@ -344,6 +344,7 @@ const baseCols = (extra?: any[]) => [
 function NewCategoryModal({ onClose }: any) {
   const [name, setName] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [isRawMaterial, setIsRawMaterial] = useState(false);
   const qc = useQueryClient();
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -351,7 +352,7 @@ function NewCategoryModal({ onClose }: any) {
       const res = await fetch("/api/categories", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, name: name.trim(), description: "", isActive }),
+        body: JSON.stringify({ code, name: name.trim(), description: "", isActive, isRawMaterial }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
       return res.json();
@@ -372,6 +373,11 @@ function NewCategoryModal({ onClose }: any) {
               className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
               data-testid="input-category-name" autoFocus />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isRawMaterial} onChange={e => setIsRawMaterial(e.target.checked)}
+              className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-raw-material" />
+            <span className="text-sm text-gray-700">Is Raw Material</span>
+          </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
               className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-active" />
@@ -396,13 +402,14 @@ function NewCategoryModal({ onClose }: any) {
 function EditCategoryModal({ item, onClose }: any) {
   const [name, setName] = useState(item.name || "");
   const [isActive, setIsActive] = useState(item.isActive !== false);
+  const [isRawMaterial, setIsRawMaterial] = useState(!!(item.isRawMaterial ?? item.is_raw_material));
   const qc = useQueryClient();
   const saveMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/categories/${item.id}`, {
         method: "PATCH", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), code: item.code, isActive }),
+        body: JSON.stringify({ name: name.trim(), code: item.code, isActive, isRawMaterial }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
       return res.json();
@@ -422,6 +429,11 @@ function EditCategoryModal({ item, onClose }: any) {
               className="w-full border border-gray-300 rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none focus:border-blue-400"
               data-testid="input-category-name" autoFocus />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={isRawMaterial} onChange={e => setIsRawMaterial(e.target.checked)}
+              className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-raw-material" />
+            <span className="text-sm text-gray-700">Is Raw Material</span>
+          </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)}
               className="w-4 h-4 accent-[#027fa5]" data-testid="chk-is-active" />
@@ -483,19 +495,25 @@ export function Categories() {
               <tr style={{ background: "#d2f1fa" }}>
                 <th className="text-left px-5 py-2.5 font-semibold text-gray-600 w-16">S.no</th>
                 <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Category</th>
+                <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Type</th>
                 <th className="text-left px-5 py-2.5 font-semibold text-gray-600">Status</th>
                 <th className="w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
-                <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-400">Loading…</td></tr>
+                <tr><td colSpan={5} className="px-5 py-8 text-center text-gray-400">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400">No categories yet.</td></tr>
+                <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-400">No categories yet.</td></tr>
               ) : filtered.map((r: any, i: number) => (
                 <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-category-${r.id}`}>
                   <td className="px-5 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
                   <td className="px-5 py-2.5 font-medium text-gray-800 uppercase tracking-wide">{r.name}</td>
+                  <td className="px-5 py-2.5">
+                    {(r.isRawMaterial || r.is_raw_material) ? (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Raw Material</span>
+                    ) : <span className="text-gray-300 text-xs">—</span>}
+                  </td>
                   <td className="px-5 py-2.5 text-sm" style={{ color: r.isActive ? "#16a34a" : "#9ca3af" }}>
                     {r.isActive ? "Active" : "Inactive"}
                   </td>
