@@ -145,18 +145,19 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [partyId, setPartyId] = useState("");
 
-  const { data: inwardList = [] } = useQuery<any[]>({
+  const { data: inwardList = [], isFetching: inwardFetching } = useQuery<any[]>({
     queryKey: ["/api/job-work-inward", partyId],
     queryFn: () => fetch(`/api/job-work-inward?party_id=${partyId}`, { credentials: "include" }).then(r => r.json()),
     enabled: !!partyId,
     staleTime: 30_000,
   });
-  const { data: despatchList = [] } = useQuery<any[]>({
+  const { data: despatchList = [], isFetching: despatchFetching } = useQuery<any[]>({
     queryKey: ["/api/job-work-despatch", partyId],
     queryFn: () => fetch(`/api/job-work-despatch?party_id=${partyId}`, { credentials: "include" }).then(r => r.json()),
     enabled: !!partyId,
     staleTime: 30_000,
   });
+  const panelLoading = !!partyId && (inwardFetching || despatchFetching);
 
   // invoiced-ids — only needed once party is known, lazy too
   const invoicedIdsKey = editId
@@ -852,134 +853,142 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
 
               {/* Panel box — only when not in direct_only mode */}
               {activeFlow !== "direct_only" && (
-              <div className="border rounded-lg overflow-hidden">
-              {/* Panel header — static label (switcher lives above) */}
-              <div className="px-3 py-2 border-b bg-gray-50 flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: SC.primary }}>
-                  {activeFlow === "inward_despatch_invoice" ? "Job Work Despatch Notes" : "Job Work Inward"}
-                </span>
-                <span className="text-xs text-gray-400">
-                  {activeFlow === "inward_despatch_invoice" ? "(select despatch to load items)" : "(select inward to load items)"}
-                </span>
-              </div>
-
-              {/* ── Despatch Notes panel ── */}
-              {activeFlow === "inward_despatch_invoice" && (
-                <>
-                  <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
-                    style={{ gridTemplateColumns: "110px 90px 100px 1fr 90px 44px" }}>
-                    <div className="px-2 py-1.5">Desp No</div>
-                    <div className="px-2 py-1.5">Date</div>
-                    <div className="px-2 py-1.5">Inward No</div>
-                    <div className="px-2 py-1.5">Inward Ref</div>
-                    <div className="px-2 py-1.5">Vehicle</div>
-                    <div className="px-2 py-1.5 text-center">✓</div>
-                  </div>
-                  <div className="max-h-28 overflow-y-auto">
-                    {!partyId && (
-                      <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party first</div>
-                    )}
-                    {partyId && partyDespatchPanel.length === 0 && (
-                      <div className="px-3 py-4 text-center">
-                        <div className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block">
-                          ⚠ No pending despatch notes or inwards for this party.
-                        </div>
+                partyId && !panelLoading && (
+                  (activeFlow === "inward_despatch_invoice" && partyDespatchPanel.length === 0) ||
+                  (activeFlow === "inward_direct" && partyDirectInwards.length === 0)
+                ) ? (
+                  /* No pending items alert */
+                  <div className="flex flex-col items-center justify-center gap-3 py-8 px-4 border rounded-lg bg-amber-50 border-amber-200 text-center">
+                    <AlertCircle size={26} className="text-amber-500" />
+                    <div>
+                      <div className="text-sm font-semibold text-amber-800 mb-0.5">No Pending Invoices</div>
+                      <div className="text-xs text-amber-700">
+                        There are no pending {activeFlow === "inward_despatch_invoice" ? "despatch notes or inwards" : "inwards"} against this party.
                       </div>
-                    )}
-                    {partyDespatchPanel.map((row: any) => {
-                      const isDesp = row._type === "despatch";
-                      const rowId  = row.id;
-                      return (
-                        <div key={rowId}
-                          className={`grid items-center border-b last:border-0 transition-colors ${isDesp ? "hover:bg-blue-50" : "hover:bg-amber-50 bg-amber-50/30"}`}
+                    </div>
+                  </div>
+                ) : (
+                  /* Normal panel */
+                  <div className="border rounded-lg overflow-hidden">
+                    {/* Panel header */}
+                    <div className="px-3 py-2 border-b bg-gray-50 flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wide" style={{ color: SC.primary }}>
+                        {activeFlow === "inward_despatch_invoice" ? "Job Work Despatch Notes" : "Job Work Inward"}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {activeFlow === "inward_despatch_invoice" ? "(select despatch to load items)" : "(select inward to load items)"}
+                      </span>
+                    </div>
+
+                    {/* ── Despatch Notes panel ── */}
+                    {activeFlow === "inward_despatch_invoice" && (
+                      <>
+                        <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
                           style={{ gridTemplateColumns: "110px 90px 100px 1fr 90px 44px" }}>
-                          {/* Desp No — blank for inward-only rows */}
-                          <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>
-                            {isDesp ? row.voucher_no : <span className="text-gray-300 italic text-xs">No Despatch</span>}
-                          </div>
-                          {/* Date */}
-                          <div className="px-2 py-1.5 text-xs text-gray-600">
-                            {isDesp ? fmtDate(row.despatch_date) : fmtDate(row.inward_date)}
-                          </div>
-                          {/* Inward No */}
-                          <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: isDesp ? "#555" : SC.primary }}>
-                            {isDesp ? (row.inward_voucher_no || "—") : row.voucher_no}
-                          </div>
-                          {/* Inward Ref (DC / PO) */}
-                          <div className="px-2 py-1.5 text-xs text-gray-500">
-                            {isDesp ? (row.party_dc_no || "—") : (row.party_dc_no || row.party_po_no || "—")}
-                          </div>
-                          {/* Vehicle */}
-                          <div className="px-2 py-1.5 text-xs font-mono text-gray-600">
-                            {isDesp ? (row.vehicle_no || "—") : "—"}
-                          </div>
-                          <div className="px-2 py-1.5 flex justify-center">
-                            {loadingId === rowId
-                              ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
-                              : <input type="checkbox"
-                                  data-testid={`chk-${isDesp ? "despatch" : "inward"}-${rowId}`}
-                                  className="accent-orange-600 cursor-pointer w-4 h-4"
-                                  checked={checkedIds.has(rowId)}
-                                  onChange={e => toggleRecord(row, e.target.checked)}
-                                />
-                            }
-                          </div>
+                          <div className="px-2 py-1.5">Desp No</div>
+                          <div className="px-2 py-1.5">Date</div>
+                          <div className="px-2 py-1.5">Inward No</div>
+                          <div className="px-2 py-1.5">Inward Ref</div>
+                          <div className="px-2 py-1.5">Vehicle</div>
+                          <div className="px-2 py-1.5 text-center">✓</div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
+                        <div className="max-h-28 overflow-y-auto">
+                          {!partyId && (
+                            <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party first</div>
+                          )}
+                          {panelLoading && (
+                            <div className="px-3 py-3 text-xs text-gray-400 text-center flex items-center justify-center gap-1.5">
+                              <Loader2 size={12} className="animate-spin" /> Loading…
+                            </div>
+                          )}
+                          {partyDespatchPanel.map((row: any) => {
+                            const isDesp = row._type === "despatch";
+                            const rowId  = row.id;
+                            return (
+                              <div key={rowId}
+                                className={`grid items-center border-b last:border-0 transition-colors ${isDesp ? "hover:bg-blue-50" : "hover:bg-amber-50 bg-amber-50/30"}`}
+                                style={{ gridTemplateColumns: "110px 90px 100px 1fr 90px 44px" }}>
+                                <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>
+                                  {isDesp ? row.voucher_no : <span className="text-gray-300 italic text-xs">No Despatch</span>}
+                                </div>
+                                <div className="px-2 py-1.5 text-xs text-gray-600">
+                                  {isDesp ? fmtDate(row.despatch_date) : fmtDate(row.inward_date)}
+                                </div>
+                                <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: isDesp ? "#555" : SC.primary }}>
+                                  {isDesp ? (row.inward_voucher_no || "—") : row.voucher_no}
+                                </div>
+                                <div className="px-2 py-1.5 text-xs text-gray-500">
+                                  {isDesp ? (row.party_dc_no || "—") : (row.party_dc_no || row.party_po_no || "—")}
+                                </div>
+                                <div className="px-2 py-1.5 text-xs font-mono text-gray-600">
+                                  {isDesp ? (row.vehicle_no || "—") : "—"}
+                                </div>
+                                <div className="px-2 py-1.5 flex justify-center">
+                                  {loadingId === rowId
+                                    ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
+                                    : <input type="checkbox"
+                                        data-testid={`chk-${isDesp ? "despatch" : "inward"}-${rowId}`}
+                                        className="accent-orange-600 cursor-pointer w-4 h-4"
+                                        checked={checkedIds.has(rowId)}
+                                        onChange={e => toggleRecord(row, e.target.checked)}
+                                      />
+                                  }
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
 
-              {/* ── Inward Direct panel ── */}
-              {activeFlow === "inward_direct" && (
-                <>
-                  <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
-                    style={{ gridTemplateColumns: "100px 80px 1fr 1fr 44px" }}>
-                    <div className="px-2 py-1.5">Inward No</div>
-                    <div className="px-2 py-1.5">Date</div>
-                    <div className="px-2 py-1.5">DC No</div>
-                    <div className="px-2 py-1.5">PO No</div>
-                    <div className="px-2 py-1.5 text-center">✓</div>
-                  </div>
-                  <div className="max-h-28 overflow-y-auto">
-                    {!partyId && (
-                      <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party first</div>
-                    )}
-                    {partyId && partyDirectInwards.length === 0 && (
-                      <div className="px-3 py-4 text-center">
-                        <div className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 inline-block">
-                          ⚠ No pending inwards for this party.
+                    {/* ── Inward Direct panel ── */}
+                    {activeFlow === "inward_direct" && (
+                      <>
+                        <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
+                          style={{ gridTemplateColumns: "100px 80px 1fr 1fr 44px" }}>
+                          <div className="px-2 py-1.5">Inward No</div>
+                          <div className="px-2 py-1.5">Date</div>
+                          <div className="px-2 py-1.5">DC No</div>
+                          <div className="px-2 py-1.5">PO No</div>
+                          <div className="px-2 py-1.5 text-center">✓</div>
                         </div>
-                      </div>
-                    )}
-                    {partyDirectInwards.map((inw: any) => (
-                      <div key={inw.id}
-                        className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
-                        style={{ gridTemplateColumns: "100px 80px 1fr 1fr 44px" }}>
-                        <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{inw.voucher_no}</div>
-                        <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.inward_date)}</div>
-                        <div className="px-2 py-1.5 text-xs text-gray-500">{inw.party_dc_no || "—"}</div>
-                        <div className="px-2 py-1.5 text-xs text-gray-700 font-medium">{inw.party_po_no || "—"}</div>
-                        <div className="px-2 py-1.5 flex justify-center">
-                          {loadingId === inw.id
-                            ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
-                            : <input type="checkbox"
-                                data-testid={`chk-inward-${inw.id}`}
-                                className="accent-orange-600 cursor-pointer w-4 h-4"
-                                checked={checkedIds.has(inw.id)}
-                                onChange={e => toggleRecord(inw, e.target.checked)}
-                              />
-                          }
+                        <div className="max-h-28 overflow-y-auto">
+                          {!partyId && (
+                            <div className="px-3 py-3 text-xs text-gray-400 text-center">Select a party first</div>
+                          )}
+                          {panelLoading && (
+                            <div className="px-3 py-3 text-xs text-gray-400 text-center flex items-center justify-center gap-1.5">
+                              <Loader2 size={12} className="animate-spin" /> Loading…
+                            </div>
+                          )}
+                          {partyDirectInwards.map((inw: any) => (
+                            <div key={inw.id}
+                              className="grid items-center border-b last:border-0 hover:bg-blue-50 transition-colors"
+                              style={{ gridTemplateColumns: "100px 80px 1fr 1fr 44px" }}>
+                              <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>{inw.voucher_no}</div>
+                              <div className="px-2 py-1.5 text-xs text-gray-600">{fmtDate(inw.inward_date)}</div>
+                              <div className="px-2 py-1.5 text-xs text-gray-500">{inw.party_dc_no || "—"}</div>
+                              <div className="px-2 py-1.5 text-xs text-gray-700 font-medium">{inw.party_po_no || "—"}</div>
+                              <div className="px-2 py-1.5 flex justify-center">
+                                {loadingId === inw.id
+                                  ? <Loader2 size={13} className="animate-spin" style={{ color: SC.primary }} />
+                                  : <input type="checkbox"
+                                      data-testid={`chk-inward-${inw.id}`}
+                                      className="accent-orange-600 cursor-pointer w-4 h-4"
+                                      checked={checkedIds.has(inw.id)}
+                                      onChange={e => toggleRecord(inw, e.target.checked)}
+                                    />
+                                }
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    ))}
+                      </>
+                    )}
                   </div>
-                </>
+                )
               )}
             </div>
-            )}
-          </div>
           )}
         </div>
 
