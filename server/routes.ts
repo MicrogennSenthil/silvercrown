@@ -4765,24 +4765,22 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const excludeId = (req.query.exclude_invoice_id as string) || null;
 
-      // Despatch IDs already in a despatch-notes invoice
+      // Despatch IDs already in any invoice (regardless of invoice_type)
       const dq = await pool.query(`
         SELECT DISTINCT ii.despatch_id
         FROM job_work_invoice_items ii
-        JOIN job_work_invoices inv ON inv.id = ii.invoice_id
         WHERE ii.despatch_id IS NOT NULL
-          AND inv.invoice_type = 'despatch_notes'
-          ${excludeId ? "AND inv.id <> $1" : ""}
+          ${excludeId ? "AND ii.invoice_id <> $1" : ""}
       `, excludeId ? [excludeId] : []);
 
-      // Inward IDs already in a direct invoice
+      // Direct inward IDs already in any invoice — only items that have NO despatch_id
+      // (despatch-backed inward items are excluded since they are tracked by despatch_id above)
       const iq = await pool.query(`
         SELECT DISTINCT ii.inward_id
         FROM job_work_invoice_items ii
-        JOIN job_work_invoices inv ON inv.id = ii.invoice_id
         WHERE ii.inward_id IS NOT NULL
-          AND inv.invoice_type = 'direct_invoice'
-          ${excludeId ? "AND inv.id <> $1" : ""}
+          AND ii.despatch_id IS NULL
+          ${excludeId ? "AND ii.invoice_id <> $1" : ""}
       `, excludeId ? [excludeId] : []);
 
       res.json({

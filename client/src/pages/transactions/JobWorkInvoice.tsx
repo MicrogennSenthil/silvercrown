@@ -612,13 +612,16 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
 
     const validCharges = charges.filter(c => c.charge_name?.trim());
     const vehicleNo = [vehP1, vehP2, vehP3, vehP4].join("").toUpperCase();
+    // Derive invoice_type from the actual items so mixed-panel invoices are tracked correctly
+    const hasDespatchItems = namedItems.some((it: any) => it.despatch_id);
+    const derivedInvoiceType = hasDespatchItems ? "despatch_notes" : "direct_invoice";
     const body = {
       voucher_no:       voucherNo,
       invoice_date:     invoiceDate,
       party_id:         partyId || null,
       party_name_manual:partySearch,
       vehicle_no:       vehicleNo,
-      invoice_type:     invoiceType,
+      invoice_type:     activeFlow === "direct_only" ? "direct_invoice" : derivedInvoiceType,
       is_inter_state:   isInterState,
       is_eway_bill:     isEwayBill,
       term_of_delivery: termOfDel,
