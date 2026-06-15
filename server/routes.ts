@@ -4672,16 +4672,32 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   // ─── Job Work Invoice ────────────────────────────────────────────────────────
 
   // GET despatch items for invoice by despatch ID (Despatch Notes panel)
+  // Returns only items with PENDING qty (despatched qty minus already-invoiced qty).
   app.get("/api/job-work-despatch/:id/items-for-invoice", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT di.id, di.despatch_id, di.inward_id, di.inward_item_id, di.item_id,
-               di.item_code, di.item_name, di.unit,  di.process,
-               COALESCE(NULLIF(di.hsn,''), prod.hsn_code, '')                        AS hsn,
-               di.qty_despatched,
-               COALESCE(prod.selling_price, 0)               AS rate,
-               di.qty_despatched * COALESCE(prod.selling_price, 0) AS amount,
+               di.item_code, di.item_name, di.unit, di.process,
+               COALESCE(NULLIF(di.hsn,''), prod.hsn_code, '') AS hsn,
+               -- pending qty = despatched qty minus already invoiced qty for this despatch item
+               GREATEST(0,
+                 di.qty_despatched - COALESCE(
+                   (SELECT SUM(ii.qty_despatched)
+                    FROM job_work_invoice_items ii
+                    WHERE ii.despatch_id = di.despatch_id
+                      AND ii.inward_item_id = di.inward_item_id),
+                   0)
+               ) AS qty_despatched,
+               COALESCE(prod.selling_price, 0) AS rate,
+               GREATEST(0,
+                 di.qty_despatched - COALESCE(
+                   (SELECT SUM(ii.qty_despatched)
+                    FROM job_work_invoice_items ii
+                    WHERE ii.despatch_id = di.despatch_id
+                      AND ii.inward_item_id = di.inward_item_id),
+                   0)
+               ) * COALESCE(prod.selling_price, 0) AS amount,
                d.voucher_no AS despatch_voucher_no,
                iw.party_dc_no,
                COALESCE(NULLIF(jwii.work_order_no,''), iw.work_order_no, '') AS work_order_no,
@@ -4696,6 +4712,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN job_work_inward_items jwii ON jwii.id = di.inward_item_id
         LEFT JOIN products prod ON prod.id = di.item_id
         WHERE di.despatch_id = $1
+          -- skip items already fully invoiced
+          AND di.qty_despatched > COALESCE(
+            (SELECT SUM(ii.qty_despatched)
+             FROM job_work_invoice_items ii
+             WHERE ii.despatch_id = di.despatch_id
+               AND ii.inward_item_id = di.inward_item_id),
+            0)
         ORDER BY di.seq_no
       `, [req.params.id]);
       res.json(r.rows);
@@ -4703,20 +4726,35 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   });
 
   // GET inward despatch items for invoice (Despatch Notes mode — legacy by inward id)
+  // Returns only pending qty per item (despatch qty minus already-invoiced qty).
   app.get("/api/job-work-inward/:id/despatch-items-for-invoice", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT di.id, di.despatch_id, di.inward_id, di.inward_item_id, di.item_id,
                di.item_code, di.item_name, di.unit, di.process,
-               COALESCE(NULLIF(di.hsn,''), prod.hsn_code, '')                        AS hsn,
-               di.qty_despatched,
-               COALESCE(prod.selling_price, 0)               AS rate,
-               di.qty_despatched * COALESCE(prod.selling_price, 0) AS amount,
-               d.voucher_no as despatch_voucher_no,
+               COALESCE(NULLIF(di.hsn,''), prod.hsn_code, '') AS hsn,
+               GREATEST(0,
+                 di.qty_despatched - COALESCE(
+                   (SELECT SUM(ii.qty_despatched)
+                    FROM job_work_invoice_items ii
+                    WHERE ii.despatch_id = di.despatch_id
+                      AND ii.inward_item_id = di.inward_item_id),
+                   0)
+               ) AS qty_despatched,
+               COALESCE(prod.selling_price, 0) AS rate,
+               GREATEST(0,
+                 di.qty_despatched - COALESCE(
+                   (SELECT SUM(ii.qty_despatched)
+                    FROM job_work_invoice_items ii
+                    WHERE ii.despatch_id = di.despatch_id
+                      AND ii.inward_item_id = di.inward_item_id),
+                   0)
+               ) * COALESCE(prod.selling_price, 0) AS amount,
+               d.voucher_no AS despatch_voucher_no,
                iw.party_dc_no,
                COALESCE(NULLIF(jwii.work_order_no,''), iw.work_order_no, '') AS work_order_no,
-               iw.party_po_no, iw.voucher_no as inward_voucher_no,
+               iw.party_po_no, iw.voucher_no AS inward_voucher_no,
                COALESCE(prod.cgst_rate, 0) AS cgst_rate,
                COALESCE(prod.sgst_rate, 0) AS sgst_rate,
                COALESCE(NULLIF(prod.igst_rate,0), prod.cgst_rate + prod.sgst_rate, 0) AS igst_rate
@@ -4726,6 +4764,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN job_work_inward_items jwii ON jwii.id = di.inward_item_id
         LEFT JOIN products prod ON prod.id = di.item_id
         WHERE di.inward_id = $1
+          AND di.qty_despatched > COALESCE(
+            (SELECT SUM(ii.qty_despatched)
+             FROM job_work_invoice_items ii
+             WHERE ii.despatch_id = di.despatch_id
+               AND ii.inward_item_id = di.inward_item_id),
+            0)
         ORDER BY d.voucher_no, di.seq_no
       `, [req.params.id]);
       res.json(r.rows);
@@ -4733,18 +4777,27 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   });
 
   // GET inward items directly for invoice (Direct Invoice mode)
+  // Returns only pending qty per item (inward qty minus already-invoiced qty without a despatch).
   app.get("/api/job-work-inward/:id/direct-items-for-invoice", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
       const r = await pool.query(`
         SELECT i.id as inward_item_id, i.inward_id, i.item_id, i.item_code, i.item_name,
-               i.qty as qty_despatched, i.unit, i.remark,
-               COALESCE(NULLIF(i.hsn,''), prod.hsn_code, '')                            AS hsn,
-               COALESCE(p.name,'')                                                       as process,
-               COALESCE(NULLIF(i.rate,0), prod.selling_price, 0)    as rate,
+               -- pending qty = inward qty minus what's already been directly invoiced
+               GREATEST(0,
+                 i.qty - COALESCE(
+                   (SELECT SUM(ii.qty_despatched)
+                    FROM job_work_invoice_items ii
+                    WHERE ii.inward_item_id = i.id AND ii.despatch_id IS NULL),
+                   0)
+               ) AS qty_despatched,
+               i.unit, i.remark,
+               COALESCE(NULLIF(i.hsn,''), prod.hsn_code, '') AS hsn,
+               COALESCE(p.name,'') AS process,
+               COALESCE(NULLIF(i.rate,0), prod.selling_price, 0) AS rate,
                iw.party_dc_no,
-               COALESCE(NULLIF(i.work_order_no,''), iw.work_order_no, '')               AS work_order_no,
-               iw.party_po_no, iw.voucher_no as inward_voucher_no,
+               COALESCE(NULLIF(i.work_order_no,''), iw.work_order_no, '') AS work_order_no,
+               iw.party_po_no, iw.voucher_no AS inward_voucher_no,
                COALESCE(prod.cgst_rate,0) AS cgst_rate,
                COALESCE(prod.sgst_rate,0) AS sgst_rate,
                COALESCE(NULLIF(prod.igst_rate,0), prod.cgst_rate + prod.sgst_rate, 0) AS igst_rate
@@ -4753,6 +4806,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN processes p ON p.id = i.process_id
         LEFT JOIN products prod ON prod.id = i.item_id
         WHERE i.inward_id = $1
+          -- exclude items already fully invoiced directly
+          AND i.qty > COALESCE(
+            (SELECT SUM(ii.qty_despatched)
+             FROM job_work_invoice_items ii
+             WHERE ii.inward_item_id = i.id AND ii.despatch_id IS NULL),
+            0)
         ORDER BY i.seq_no
       `, [req.params.id]);
       res.json(r.rows);
@@ -4766,22 +4825,30 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const excludeId = (req.query.exclude_invoice_id as string) || null;
 
-      // Despatch IDs already in any invoice (regardless of invoice_type)
+      // Despatch IDs that are FULLY invoiced:
+      // total invoiced qty (across all invoice_items for that despatch) >= total despatched qty
+      // Partially invoiced despatches are NOT returned so they keep appearing in the panel.
       const dq = await pool.query(`
-        SELECT DISTINCT ii.despatch_id
-        FROM job_work_invoice_items ii
-        WHERE ii.despatch_id IS NOT NULL
-          ${excludeId ? "AND ii.invoice_id <> $1" : ""}
+        SELECT di.despatch_id
+        FROM job_work_despatch_items di
+        LEFT JOIN job_work_invoice_items ii
+          ON ii.despatch_id = di.despatch_id
+         ${excludeId ? "AND ii.invoice_id <> $1" : ""}
+        GROUP BY di.despatch_id
+        HAVING SUM(di.qty_despatched) <= COALESCE(SUM(ii.qty_despatched), 0)
       `, excludeId ? [excludeId] : []);
 
-      // Direct inward IDs already in any invoice — only items that have NO despatch_id
-      // (despatch-backed inward items are excluded since they are tracked by despatch_id above)
+      // Direct inward IDs that are FULLY invoiced:
+      // total invoiced qty (direct — no despatch) >= total inward qty for every item in that inward
       const iq = await pool.query(`
-        SELECT DISTINCT ii.inward_id
-        FROM job_work_invoice_items ii
-        WHERE ii.inward_id IS NOT NULL
-          AND ii.despatch_id IS NULL
-          ${excludeId ? "AND ii.invoice_id <> $1" : ""}
+        SELECT jwii.inward_id
+        FROM job_work_inward_items jwii
+        LEFT JOIN job_work_invoice_items ii
+          ON ii.inward_item_id = jwii.id
+         AND ii.despatch_id IS NULL
+         ${excludeId ? "AND ii.invoice_id <> $1" : ""}
+        GROUP BY jwii.inward_id
+        HAVING SUM(jwii.qty) <= COALESCE(SUM(ii.qty_despatched), 0)
       `, excludeId ? [excludeId] : []);
 
       res.json({
