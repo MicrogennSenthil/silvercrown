@@ -4853,6 +4853,39 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ── Helper: refresh direct-inward invoice status ──────────────────────────
+  // Sets job_work_inward.despatch_status = 'Invoiced' when ALL items on the inward
+  // have been fully invoiced via the direct (no-despatch) path, or reverts to 'Pending'.
+  // Must be called AFTER invoice items are committed/deleted.
+  async function refreshInwardDirectInvoiceStatus(client: any, inwardIds: string[]) {
+    const ids = inwardIds.filter(Boolean);
+    if (!ids.length) return;
+    await client.query(`
+      WITH inward_totals AS (
+        SELECT inward_id, SUM(qty) AS total_qty
+        FROM job_work_inward_items
+        WHERE inward_id = ANY($1::text[])
+        GROUP BY inward_id
+      ),
+      inv_totals AS (
+        SELECT ii.inward_id, SUM(ii.qty_despatched) AS invoiced_qty
+        FROM job_work_invoice_items ii
+        WHERE ii.despatch_id IS NULL
+          AND ii.inward_id = ANY($1::text[])
+        GROUP BY ii.inward_id
+      )
+      UPDATE job_work_inward j
+      SET despatch_status = CASE
+        WHEN it.total_qty <= COALESCE(inv.invoiced_qty, 0) THEN 'Invoiced'
+        ELSE 'Pending'
+      END
+      FROM inward_totals it
+      LEFT JOIN inv_totals inv ON inv.inward_id = it.inward_id
+      WHERE j.id = it.inward_id
+        AND j.despatch_status NOT IN ('Partial', 'Completed')
+    `, [ids]);
+  }
+
   // ── Helper: refresh despatch status to 'Invoiced' or 'Saved' ─────────────
   // Recalculates and updates job_work_despatch.status for a list of despatch IDs.
   // Must be called AFTER invoice items are committed/deleted (uses current DB state).
@@ -5101,6 +5134,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       // Update despatch status to 'Invoiced' for any fully-invoiced despatches
       const despIds = [...new Set(items.map((it: any) => it.despatch_id).filter(Boolean))];
       await refreshDespatchInvoicedStatus(client, despIds);
+      // Update inward despatch_status to 'Invoiced' for fully directly-invoiced inwards
+      const inwIds = [...new Set(items.map((it: any) => it.inward_id).filter(Boolean))];
+      await refreshInwardDirectInvoiceStatus(client, inwIds);
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
     } catch (e: any) {
@@ -5177,6 +5213,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       // Refresh despatch invoiced status after re-inserting items
       const despIdsP = [...new Set(items.map((it: any) => it.despatch_id).filter(Boolean))];
       await refreshDespatchInvoicedStatus(client, despIdsP);
+      const inwIdsP = [...new Set(items.map((it: any) => it.inward_id).filter(Boolean))];
+      await refreshInwardDirectInvoiceStatus(client, inwIdsP);
       await client.query("COMMIT");
       res.json(hRes.rows[0]);
     } catch (e: any) {
@@ -5206,12 +5244,17 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      // Capture despatch IDs BEFORE deleting items (needed to refresh status after)
+      // Capture despatch + inward IDs BEFORE deleting items (needed to refresh status after)
       const despIdRows = await client.query(
-        `SELECT DISTINCT despatch_id FROM job_work_invoice_items WHERE invoice_id=$1 AND despatch_id IS NOT NULL`,
+        `SELECT DISTINCT despatch_id, inward_id FROM job_work_invoice_items WHERE invoice_id=$1 AND despatch_id IS NOT NULL`,
         [req.params.id]
       );
       const despIdsD = despIdRows.rows.map((r: any) => r.despatch_id);
+      const inwIdDRows = await client.query(
+        `SELECT DISTINCT inward_id FROM job_work_invoice_items WHERE invoice_id=$1 AND despatch_id IS NULL AND inward_id IS NOT NULL`,
+        [req.params.id]
+      );
+      const inwIdsD = inwIdDRows.rows.map((r: any) => r.inward_id);
       // Reverse ledger entries before deleting the invoice
       const invRow = (await client.query(
         `SELECT jwi.*, COALESCE(c.sub_ledger_id,'') AS customer_sl_id
@@ -5231,8 +5274,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query(`DELETE FROM job_work_invoice_items   WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoice_charges WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoices WHERE id=$1`, [req.params.id]);
-      // After deletion, refresh despatch status (no longer fully invoiced → back to 'Saved')
+      // After deletion, refresh despatch + inward status (may no longer be fully invoiced)
       await refreshDespatchInvoicedStatus(client, despIdsD);
+      await refreshInwardDirectInvoiceStatus(client, inwIdsD);
       await client.query("COMMIT");
       res.json({ ok: true });
     } catch (e: any) {
