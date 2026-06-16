@@ -211,6 +211,8 @@ function ViewModal({ type, row, onClose, onInvoicePrint }: {
     (type === "invoice" ? doc.invoice_date : type === "despatch_note" ? doc.despatch_date : doc.po_date)
     : "";
 
+  const isDC = type === "despatch_note";
+
   const items: any[] = doc?.items || [];
   const charges: any[] = doc?.charges || [];
   const taxableAmt = items.reduce((s: number, it: any) => {
@@ -223,6 +225,7 @@ function ViewModal({ type, row, onClose, onInvoicePrint }: {
   const igstTotal    = items.reduce((s: number, it: any) => s + parseFloat(it.igst_amt || "0"), 0);
   const chargesTotal = charges.reduce((s: number, ch: any) => s + parseFloat(ch.amount || "0"), 0);
   const totalAmt     = taxableAmt + cgstTotal + sgstTotal + igstTotal + chargesTotal;
+  const totalQty     = items.reduce((s: number, it: any) => s + parseFloat(it.qty || it.qty_despatched || "0"), 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -280,13 +283,13 @@ function ViewModal({ type, row, onClose, onInvoicePrint }: {
                       <th className="px-3 py-2 text-left text-white font-semibold">#</th>
                       <th className="px-3 py-2 text-left text-white font-semibold">Item</th>
                       <th className="px-3 py-2 text-right text-white font-semibold">Qty</th>
-                      <th className="px-3 py-2 text-right text-white font-semibold">Rate</th>
-                      <th className="px-3 py-2 text-right text-white font-semibold">Amount</th>
+                      {!isDC && <th className="px-3 py-2 text-right text-white font-semibold">Rate</th>}
+                      {!isDC && <th className="px-3 py-2 text-right text-white font-semibold">Amount</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {items.length === 0 && (
-                      <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400">No items</td></tr>
+                      <tr><td colSpan={isDC ? 3 : 5} className="px-3 py-4 text-center text-gray-400">No items</td></tr>
                     )}
                     {items.map((it: any, idx: number) => {
                       const qty  = parseFloat(it.qty || it.qty_despatched || "0");
@@ -300,37 +303,46 @@ function ViewModal({ type, row, onClose, onInvoicePrint }: {
                             {it.item_code && <div className="text-gray-400 text-[10px]">{it.item_code}</div>}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums">{qty.toFixed(3)} {it.unit || ""}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{fmtAmt(rate)}</td>
-                          <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmtAmt(amt)}</td>
+                          {!isDC && <td className="px-3 py-2 text-right tabular-nums">{fmtAmt(rate)}</td>}
+                          {!isDC && <td className="px-3 py-2 text-right font-semibold tabular-nums">{fmtAmt(amt)}</td>}
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t border-gray-200">
-                      <td colSpan={4} className="px-3 py-1.5 text-right text-gray-500 text-xs">Taxable Amount</td>
-                      <td className="px-3 py-1.5 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(taxableAmt)}</td>
-                    </tr>
-                    {cgstTotal > 0 && <tr>
-                      <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">CGST</td>
-                      <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(cgstTotal)}</td>
-                    </tr>}
-                    {sgstTotal > 0 && <tr>
-                      <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">SGST</td>
-                      <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(sgstTotal)}</td>
-                    </tr>}
-                    {igstTotal > 0 && <tr>
-                      <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">IGST</td>
-                      <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(igstTotal)}</td>
-                    </tr>}
-                    {chargesTotal > 0 && <tr>
-                      <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">Additional Charges</td>
-                      <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(chargesTotal)}</td>
-                    </tr>}
-                    <tr style={{ background: SC.tonal }}>
-                      <td colSpan={4} className="px-3 py-2 text-right font-bold text-gray-700 text-xs">Grand Total</td>
-                      <td className="px-3 py-2 text-right font-bold text-gray-800 tabular-nums">₹ {fmtAmt(totalAmt)}</td>
-                    </tr>
+                    {isDC ? (
+                      <tr style={{ background: SC.tonal }}>
+                        <td colSpan={2} className="px-3 py-2 text-right font-bold text-gray-700 text-xs">Total Qty</td>
+                        <td className="px-3 py-2 text-right font-bold text-gray-800 tabular-nums">{totalQty > 0 ? totalQty.toFixed(3) : "—"}</td>
+                      </tr>
+                    ) : (
+                      <>
+                        <tr className="border-t border-gray-200">
+                          <td colSpan={4} className="px-3 py-1.5 text-right text-gray-500 text-xs">Taxable Amount</td>
+                          <td className="px-3 py-1.5 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(taxableAmt)}</td>
+                        </tr>
+                        {cgstTotal > 0 && <tr>
+                          <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">CGST</td>
+                          <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(cgstTotal)}</td>
+                        </tr>}
+                        {sgstTotal > 0 && <tr>
+                          <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">SGST</td>
+                          <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(sgstTotal)}</td>
+                        </tr>}
+                        {igstTotal > 0 && <tr>
+                          <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">IGST</td>
+                          <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(igstTotal)}</td>
+                        </tr>}
+                        {chargesTotal > 0 && <tr>
+                          <td colSpan={4} className="px-3 py-1 text-right text-gray-500 text-xs">Additional Charges</td>
+                          <td className="px-3 py-1 text-right text-gray-700 tabular-nums text-xs">₹ {fmtAmt(chargesTotal)}</td>
+                        </tr>}
+                        <tr style={{ background: SC.tonal }}>
+                          <td colSpan={4} className="px-3 py-2 text-right font-bold text-gray-700 text-xs">Grand Total</td>
+                          <td className="px-3 py-2 text-right font-bold text-gray-800 tabular-nums">₹ {fmtAmt(totalAmt)}</td>
+                        </tr>
+                      </>
+                    )}
                   </tfoot>
                 </table>
               </div>
