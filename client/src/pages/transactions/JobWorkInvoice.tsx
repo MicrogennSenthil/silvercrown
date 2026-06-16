@@ -260,18 +260,6 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     if (c) setPartySearch(c.name);
   }, [urlPartyId, customerList]);
 
-  // Auto-select inward from URL once panel has loaded (runs once)
-  const _autoInwardDone = useRef(false);
-  useEffect(() => {
-    if (!urlInwardId || _autoInwardDone.current || !partyDespatchPanel.length) return;
-    const rec = partyDespatchPanel.find((r: any) => r.id === urlInwardId);
-    if (rec) {
-      _autoInwardDone.current = true;
-      toggleRecord(rec, true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlInwardId, partyDespatchPanel]);
-
   // Sync invoiceType and reset grid whenever activeFlow changes (new invoices only)
   useEffect(() => {
     setInvoiceType(activeFlow === "inward_despatch_invoice" ? "despatch_notes" : "direct_invoice");
@@ -311,6 +299,19 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     ...partyDespatches.map((d: any) => ({ ...d, _type: "despatch" as const })),
     ...partyDirectInwards.map((r: any) => ({ ...r, _type: "inward" as const })),
   ];
+
+  // Auto-select inward from URL once panel has loaded (runs once) — must be AFTER partyDespatchPanel
+  const _autoInwardDone = useRef(false);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!urlInwardId || _autoInwardDone.current || !partyDespatchPanel.length) return;
+    const rec = partyDespatchPanel.find((r: any) => r.id === urlInwardId);
+    if (rec) {
+      _autoInwardDone.current = true;
+      toggleRecord(rec, true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlInwardId, partyDespatchPanel]);
 
   // Filtered items in grid
   const filteredItems = gridSearch.trim()
