@@ -5,7 +5,7 @@ import { Plus, Search, Trash2, Edit, X, Loader2, User, Eye, EyeOff } from "lucid
 const SC = { primary: "#027fa5", orange: "#d74700" };
 const ROLES = ["admin", "manager", "user"] as const;
 
-function UserForm({ initial, employees, userRoles, onClose }: any) {
+function UserForm({ initial, employees, onClose }: any) {
   const { password: _pw, ...safeInitial } = initial || {};
   const [form, setForm] = useState({
     username: "", name: "", email: "",
@@ -14,6 +14,12 @@ function UserForm({ initial, employees, userRoles, onClose }: any) {
   });
   const [showPass, setShowPass] = useState(false);
   const qc = useQueryClient();
+
+  // Fetch roles directly inside the form so it always loads even if parent cache is cold
+  const { data: userRoles = [] } = useQuery<any[]>({
+    queryKey: ["/api/user-roles"],
+    staleTime: 0,
+  });
 
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
@@ -177,7 +183,7 @@ export default function Users() {
           </table>
         </div>
       </div>
-      {showForm && <UserForm initial={editing} employees={employees} userRoles={userRoles} onClose={() => setShowForm(false)} />}
+      {showForm && <UserForm initial={editing} employees={employees} onClose={() => setShowForm(false)} />}
     </div>
   );
 }
