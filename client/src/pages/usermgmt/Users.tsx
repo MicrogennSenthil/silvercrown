@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Trash2, Edit, X, Loader2, User, Eye, EyeOff } from "lucide-react";
+import { Plus, Search, Trash2, Edit, X, Loader2, Eye, EyeOff } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700" };
-const ROLES = ["admin", "manager", "user"] as const;
 
 function UserForm({ initial, employees, onClose }: any) {
   const { password: _pw, ...safeInitial } = initial || {};
@@ -15,8 +14,7 @@ function UserForm({ initial, employees, onClose }: any) {
   const [showPass, setShowPass] = useState(false);
   const qc = useQueryClient();
 
-  // Fetch roles directly inside the form so it always loads even if parent cache is cold
-  const { data: userRoles = [] } = useQuery<any[]>({
+  const { data: userRoles = [], isLoading: rolesLoading } = useQuery<any[]>({
     queryKey: ["/api/user-roles"],
     staleTime: 0,
   });
@@ -68,18 +66,14 @@ function UserForm({ initial, employees, onClose }: any) {
               className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="input-email" />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>System Role</label>
-            <select value={form.role} onChange={e => setForm((f: any) => ({ ...f, role: e.target.value }))}
-              className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="select-role">
-              {ROLES.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Custom Role</label>
+            <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Role</label>
             <select value={form.userRoleId || ""} onChange={e => setForm((f: any) => ({ ...f, userRoleId: e.target.value }))}
               className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="select-user-role">
-              <option value="">No Custom Role</option>
-              {userRoles?.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              <option value="">— Select Role —</option>
+              {rolesLoading
+                ? <option disabled>Loading...</option>
+                : userRoles.map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)
+              }
             </select>
           </div>
           <div>
@@ -115,7 +109,6 @@ export default function Users() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/users"] })
   });
 
-  const ROLE_COLORS: Record<string, string> = { admin: "bg-red-100 text-red-700", manager: "bg-blue-100 text-blue-700", user: "bg-gray-100 text-gray-700" };
   const filtered = users.filter((u: any) => u.name?.toLowerCase().includes(search.toLowerCase()) || u.username?.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -145,13 +138,12 @@ export default function Users() {
               <th className="text-left px-5 py-3 font-semibold text-gray-600">Name</th>
               <th className="text-left px-5 py-3 font-semibold text-gray-600">Username</th>
               <th className="text-left px-5 py-3 font-semibold text-gray-600">Email</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">System Role</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Custom Role</th>
+              <th className="text-left px-5 py-3 font-semibold text-gray-600">Role</th>
               <th className="text-left px-5 py-3 font-semibold text-gray-600">Employee</th>
               <th className="px-5 py-3"></th>
             </tr></thead>
             <tbody className="divide-y divide-gray-50">
-              {isLoading ? [...Array(3)].map((_, i) => <tr key={i}><td colSpan={7} className="px-5 py-4"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td></tr>) :
+              {isLoading ? [...Array(3)].map((_, i) => <tr key={i}><td colSpan={6} className="px-5 py-4"><div className="h-4 bg-gray-100 rounded animate-pulse" /></td></tr>) :
                 filtered.map((u: any) => {
                   const emp = employees.find((e: any) => e.id === u.employeeId);
                   const role = userRoles.find((r: any) => r.id === u.userRoleId);
@@ -167,8 +159,12 @@ export default function Users() {
                       </td>
                       <td className="px-5 py-3 text-gray-600 font-mono text-xs">{u.username}</td>
                       <td className="px-5 py-3 text-gray-500">{u.email || "—"}</td>
-                      <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${ROLE_COLORS[u.role] || "bg-gray-100 text-gray-700"}`}>{u.role}</span></td>
-                      <td className="px-5 py-3 text-gray-500 text-xs">{role?.name || "—"}</td>
+                      <td className="px-5 py-3">
+                        {role
+                          ? <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{role.name}</span>
+                          : <span className="text-gray-400 text-xs">—</span>
+                        }
+                      </td>
                       <td className="px-5 py-3 text-gray-500 text-xs">{emp ? `${emp.name} (${emp.employeeCode})` : "—"}</td>
                       <td className="px-5 py-3">
                         <div className="flex gap-2 justify-end">
