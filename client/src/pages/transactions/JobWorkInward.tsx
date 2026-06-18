@@ -576,11 +576,10 @@ type ItemRow = {
   hsn: string;
   remark: string;
   work_order_no: string;
-  rate: string;
 };
 
 function newRow(): ItemRow {
-  return { _key: crypto.randomUUID(), item_id: "", item_code: "", item_name: "", qty: "", unit: "", process: "", process_id: "", hsn: "", remark: "", work_order_no: "", rate: "" };
+  return { _key: crypto.randomUUID(), item_id: "", item_code: "", item_name: "", qty: "", unit: "", process: "", process_id: "", hsn: "", remark: "", work_order_no: "" };
 }
 
 // ── Inward Form ──────────────────────────────────────────────────────────────
@@ -626,7 +625,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
   const [items, setItems] = useState<ItemRow[]>(
     editData?.items?.length
-      ? editData.items.map((it: any) => ({ _key: crypto.randomUUID(), item_id: it.item_id || "", item_code: it.item_code || "", item_name: it.item_name || "", qty: String(it.qty || ""), unit: it.unit || "", process: it.process || "", process_id: it.process_id || "", hsn: it.hsn || "", remark: it.remark || "", work_order_no: it.work_order_no || "", rate: String(it.rate || "") }))
+      ? editData.items.map((it: any) => ({ _key: crypto.randomUUID(), item_id: it.item_id || "", item_code: it.item_code || "", item_name: it.item_name || "", qty: String(it.qty || ""), unit: it.unit || "", process: it.process || "", process_id: it.process_id || "", hsn: it.hsn || "", remark: it.remark || "", work_order_no: it.work_order_no || "" }))
       : [newRow()]
   );
 
@@ -687,7 +686,6 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     setItems(prev => prev.map(r => r._key === rowKey ? {
       ...r, item_id: item.id, item_code: item.code, item_name: item.name,
       unit: (item.uom || r.unit || "").toUpperCase(), hsn: item.hsnCode || item.hsn_code || r.hsn,
-      rate: r.rate || String(item.rate || item.selling_price || ""),
     } : r));
     setItemSearch(prev => ({ ...prev, [rowKey]: item.name }));
     setItemDropOpen(null);
@@ -762,7 +760,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
         notes,
         items: items.filter(r => r.item_name || r.qty).map(r => ({
           item_id: r.item_id || null, item_code: r.item_code, item_name: r.item_name,
-          qty: r.qty || "0", unit: r.unit, process: r.process, process_id: r.process_id || null, hsn: r.hsn, remark: r.remark, work_order_no: r.work_order_no || "", rate: r.rate || "0",
+          qty: r.qty || "0", unit: r.unit, process: r.process, process_id: r.process_id || null, hsn: r.hsn, remark: r.remark, work_order_no: r.work_order_no || "",
         })),
       };
       const url = isEdit ? `/api/job-work-inward/${editData.id}` : "/api/job-work-inward";

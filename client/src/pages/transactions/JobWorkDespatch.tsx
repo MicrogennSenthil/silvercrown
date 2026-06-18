@@ -281,21 +281,6 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
       toast({ title: "Party required", description: "Please select or enter a party name before saving.", variant: "destructive" });
       return;
     }
-    for (const it of activeItems) {
-      const rate = parseFloat(it.rate ?? 0);
-      const cgst = parseFloat(it.cgst_rate ?? 0);
-      const sgst = parseFloat(it.sgst_rate ?? 0);
-      const igst = parseFloat(it.igst_rate ?? 0);
-      if (!(rate > 0)) {
-        toast({ title: "Rate missing", description: `Item "${it.item_name}" has no rate. Please enter the rate.`, variant: "destructive" });
-        return;
-      }
-      const gstMissing = isInterState ? !(igst > 0) : !(cgst > 0 && sgst > 0);
-      if (gstMissing) {
-        toast({ title: "GST rate missing", description: `Item "${it.item_name}" is missing ${isInterState ? "IGST" : "GST"} rate. Please set the tax percentage.`, variant: "destructive" });
-        return;
-      }
-    }
     // ── Credit limit / days block ───────────────────────────────────────────────
     if (creditWarn?.warning && !creditWarn.can_override) {
       toast({
@@ -324,70 +309,43 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
       vehicle_no:   vehicleNo,
       notes,
       is_inter_state: isInterState,
-      items: activeItems.map(it => {
-        const tax = rowTax(it);
-        return {
-          inward_id:       it.inward_id,
-          inward_item_id:  it.inward_item_id,
-          item_id:         it.item_id,
-          item_code:       it.item_code,
-          item_name:       it.item_name,
-          unit:            it.unit,
-          process:         it.process,
-          hsn:             it.hsn,
-          qty_inward:      it.qty_inward,
+      items: activeItems.map(it => ({
+          inward_id:           it.inward_id,
+          inward_item_id:      it.inward_item_id,
+          item_id:             it.item_id,
+          item_code:           it.item_code,
+          item_name:           it.item_name,
+          unit:                it.unit,
+          process:             it.process,
+          hsn:                 it.hsn,
+          qty_inward:          it.qty_inward,
           qty_prev_despatched: it.qty_prev_despatched,
-          qty_despatched:  it.qty,
-          rate:            it.rate || 0,
-          remark:          it.remark || "",
-          cgst_rate:       isInterState ? 0 : it.cgst_rate || 0,
-          sgst_rate:       isInterState ? 0 : it.sgst_rate || 0,
-          igst_rate:       isInterState ? it.igst_rate || 0 : 0,
-          cgst_amt:        tax.cgst,
-          sgst_amt:        tax.sgst,
-          igst_amt:        tax.igst,
-        };
-      }),
+          qty_despatched:      it.qty,
+          remark:              it.remark || "",
+      })),
     }, {
       onSuccess: () => { if (isNew) resetForm(); },
     });
   }
 
   // ── Computed totals ───────────────────────────────────────────────────────────
-  const totalQty    = items.reduce((s, it) => s + parseFloat(it.qty || 0), 0);
-  const totalAmount = items.reduce((s, it) => s + parseFloat(it.qty || 0) * parseFloat(it.rate || 0), 0);
-  // Per-row tax calculations (based on Within/Inter-State toggle)
-  function rowTax(row: any) {
-    const base = parseFloat(row.qty || 0) * parseFloat(row.rate || 0);
-    if (isInterState) {
-      return { cgst: 0, sgst: 0, igst: base * parseFloat(row.igst_rate || 0) / 100 };
-    }
-    return {
-      cgst: base * parseFloat(row.cgst_rate || 0) / 100,
-      sgst: base * parseFloat(row.sgst_rate || 0) / 100,
-      igst: 0,
-    };
-  }
-  const totalCgst   = items.reduce((s, it) => s + rowTax(it).cgst, 0);
-  const totalSgst   = items.reduce((s, it) => s + rowTax(it).sgst, 0);
-  const totalIgst   = items.reduce((s, it) => s + rowTax(it).igst, 0);
-  const totalWithTax = totalAmount + totalCgst + totalSgst + totalIgst;
+  const totalQty = items.reduce((s, it) => s + parseFloat(it.qty || 0), 0);
 
-  // ── Credit check — auto-runs when party or total changes ─────────────────────
+  // ── Credit check — auto-runs when party changes ─────────────────────────────
   useEffect(() => {
     if (!partyId) { setCreditWarn(null); return; }
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
         const r = await fetch(
-          `/api/credit-check?party_id=${partyId}&amount=${totalWithTax}&module=job_work_despatch`,
+          `/api/credit-check?party_id=${partyId}&amount=0&module=job_work_despatch`,
           { credentials: "include" }
         );
         if (!cancelled) setCreditWarn(await r.json());
       } catch { /* silent */ }
     }, 400);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [partyId, totalWithTax]);
+  }, [partyId]);
 
   // ── Delete existing despatch ──────────────────────────────────────────────────
   const delMut = useMutation({
@@ -625,15 +583,10 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
                     <th className="px-3 py-2.5 text-left w-20">HSN no</th>
                     <th className="px-3 py-2.5 text-right w-20">Qty</th>
                     <th className="px-3 py-2.5 text-center w-16">Unit</th>
-                    <th className="px-3 py-2.5 text-right w-24">Rate ₹</th>
                     <th className="px-3 py-2.5 text-left w-24">Party Dc</th>
                     <th className="px-3 py-2.5 text-left w-28">Work Ord no</th>
                     <th className="px-3 py-2.5 text-left min-w-[120px]">Nature Of Process</th>
                     <th className="px-3 py-2.5 text-left w-24">Inward No</th>
-                    <th className="px-3 py-2.5 text-right w-24">Tot.Amt ₹</th>
-                    <th className="px-3 py-2.5 text-right w-24" style={{ color: isInterState ? "#9ca3af" : SC.primary }}>CGST Amt</th>
-                    <th className="px-3 py-2.5 text-right w-24" style={{ color: isInterState ? "#9ca3af" : SC.primary }}>SGST Amt</th>
-                    <th className="px-3 py-2.5 text-right w-24" style={{ color: isInterState ? SC.orange : "#9ca3af" }}>IGST Amt</th>
                     <th className="px-3 py-2.5 text-left min-w-[160px]">Remark</th>
                   </tr>
                 </thead>
@@ -649,7 +602,7 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
                       : items;
                     if (filtered.length === 0) return (
                       <tr>
-                        <td colSpan={17} className="px-4 py-10 text-center text-gray-300 text-sm italic">
+                        <td colSpan={12} className="px-4 py-10 text-center text-gray-300 text-sm italic">
                           {q ? "No items match your search" : partyId ? "Check an inward to load items" : "Select a party and check an inward"}
                         </td>
                       </tr>
@@ -685,38 +638,10 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
                           data-testid={`input-qty-${i}`} />
                       </td>
                       <td className="px-3 py-1.5 text-center text-gray-500">{row.unit || "—"}</td>
-                      {/* Rate — editable */}
-                      <td className="px-1.5 py-1">
-                        <input
-                          type="number" min="0" step="0.01"
-                          value={row.rate}
-                          onChange={e => updateItem(origIdx, "rate", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-right text-xs outline-none focus:border-[#027fa5]"
-                          placeholder="0.00"
-                          data-testid={`input-rate-${i}`} />
-                      </td>
                       <td className="px-3 py-1.5 text-gray-500">{row.party_dc || "—"}</td>
                       <td className="px-3 py-1.5 text-gray-500">{row.work_order_no || "—"}</td>
                       <td className="px-3 py-1.5 text-gray-500">{row.process || "—"}</td>
                       <td className="px-3 py-1.5 font-medium" style={{ color: SC.primary }}>{row.inward_voucher || "—"}</td>
-                      {/* Tot.Amt ₹ */}
-                      <td className="px-3 py-1.5 text-right font-semibold text-gray-700">
-                        {(parseFloat(row.qty || 0) * parseFloat(row.rate || 0)) > 0
-                          ? fmtAmount(parseFloat(row.qty) * parseFloat(row.rate))
-                          : "—"}
-                      </td>
-                      {/* CGST Amt */}
-                      <td className="px-3 py-1.5 text-right text-xs" style={{ color: isInterState ? "#d1d5db" : SC.primary }}>
-                        {!isInterState && rowTax(row).cgst > 0 ? fmtAmount(rowTax(row).cgst) : "—"}
-                      </td>
-                      {/* SGST Amt */}
-                      <td className="px-3 py-1.5 text-right text-xs" style={{ color: isInterState ? "#d1d5db" : SC.primary }}>
-                        {!isInterState && rowTax(row).sgst > 0 ? fmtAmount(rowTax(row).sgst) : "—"}
-                      </td>
-                      {/* IGST Amt */}
-                      <td className="px-3 py-1.5 text-right text-xs" style={{ color: isInterState ? SC.orange : "#d1d5db" }}>
-                        {isInterState && rowTax(row).igst > 0 ? fmtAmount(rowTax(row).igst) : "—"}
-                      </td>
                       {/* Remark + per-row delete */}
                       <td className="px-1.5 py-1">
                         <div className="flex items-center gap-1">
@@ -778,32 +703,6 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
                   <span className="font-bold text-gray-700 text-sm min-w-[40px] text-right">
                     {totalQty > 0 ? totalQty.toFixed(3) : "00"}
                   </span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-600 text-xs">
-                  Taxable Amt :
-                  <span className="font-bold text-gray-800 text-sm">{fmtAmount(totalAmount)}</span>
-                </div>
-                {!isInterState && (
-                  <>
-                    <div className="flex items-center gap-2 text-xs" style={{ color: SC.primary }}>
-                      CGST :
-                      <span className="font-bold text-sm">{fmtAmount(totalCgst)}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs" style={{ color: SC.primary }}>
-                      SGST :
-                      <span className="font-bold text-sm">{fmtAmount(totalSgst)}</span>
-                    </div>
-                  </>
-                )}
-                {isInterState && (
-                  <div className="flex items-center gap-2 text-xs" style={{ color: SC.orange }}>
-                    IGST :
-                    <span className="font-bold text-sm">{fmtAmount(totalIgst)}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 font-semibold text-gray-700">
-                  Total (with Tax) :
-                  <span className="font-bold text-base ml-1">{fmtAmount(totalWithTax)}</span>
                 </div>
               </div>
             </div>
