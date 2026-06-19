@@ -6,40 +6,66 @@ export function buildDespatchNoteHTML(doc: any): string {
     return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   }
 
+  function fyLabel(dateStr: string): string {
+    if (!dateStr) return "";
+    const dt = new Date(dateStr);
+    if (isNaN(dt.getTime())) return "";
+    const month = dt.getMonth();
+    const year  = dt.getFullYear();
+    const fyStart = month >= 3 ? year : year - 1;
+    const y1 = fyStart.toString().slice(-2);
+    const y2 = (fyStart + 1).toString().slice(-2);
+    return `${y1}-${y2}`;
+  }
+
   const items: any[] = doc.items || [];
   const totalQty = items.reduce((s: number, it: any) => s + parseFloat(it.qty_despatched || "0"), 0);
 
+  const fy = fyLabel(doc.despatch_date);
+
   // Minimum blank rows so the items block fills the A4 body
   const MIN_ROWS = 16;
+
+  // border style for item cells — left/right only, no horizontal dividers between items
+  const itemTd = "border-left:1px solid #000;border-right:1px solid #000;padding:3px 6px;vertical-align:top";
 
   function buildItemRows() {
     const rows: string[] = [];
 
     items.forEach((it: any, idx: number) => {
       const qty = parseFloat(it.qty_despatched || "0");
-      const subParts: string[] = [];
-      const poNo = it.work_order_no || doc.inward_work_order_no || doc.inward_party_po_no || "";
-      const refNo = it.remark_ref || doc.party_dc_no || "";
-      if (poNo) subParts.push(`PO : ${poNo}`);
-      if (refNo) subParts.push(`REF : ${refNo}`);
-      if (it.process) subParts.push(it.process);
-      if (it.remark) subParts.push(it.remark);
-      const subRow = subParts.join("     ");
+      const poNo   = it.work_order_no || doc.inward_work_order_no || doc.inward_party_po_no || "";
+      const process = it.process || "";
+      const packing = it.packing_details || it.remark || "";
+
+      const subLines: string[] = [];
+      if (poNo)    subLines.push(`PO : ${poNo}`);
+      if (process) subLines.push(process);
+      if (packing) subLines.push(packing);
+
+      const subHTML = subLines.length
+        ? `<div style="font-size:9px;color:#333;margin-top:2px;line-height:1.7">
+             ${subLines.join("<br>")}
+           </div>`
+        : "";
+
       rows.push(`<tr>
-        <td style="border:1px solid #000;padding:3px 6px;text-align:center;vertical-align:top;width:5%">${idx + 1}</td>
-        <td style="border:1px solid #000;padding:3px 6px;vertical-align:top">
+        <td style="${itemTd};text-align:center;width:5%">${idx + 1}</td>
+        <td style="${itemTd}">
           <div style="font-weight:600">${it.item_name || ""}</div>
-          ${subRow ? `<div style="font-size:9px;color:#333;margin-top:1px">${subRow}</div>` : ""}
+          ${subHTML}
         </td>
-        <td style="border:1px solid #000;padding:3px 6px;text-align:center;vertical-align:top;width:11%">${it.hsn || ""}</td>
-        <td style="border:1px solid #000;padding:3px 6px;text-align:center;vertical-align:top;width:14%">${qty > 0 ? qty.toFixed(3) + (it.unit ? " " + it.unit : "") : "&nbsp;"}</td>
+        <td style="${itemTd};text-align:center;width:10%">${it.hsn || ""}</td>
+        <td style="${itemTd};text-align:center;width:8%">${it.unit || ""}</td>
+        <td style="${itemTd};text-align:center;width:12%">${qty > 0 ? qty.toFixed(3) : "&nbsp;"}</td>
       </tr>`);
     });
 
-    // Pad with empty rows to reach MIN_ROWS — no horizontal lines, only column dividers
+    // Pad with empty rows to reach MIN_ROWS — column dividers only
     const padCount = Math.max(0, MIN_ROWS - items.length);
     for (let i = 0; i < padCount; i++) {
       rows.push(`<tr style="height:18px">
+        <td style="border-left:1px solid #000;border-right:1px solid #000">&nbsp;</td>
         <td style="border-left:1px solid #000;border-right:1px solid #000">&nbsp;</td>
         <td style="border-left:1px solid #000;border-right:1px solid #000">&nbsp;</td>
         <td style="border-left:1px solid #000;border-right:1px solid #000">&nbsp;</td>
@@ -61,11 +87,14 @@ export function buildDespatchNoteHTML(doc: any): string {
   function buildCopy(copyLabel: string) {
     return `<div class="dn-copy">
 
-  <!-- HEADER -->
+  <!-- HEADER — centered caption -->
   <table style="width:100%;border-collapse:collapse;border:1px solid #000">
     <tr>
-      <td style="padding:4px 8px;font-weight:700;font-size:13px;border-bottom:1px solid #000">Despatch Note</td>
-      <td style="padding:4px 8px;text-align:right;font-size:9.5px;font-style:italic;border-bottom:1px solid #000">(${copyLabel})</td>
+      <td style="padding:4px 8px;border-bottom:1px solid #000;text-align:center">
+        <span style="font-weight:700;font-size:14px">Despatch Note</span>
+        &nbsp;&nbsp;
+        <span style="font-size:9.5px;font-style:italic">(${copyLabel})</span>
+      </td>
     </tr>
   </table>
 
@@ -90,7 +119,9 @@ export function buildDespatchNoteHTML(doc: any): string {
             <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:2px 6px">Dated</td>
           </tr>
           <tr>
-            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:2px 6px;font-weight:600">${doc.voucher_no || "&nbsp;"}</td>
+            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:2px 6px;font-weight:600">
+              ${doc.voucher_no || "&nbsp;"}${fy ? `<span style="font-weight:400;font-size:8.5px;margin-left:4px">(${fy})</span>` : ""}
+            </td>
             <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:2px 6px;font-weight:600">${fmtDate(doc.despatch_date)}</td>
           </tr>
           <tr>
@@ -141,13 +172,14 @@ export function buildDespatchNoteHTML(doc: any): string {
   </table>
 
   <!-- ITEMS TABLE (fills remaining space) -->
-  <table style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:10px;flex:1">
+  <table class="items-table" style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:10px">
     <thead>
       <tr style="background:#f0f0f0">
         <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:5%">Sl<br>No</th>
         <th style="border:1px solid #000;padding:3px 6px;text-align:left">Description of Services</th>
-        <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:11%">HSN/SAC</th>
-        <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:14%">Quantity</th>
+        <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:10%">HSN/SAC</th>
+        <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:8%">Unit</th>
+        <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:12%">Quantity</th>
       </tr>
     </thead>
     <tbody>
@@ -155,7 +187,7 @@ export function buildDespatchNoteHTML(doc: any): string {
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="2" style="border:1px solid #000;padding:3px 8px">
+        <td colspan="3" style="border:1px solid #000;padding:3px 8px">
           <span style="font-size:8.5px;font-style:italic">E. &amp; O.E</span>
         </td>
         <td style="border:1px solid #000;padding:3px 6px;text-align:center;font-weight:700;font-size:10px">Total</td>
@@ -216,9 +248,7 @@ export function buildDespatchNoteHTML(doc: any): string {
   }
 
   /* Items table stretches to fill remaining vertical space */
-  .dn-copy table:nth-child(4) {
-    flex: 1;
-  }
+  .items-table { flex: 1; }
 
   @page {
     size: A4 portrait;
