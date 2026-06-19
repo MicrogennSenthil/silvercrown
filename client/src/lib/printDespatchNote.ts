@@ -16,9 +16,22 @@ export function buildDespatchNoteHTML(doc: any): string {
     return `${fyStart.toString().slice(-2)}-${(fyStart + 1).toString().slice(-2)}`;
   }
 
+  function fyFullLabel(dateStr: string): string {
+    if (!dateStr) return "";
+    const dt = new Date(dateStr);
+    if (isNaN(dt.getTime())) return "";
+    const month = dt.getMonth();
+    const year  = dt.getFullYear();
+    const fyStart = month >= 3 ? year : year - 1;
+    return `${fyStart}-${fyStart + 1}`;
+  }
+
   const items: any[] = doc.items || [];
   const totalQty = items.reduce((s: number, it: any) => s + parseFloat(it.qty_despatched || "0"), 0);
   const fy = fyLabel(doc.despatch_date);
+  const fyFull = fyFullLabel(doc.despatch_date);
+  const commonUnit = items.length > 0 ? (items[0].unit || items[0].uom_code || "") : "";
+  const totalQtyFormatted = totalQty.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // left/right borders only — no horizontal dividers between item rows
   const itemTd = "border-left:1px solid #000;border-right:1px solid #000;padding:3px 6px;vertical-align:top";
@@ -193,36 +206,32 @@ export function buildDespatchNoteHTML(doc: any): string {
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="3" style="border:1px solid #000;padding:3px 8px">
-              <span style="font-size:8.5px;font-style:italic">E. &amp; O.E</span>
-            </td>
-            <td style="border:1px solid #000;padding:3px 6px;text-align:center;font-weight:700">Total</td>
-            <td style="border:1px solid #000;padding:3px 6px;text-align:center;font-weight:700">${totalQty > 0 ? totalQty.toFixed(3) : "&nbsp;"}</td>
+            <td colspan="4" style="border:1px solid #000;padding:3px 8px;text-align:right;font-weight:700">Total</td>
+            <td style="border:1px solid #000;padding:3px 6px;text-align:center;font-weight:700">${totalQty > 0 ? `${totalQtyFormatted}${commonUnit ? " " + commonUnit : ""}` : "&nbsp;"}</td>
+          </tr>
+          <tr>
+            <td colspan="5" style="border-left:1px solid #000;border-right:1px solid #000;border-top:1px solid #000;padding:3px 8px;text-align:right;font-size:8.5px;font-style:italic">E. &amp; O.E</td>
           </tr>
         </tfoot>
       </table>
     </td>
   </tr>
 
-  <!-- ⑤ SIGNATURES — all three copy labels shown in one row -->
+  <!-- ⑤ SIGNATURES — 2-column layout -->
   <tr>
     <td style="padding:0;border-bottom:1px solid #000">
       <table style="width:100%;border-collapse:collapse;font-size:9px">
         <tr>
-          <td style="border-right:1px solid #000;padding:4px 8px;width:33%;vertical-align:top">
-            <div style="font-size:7.5px;font-weight:700;margin-bottom:3px">ORIGINAL FOR CONSIGNEE</div>
+          <td style="border-right:1px solid #000;padding:6px 8px;width:45%;vertical-align:bottom">
             Recd. in Good Condition<br><br><br>
             <div style="border-top:1px solid #000;padding-top:3px;text-align:center;font-size:8.5px">Receiver's Signature</div>
           </td>
-          <td style="border-right:1px solid #000;padding:4px 8px;width:34%;vertical-align:top">
-            <div style="font-size:7.5px;font-weight:700;margin-bottom:3px">DUPLICATE FOR TRANSPORTER</div>
+          <td style="padding:6px 8px;width:55%;vertical-align:top">
+            <div style="text-align:center;font-weight:700;font-size:9px;margin-bottom:6px">for SILVER CROWN METAL COATINGS${fyFull ? " / DC " + fyFull : ""}</div>
             <br><br><br>
-            <div style="border-top:1px solid #000;padding-top:3px;text-align:center;font-size:8.5px">Prepared by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Verified by</div>
-          </td>
-          <td style="padding:4px 8px;width:33%;vertical-align:top">
-            <div style="font-size:7.5px;font-weight:700;margin-bottom:3px">TRIPLICATE FOR CONSIGNER</div>
-            for SILVER CROWN METAL COATINGS<br><br><br>
-            <div style="border-top:1px solid #000;padding-top:3px;text-align:center;font-size:8.5px">Authorised Signatory</div>
+            <div style="border-top:1px solid #000;padding-top:3px;display:flex;justify-content:space-between;font-size:8.5px">
+              <span>Prepared by</span><span>Verified by</span><span>Authorised Signatory</span>
+            </div>
           </td>
         </tr>
       </table>
