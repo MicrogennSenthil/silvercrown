@@ -34,6 +34,8 @@ import JobWorkInvoice from "@/pages/transactions/JobWorkInvoice";
 import ReturnableInward from "@/pages/transactions/ReturnableInward";
 import ReturnableOutward from "@/pages/transactions/ReturnableOutward";
 import GatePass from "@/pages/transactions/GatePass";
+import ProcessOutward from "@/pages/transactions/ProcessOutward";
+import ProcessInward  from "@/pages/transactions/ProcessInward";
 import PurchaseOrder from "@/pages/inventory/PurchaseOrder";
 import PurchaseAmendment from "@/pages/inventory/PurchaseAmendment";
 import PurchaseOrderApproval from "@/pages/inventory/PurchaseOrderApproval";
@@ -54,6 +56,8 @@ import JobWorkPendingReport from "@/pages/reports/JobWorkPending";
 import DespatchPendingReport from "@/pages/reports/DespatchPending";
 import InvoicePendingReport   from "@/pages/reports/InvoicePending";
 import DespatchRegisterReport from "@/pages/reports/DespatchRegister";
+import ProcessOutwardRegister from "@/pages/reports/ProcessOutwardRegister";
+import ProcessInwardRegister  from "@/pages/reports/ProcessInwardRegister";
 import StockReport             from "@/pages/reports/StockReport";
 import StockReportValue        from "@/pages/reports/StockReportValue";
 import StockLedger             from "@/pages/reports/StockLedger";
@@ -155,6 +159,8 @@ function Router() {
       <Route path="/engineering/returnable-inward"><ProtectedRoute component={ReturnableInward} /></Route>
       <Route path="/engineering/returnable-outward"><ProtectedRoute component={ReturnableOutward} /></Route>
       <Route path="/engineering/gate-pass"><ProtectedRoute component={GatePass} /></Route>
+      <Route path="/engineering/process-outward"><ProtectedRoute component={ProcessOutward} /></Route>
+      <Route path="/engineering/process-inward"><ProtectedRoute component={ProcessInward} /></Route>
       <Route path="/masters/financial-years"><ProtectedRoute component={FinancialYears} /></Route>
       <Route path="/masters/year-end-closing"><ProtectedRoute component={YearEndClosing} /></Route>
       <Route path="/masters/voucher-series"><ProtectedRoute component={VoucherSeries} /></Route>
@@ -164,6 +170,8 @@ function Router() {
       <Route path="/reports/engineering/despatch-pending"><ProtectedRoute component={DespatchPendingReport} /></Route>
       <Route path="/reports/engineering/invoice-pending"><ProtectedRoute component={InvoicePendingReport} /></Route>
       <Route path="/reports/engineering/despatch-register"><ProtectedRoute component={DespatchRegisterReport} /></Route>
+      <Route path="/reports/engineering/process-outward-register"><ProtectedRoute component={ProcessOutwardRegister} /></Route>
+      <Route path="/reports/engineering/process-inward-register"><ProtectedRoute component={ProcessInwardRegister} /></Route>
       {/* Inventory Reports */}
       <Route path="/reports/inventory/stock-report"><ProtectedRoute component={StockReport} /></Route>
       <Route path="/reports/inventory/stock-report-value"><ProtectedRoute component={StockReportValue} /></Route>

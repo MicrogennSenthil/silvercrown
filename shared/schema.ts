@@ -773,6 +773,94 @@ export const insertTallySyncLogSchema = createInsertSchema(tallySyncLogs).omit({
 export type InsertTallySyncLog = z.infer<typeof insertTallySyncLogSchema>;
 export type TallySyncLog = typeof tallySyncLogs.$inferSelect;
 
+// Process Outward — Send items to external testing/calibration agency
+export const processOutward = pgTable("process_outward", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  voucherNo: text("voucher_no").notNull().unique(),
+  outwardDate: date("outward_date").notNull(),
+  supplierId: varchar("supplier_id"),
+  supplierNameManual: text("supplier_name_manual").default(""),
+  vehicleNo: text("vehicle_no").default(""),
+  purpose: text("purpose").default(""),
+  notes: text("notes").default(""),
+  status: text("status").default("Saved"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertProcessOutwardSchema = createInsertSchema(processOutward).omit({ id: true, createdAt: true });
+export type InsertProcessOutward = z.infer<typeof insertProcessOutwardSchema>;
+export type ProcessOutward = typeof processOutward.$inferSelect;
+
+export const processOutwardItems = pgTable("process_outward_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  outwardId: varchar("outward_id").notNull(),
+  seqNo: integer("seq_no").notNull(),
+  customerRef: text("customer_ref").default(""),
+  itemId: varchar("item_id"),
+  itemCode: text("item_code").default(""),
+  itemName: text("item_name").default(""),
+  drawingNo: text("drawing_no").default(""),
+  hsn: text("hsn").default(""),
+  processNature: text("process_nature").default(""),
+  billRef: text("bill_ref").default(""),
+  qty: decimal("qty", { precision: 15, scale: 3 }).default("0"),
+  unit: text("unit").default(""),
+});
+export const insertProcessOutwardItemSchema = createInsertSchema(processOutwardItems).omit({ id: true });
+export type InsertProcessOutwardItem = z.infer<typeof insertProcessOutwardItemSchema>;
+export type ProcessOutwardItem = typeof processOutwardItems.$inferSelect;
+
+// Process Inward — Receive items back + record supplier invoice + post accounts
+export const processInward = pgTable("process_inward", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  voucherNo: text("voucher_no").notNull().unique(),
+  inwardDate: date("inward_date").notNull(),
+  outwardId: varchar("outward_id"),
+  supplierId: varchar("supplier_id"),
+  supplierNameManual: text("supplier_name_manual").default(""),
+  supplierInvoiceNo: text("supplier_invoice_no").default(""),
+  supplierInvoiceDate: date("supplier_invoice_date"),
+  taxableAmount: decimal("taxable_amount", { precision: 15, scale: 2 }).default("0"),
+  cgstAmount: decimal("cgst_amount", { precision: 15, scale: 2 }).default("0"),
+  sgstAmount: decimal("sgst_amount", { precision: 15, scale: 2 }).default("0"),
+  igstAmount: decimal("igst_amount", { precision: 15, scale: 2 }).default("0"),
+  totalAmount: decimal("total_amount", { precision: 15, scale: 2 }).default("0"),
+  paymentMode: text("payment_mode").default("Credit"),
+  paymentAccountId: varchar("payment_account_id"),
+  expenseGlId: varchar("expense_gl_id"),
+  notes: text("notes").default(""),
+  status: text("status").default("Saved"),
+  voucherMasId: varchar("voucher_mas_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertProcessInwardSchema = createInsertSchema(processInward).omit({ id: true, createdAt: true });
+export type InsertProcessInward = z.infer<typeof insertProcessInwardSchema>;
+export type ProcessInward = typeof processInward.$inferSelect;
+
+export const processInwardItems = pgTable("process_inward_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inwardId: varchar("inward_id").notNull(),
+  seqNo: integer("seq_no").notNull(),
+  outwardItemId: varchar("outward_item_id"),
+  itemId: varchar("item_id"),
+  itemCode: text("item_code").default(""),
+  itemName: text("item_name").default(""),
+  hsn: text("hsn").default(""),
+  qty: decimal("qty", { precision: 15, scale: 3 }).default("0"),
+  unit: text("unit").default(""),
+  rate: decimal("rate", { precision: 15, scale: 2 }).default("0"),
+  taxableAmount: decimal("taxable_amount", { precision: 15, scale: 2 }).default("0"),
+  cgstRate: decimal("cgst_rate", { precision: 5, scale: 2 }).default("0"),
+  sgstRate: decimal("sgst_rate", { precision: 5, scale: 2 }).default("0"),
+  igstRate: decimal("igst_rate", { precision: 5, scale: 2 }).default("0"),
+  cgstAmount: decimal("cgst_amount", { precision: 15, scale: 2 }).default("0"),
+  sgstAmount: decimal("sgst_amount", { precision: 15, scale: 2 }).default("0"),
+  igstAmount: decimal("igst_amount", { precision: 15, scale: 2 }).default("0"),
+  amount: decimal("amount", { precision: 15, scale: 2 }).default("0"),
+});
+export const insertProcessInwardItemSchema = createInsertSchema(processInwardItems).omit({ id: true });
+export type InsertProcessInwardItem = z.infer<typeof insertProcessInwardItemSchema>;
+export type ProcessInwardItem = typeof processInwardItems.$inferSelect;
+
 // Bill Adjustments — tracks how a payment voucher is allocated against outstanding bills
 export const billAdjustments = pgTable("bill_adjustments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

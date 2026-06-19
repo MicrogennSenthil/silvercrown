@@ -70,6 +70,8 @@ const NAV: any[] = [
       { label: "Returnable Inward",  href: "/engineering/returnable-inward",  moduleKey: "engineering_returnable_inward" },
       { label: "Returnable Outward", href: "/engineering/returnable-outward", moduleKey: "engineering_returnable_outward" },
       { label: "Gate Pass",          href: "/engineering/gate-pass",          moduleKey: "engineering_gate_pass" },
+      { label: "Process Outward",    href: "/engineering/process-outward",    moduleKey: "engineering_process_outward" },
+      { label: "Process Inward",     href: "/engineering/process-inward",     moduleKey: "engineering_process_inward" },
     ]
   },
   {
@@ -100,10 +102,12 @@ const NAV: any[] = [
       {
         label: "Engineering",
         subChildren: [
-          { label: "Job Work Pending",  href: "/reports/engineering/job-work-pending",  moduleKey: "report_eng_job_work_pending" },
-          { label: "Despatch Pending",  href: "/reports/engineering/despatch-pending",  moduleKey: "report_eng_despatch_pending" },
-          { label: "Invoice Pending",   href: "/reports/engineering/invoice-pending",   moduleKey: "report_eng_invoice_pending" },
-          { label: "Despatch Register", href: "/reports/engineering/despatch-register", moduleKey: "report_eng_despatch_register" },
+          { label: "Job Work Pending",       href: "/reports/engineering/job-work-pending",       moduleKey: "report_eng_job_work_pending" },
+          { label: "Despatch Pending",       href: "/reports/engineering/despatch-pending",       moduleKey: "report_eng_despatch_pending" },
+          { label: "Invoice Pending",        href: "/reports/engineering/invoice-pending",        moduleKey: "report_eng_invoice_pending" },
+          { label: "Despatch Register",      href: "/reports/engineering/despatch-register",      moduleKey: "report_eng_despatch_register" },
+          { label: "Process Outward Report", href: "/reports/engineering/process-outward-register", moduleKey: "report_eng_process_outward" },
+          { label: "Process Inward Report",  href: "/reports/engineering/process-inward-register",  moduleKey: "report_eng_process_inward" },
         ],
       },
       {

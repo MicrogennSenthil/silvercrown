@@ -8152,6 +8152,413 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // PROCESS OUTWARD (DC for sending items to testing/calibration)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/process-outward", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const rows = (await pool.query(`
+        SELECT po.*, COALESCE(s.name, po.supplier_name_manual) AS supplier_name,
+               s.address1 AS supplier_address1, s.address2 AS supplier_address2,
+               s.city AS supplier_city, s.state AS supplier_state, s.pincode AS supplier_pincode,
+               s.gstin AS supplier_gstin
+        FROM process_outward po
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
+        ORDER BY po.outward_date DESC, po.voucher_no DESC
+      `)).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/process-outward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const hdr = (await pool.query(`
+        SELECT po.*, COALESCE(s.name, po.supplier_name_manual) AS supplier_name,
+               s.address1 AS supplier_address1, s.address2 AS supplier_address2,
+               s.city AS supplier_city, s.state AS supplier_state, s.pincode AS supplier_pincode,
+               s.gstin AS supplier_gstin
+        FROM process_outward po
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
+        WHERE po.id=$1
+      `, [req.params.id])).rows[0];
+      if (!hdr) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(`SELECT * FROM process_outward_items WHERE outward_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+      res.json({ ...hdr, items });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/process-outward", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucher_no = await generateVoucherNo("process_outward", client);
+      const hRes = await client.query(`
+        INSERT INTO process_outward (voucher_no, outward_date, supplier_id, supplier_name_manual, vehicle_no, purpose, notes, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,'Saved') RETURNING *
+      `, [voucher_no, b.outward_date || new Date().toISOString().split("T")[0],
+          b.supplier_id || null, b.supplier_name_manual || "", b.vehicle_no || "", b.purpose || "", b.notes || ""]);
+      const hdr = hRes.rows[0];
+      for (let i = 0; i < (b.items || []).length; i++) {
+        const it = b.items[i];
+        await client.query(`
+          INSERT INTO process_outward_items (outward_id, seq_no, customer_ref, item_id, item_code, item_name, drawing_no, hsn, process_nature, bill_ref, qty, unit)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `, [hdr.id, i+1, it.customer_ref||"", it.item_id||null, it.item_code||"",
+            it.item_name||"", it.drawing_no||"", it.hsn||"", it.process_nature||"",
+            it.bill_ref||"", parseFloat(it.qty||0), it.unit||""]);
+      }
+      await client.query("COMMIT");
+      res.json({ ...hdr, voucher_no });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.patch("/api/process-outward/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      const hRes = await client.query(`
+        UPDATE process_outward SET outward_date=$1, supplier_id=$2, supplier_name_manual=$3,
+          vehicle_no=$4, purpose=$5, notes=$6 WHERE id=$7 RETURNING *
+      `, [b.outward_date, b.supplier_id||null, b.supplier_name_manual||"",
+          b.vehicle_no||"", b.purpose||"", b.notes||"", req.params.id]);
+      await client.query(`DELETE FROM process_outward_items WHERE outward_id=$1`, [req.params.id]);
+      for (let i = 0; i < (b.items || []).length; i++) {
+        const it = b.items[i];
+        await client.query(`
+          INSERT INTO process_outward_items (outward_id, seq_no, customer_ref, item_id, item_code, item_name, drawing_no, hsn, process_nature, bill_ref, qty, unit)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `, [req.params.id, i+1, it.customer_ref||"", it.item_id||null, it.item_code||"",
+            it.item_name||"", it.drawing_no||"", it.hsn||"", it.process_nature||"",
+            it.bill_ref||"", parseFloat(it.qty||0), it.unit||""]);
+      }
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.delete("/api/process-outward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM process_outward_items WHERE outward_id=$1`, [req.params.id]);
+      await pool.query(`DELETE FROM process_outward WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  // Reprint process outward
+  app.get("/api/reprint/process_outward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const hdr = (await pool.query(`
+        SELECT po.*, COALESCE(s.name, po.supplier_name_manual) AS supplier_name,
+               s.address1 AS supplier_address1, s.address2 AS supplier_address2,
+               s.city AS supplier_city, s.state AS supplier_state, s.pincode AS supplier_pincode,
+               s.gstin AS supplier_gstin
+        FROM process_outward po LEFT JOIN suppliers s ON s.id = po.supplier_id
+        WHERE po.id=$1
+      `, [req.params.id])).rows[0];
+      if (!hdr) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(`SELECT * FROM process_outward_items WHERE outward_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+      const { buildProcessOutwardHTML } = await import("../client/src/lib/printProcessOutward");
+      const html = buildProcessOutwardHTML({ ...hdr, items });
+      res.setHeader("Content-Type", "text/html");
+      res.send(html);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PROCESS INWARD (Receive items back + supplier invoice + accounts posting)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/process-inward", requireAuth, async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const rows = (await pool.query(`
+        SELECT pi.*, COALESCE(s.name, pi.supplier_name_manual) AS supplier_name,
+               po.voucher_no AS outward_voucher_no
+        FROM process_inward pi
+        LEFT JOIN suppliers s ON s.id = pi.supplier_id
+        LEFT JOIN process_outward po ON po.id = pi.outward_id
+        ORDER BY pi.inward_date DESC, pi.voucher_no DESC
+      `)).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/process-inward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const hdr = (await pool.query(`
+        SELECT pi.*, COALESCE(s.name, pi.supplier_name_manual) AS supplier_name,
+               s.address1 AS supplier_address1, s.address2 AS supplier_address2,
+               s.city AS supplier_city, s.state AS supplier_state, s.pincode AS supplier_pincode,
+               s.gstin AS supplier_gstin,
+               po.voucher_no AS outward_voucher_no
+        FROM process_inward pi
+        LEFT JOIN suppliers s ON s.id = pi.supplier_id
+        LEFT JOIN process_outward po ON po.id = pi.outward_id
+        WHERE pi.id=$1
+      `, [req.params.id])).rows[0];
+      if (!hdr) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(`SELECT * FROM process_inward_items WHERE inward_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+      res.json({ ...hdr, items });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.post("/api/process-inward", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { generateVoucherNo } = await import("./voucher");
+      const b = req.body;
+      const voucher_no = await generateVoucherNo("process_inward", client);
+
+      const hRes = await client.query(`
+        INSERT INTO process_inward
+          (voucher_no, inward_date, outward_id, supplier_id, supplier_name_manual,
+           supplier_invoice_no, supplier_invoice_date,
+           taxable_amount, cgst_amount, sgst_amount, igst_amount, total_amount,
+           payment_mode, payment_account_id, expense_gl_id, notes, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'Saved') RETURNING *
+      `, [voucher_no,
+          b.inward_date || new Date().toISOString().split("T")[0],
+          b.outward_id || null, b.supplier_id || null, b.supplier_name_manual || "",
+          b.supplier_invoice_no || "", b.supplier_invoice_date || null,
+          parseFloat(b.taxable_amount || 0), parseFloat(b.cgst_amount || 0),
+          parseFloat(b.sgst_amount || 0), parseFloat(b.igst_amount || 0),
+          parseFloat(b.total_amount || 0),
+          b.payment_mode || "Credit", b.payment_account_id || null,
+          b.expense_gl_id || null, b.notes || ""]);
+      const hdr = hRes.rows[0];
+
+      for (let i = 0; i < (b.items || []).length; i++) {
+        const it = b.items[i];
+        await client.query(`
+          INSERT INTO process_inward_items
+            (inward_id, seq_no, outward_item_id, item_id, item_code, item_name, hsn,
+             qty, unit, rate, taxable_amount, cgst_rate, sgst_rate, igst_rate,
+             cgst_amount, sgst_amount, igst_amount, amount)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        `, [hdr.id, i+1, it.outward_item_id||null, it.item_id||null,
+            it.item_code||"", it.item_name||"", it.hsn||"",
+            parseFloat(it.qty||0), it.unit||"", parseFloat(it.rate||0),
+            parseFloat(it.taxable_amount||0),
+            parseFloat(it.cgst_rate||0), parseFloat(it.sgst_rate||0), parseFloat(it.igst_rate||0),
+            parseFloat(it.cgst_amount||0), parseFloat(it.sgst_amount||0), parseFloat(it.igst_amount||0),
+            parseFloat(it.amount||0)]);
+      }
+
+      // ── Accounting posting ──────────────────────────────────────────────
+      const totalAmt = parseFloat(b.total_amount || 0);
+      if (totalAmt > 0 && (b.expense_gl_id || b.supplier_id)) {
+        const fyRes = await client.query(`SELECT id, label FROM financial_years WHERE is_current=true LIMIT 1`);
+        const fy = fyRes.rows[0] || { id: null, label: "" };
+        const jvNo = await generateVoucherNo("process_inward_voucher", client);
+        const narration = `Process Inward ${voucher_no} - ${b.supplier_invoice_no || ""}`;
+
+        // Get supplier sub_ledger_id
+        let supplierSlId: string | null = null;
+        let supplierGlId: string | null = null;
+        if (b.supplier_id) {
+          const slRes = await client.query(`SELECT sub_ledger_id FROM suppliers WHERE id=$1 LIMIT 1`, [b.supplier_id]);
+          supplierSlId = slRes.rows[0]?.sub_ledger_id || null;
+          if (supplierSlId) {
+            const glRes = await client.query(`SELECT general_ledger_id FROM sub_ledgers WHERE id=$1 LIMIT 1`, [supplierSlId]);
+            supplierGlId = glRes.rows[0]?.general_ledger_id || null;
+          }
+        }
+        const expenseGlId = b.expense_gl_id || null;
+
+        // voucher_mas for expense/supplier posting
+        const vmRes = await client.query(`
+          INSERT INTO voucher_mas
+            (voucher_no, voucher_type, voucher_date, ref_no, ref_date,
+             financial_year_id, financial_year, total_amount, taxable_amount, tax_amount,
+             narration, source_type, source_id)
+          VALUES ($1,'Purchase Voucher',$2,$3,$4,$5,$6,$7,$8,$9,$10,'process_inward',$11)
+          RETURNING id
+        `, [jvNo, b.inward_date || new Date().toISOString().slice(0,10),
+            b.supplier_invoice_no || jvNo, b.supplier_invoice_date || b.inward_date || null,
+            fy.id, fy.label, totalAmt.toFixed(2), parseFloat(b.taxable_amount||0).toFixed(2),
+            (parseFloat(b.cgst_amount||0) + parseFloat(b.sgst_amount||0) + parseFloat(b.igst_amount||0)).toFixed(2),
+            narration, hdr.id]);
+        const vmId = vmRes.rows[0].id;
+
+        // DR: Expense GL
+        if (expenseGlId) {
+          await client.query(`INSERT INTO voucher_det (voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration) VALUES ($1,1,$2,null,'DR',$3,$4)`,
+            [vmId, expenseGlId, totalAmt.toFixed(2), narration]);
+        }
+        // CR: Supplier sub-ledger
+        if (supplierGlId) {
+          await client.query(`INSERT INTO voucher_det (voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration) VALUES ($1,2,$2,$3,'CR',$4,$5)`,
+            [vmId, supplierGlId, supplierSlId, totalAmt.toFixed(2), narration]);
+        }
+
+        // If immediate payment (Cash/Bank) — add payment voucher too
+        if (b.payment_mode !== "Credit" && b.payment_account_id) {
+          const pvNo = await generateVoucherNo("process_payment_voucher", client);
+          const pvNarration = `Payment for Process Inward ${voucher_no}`;
+          const pvRes = await client.query(`
+            INSERT INTO voucher_mas
+              (voucher_no, voucher_type, voucher_date, ref_no, financial_year_id, financial_year,
+               total_amount, taxable_amount, narration, source_type, source_id)
+            VALUES ($1,'Payment',$2,$3,$4,$5,$6,$7,$8,'process_inward_payment',$9) RETURNING id
+          `, [pvNo, b.inward_date || new Date().toISOString().slice(0,10), jvNo,
+              fy.id, fy.label, totalAmt.toFixed(2), totalAmt.toFixed(2), pvNarration, hdr.id]);
+          const pvId = pvRes.rows[0].id;
+
+          // DR: Supplier (debit supplier to settle the payable)
+          if (supplierGlId) {
+            await client.query(`INSERT INTO voucher_det (voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration) VALUES ($1,1,$2,$3,'DR',$4,$5)`,
+              [pvId, supplierGlId, supplierSlId, totalAmt.toFixed(2), pvNarration]);
+          }
+          // CR: Bank/Cash GL
+          await client.query(`INSERT INTO voucher_det (voucher_mas_id,seq_no,general_ledger_id,sub_ledger_id,dr_cr,amount,narration) VALUES ($1,2,$2,null,'CR',$3,$4)`,
+            [pvId, b.payment_account_id, totalAmt.toFixed(2), pvNarration]);
+        }
+
+        await client.query(`UPDATE process_inward SET voucher_mas_id=$1 WHERE id=$2`, [vmId, hdr.id]);
+      }
+
+      await client.query("COMMIT");
+      res.json({ ...hdr, voucher_no });
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.patch("/api/process-inward/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const b = req.body;
+      const hRes = await client.query(`
+        UPDATE process_inward SET
+          inward_date=$1, outward_id=$2, supplier_id=$3, supplier_name_manual=$4,
+          supplier_invoice_no=$5, supplier_invoice_date=$6,
+          taxable_amount=$7, cgst_amount=$8, sgst_amount=$9, igst_amount=$10, total_amount=$11,
+          payment_mode=$12, payment_account_id=$13, expense_gl_id=$14, notes=$15
+        WHERE id=$16 RETURNING *
+      `, [b.inward_date, b.outward_id||null, b.supplier_id||null, b.supplier_name_manual||"",
+          b.supplier_invoice_no||"", b.supplier_invoice_date||null,
+          parseFloat(b.taxable_amount||0), parseFloat(b.cgst_amount||0),
+          parseFloat(b.sgst_amount||0), parseFloat(b.igst_amount||0), parseFloat(b.total_amount||0),
+          b.payment_mode||"Credit", b.payment_account_id||null, b.expense_gl_id||null,
+          b.notes||"", req.params.id]);
+      await client.query(`DELETE FROM process_inward_items WHERE inward_id=$1`, [req.params.id]);
+      for (let i = 0; i < (b.items || []).length; i++) {
+        const it = b.items[i];
+        await client.query(`
+          INSERT INTO process_inward_items
+            (inward_id, seq_no, outward_item_id, item_id, item_code, item_name, hsn,
+             qty, unit, rate, taxable_amount, cgst_rate, sgst_rate, igst_rate,
+             cgst_amount, sgst_amount, igst_amount, amount)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        `, [req.params.id, i+1, it.outward_item_id||null, it.item_id||null,
+            it.item_code||"", it.item_name||"", it.hsn||"",
+            parseFloat(it.qty||0), it.unit||"", parseFloat(it.rate||0),
+            parseFloat(it.taxable_amount||0),
+            parseFloat(it.cgst_rate||0), parseFloat(it.sgst_rate||0), parseFloat(it.igst_rate||0),
+            parseFloat(it.cgst_amount||0), parseFloat(it.sgst_amount||0), parseFloat(it.igst_amount||0),
+            parseFloat(it.amount||0)]);
+      }
+      await client.query("COMMIT");
+      res.json(hRes.rows[0]);
+    } catch (e: any) { await client.query("ROLLBACK"); res.status(400).json({ message: e.message }); }
+    finally { client.release(); }
+  });
+
+  app.delete("/api/process-inward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await pool.query(`DELETE FROM process_inward_items WHERE inward_id=$1`, [req.params.id]);
+      await pool.query(`DELETE FROM process_inward WHERE id=$1`, [req.params.id]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
+  // Reprint process inward
+  app.get("/api/reprint/process_inward/:id", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const hdr = (await pool.query(`
+        SELECT pi.*, COALESCE(s.name, pi.supplier_name_manual) AS supplier_name,
+               s.address1 AS supplier_address1, s.address2 AS supplier_address2,
+               s.city AS supplier_city, s.state AS supplier_state, s.pincode AS supplier_pincode,
+               s.gstin AS supplier_gstin,
+               po.voucher_no AS outward_voucher_no
+        FROM process_inward pi
+        LEFT JOIN suppliers s ON s.id = pi.supplier_id
+        LEFT JOIN process_outward po ON po.id = pi.outward_id
+        WHERE pi.id=$1
+      `, [req.params.id])).rows[0];
+      if (!hdr) return res.status(404).json({ message: "Not found" });
+      const items = (await pool.query(`SELECT * FROM process_inward_items WHERE inward_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+      const { buildProcessInwardHTML } = await import("../client/src/lib/printProcessInward");
+      const html = buildProcessInwardHTML({ ...hdr, items });
+      res.setHeader("Content-Type", "text/html");
+      res.send(html);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // Reports
+  app.get("/api/reports/process-outward-register", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { from, to } = req.query as any;
+      const rows = (await pool.query(`
+        SELECT po.voucher_no, po.outward_date, COALESCE(s.name, po.supplier_name_manual) AS supplier_name,
+               po.vehicle_no, po.purpose,
+               COALESCE(SUM(poi.qty), 0) AS total_qty,
+               COUNT(poi.id) AS item_count
+        FROM process_outward po
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
+        LEFT JOIN process_outward_items poi ON poi.outward_id = po.id
+        ${from ? `WHERE po.outward_date >= '${from}'` : "WHERE 1=1"}
+        ${to ? `AND po.outward_date <= '${to}'` : ""}
+        GROUP BY po.id, po.voucher_no, po.outward_date, s.name, po.supplier_name_manual, po.vehicle_no, po.purpose
+        ORDER BY po.outward_date DESC, po.voucher_no DESC
+      `)).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/reports/process-inward-register", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const { from, to, supplier_id } = req.query as any;
+      let where = "WHERE 1=1";
+      if (from) where += ` AND pi.inward_date >= '${from}'`;
+      if (to)   where += ` AND pi.inward_date <= '${to}'`;
+      if (supplier_id) where += ` AND pi.supplier_id = '${supplier_id}'`;
+      const rows = (await pool.query(`
+        SELECT pi.voucher_no, pi.inward_date, COALESCE(s.name, pi.supplier_name_manual) AS supplier_name,
+               pi.supplier_invoice_no, pi.supplier_invoice_date,
+               po.voucher_no AS outward_voucher_no,
+               pi.taxable_amount, pi.cgst_amount, pi.sgst_amount, pi.igst_amount, pi.total_amount,
+               pi.payment_mode, pi.status
+        FROM process_inward pi
+        LEFT JOIN suppliers s ON s.id = pi.supplier_id
+        LEFT JOIN process_outward po ON po.id = pi.outward_id
+        ${where}
+        ORDER BY pi.inward_date DESC, pi.voucher_no DESC
+      `)).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // Purge all MASTER data — also deletes transactions first
   app.post("/api/purge/masters", requireAuth, async (req, res) => {
     try {
