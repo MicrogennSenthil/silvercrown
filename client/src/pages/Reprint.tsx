@@ -489,15 +489,17 @@ export default function Reprint() {
     enabled: trigger > 0,
   });
 
-  const filtered = rows.filter(r => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      r.txn_no?.toLowerCase().includes(q) ||
-      r.party_name?.toLowerCase().includes(q) ||
-      r.txn_date?.includes(q)
-    );
-  });
+  const filtered = rows
+    .filter(r => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        r.txn_no?.toLowerCase().includes(q) ||
+        r.party_name?.toLowerCase().includes(q) ||
+        r.txn_date?.includes(q)
+      );
+    })
+    .sort((a, b) => new Date(b.txn_date).getTime() - new Date(a.txn_date).getTime());
 
   const totalPages  = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage    = Math.min(page, totalPages);
@@ -700,7 +702,7 @@ export default function Reprint() {
             </div>
 
             {/* Pagination */}
-            {!isLoading && filtered.length > PAGE_SIZE && (
+            {!isLoading && filtered.length > 0 && (
               <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50/40">
                 <span className="text-xs text-gray-500">
                   Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
