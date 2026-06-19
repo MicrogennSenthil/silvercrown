@@ -4537,7 +4537,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const rows = (await pool.query(`
         SELECT
           i.id AS inward_item_id,
-          i.item_id, i.item_code, i.item_name, i.unit,
+          i.item_id, i.item_code, i.item_name,
+          COALESCE(NULLIF(i.unit,''), NULLIF(prod.uom,''), NULLIF(prod.unit,''), '') AS unit,
           i.process, i.process_id, i.hsn, i.remark,
           COALESCE(p.price, 0) AS process_price,
           i.qty AS qty_inward,
@@ -4553,7 +4554,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         WHERE i.inward_id = $1
         GROUP BY i.id, i.item_id, i.item_code, i.item_name, i.unit,
                  i.process, i.process_id, i.hsn, i.remark, p.price, i.qty,
-                 prod.cgst_rate, prod.sgst_rate, prod.igst_rate
+                 prod.cgst_rate, prod.sgst_rate, prod.igst_rate, prod.uom, prod.unit
         ORDER BY i.seq_no
       `, [req.params.id])).rows;
       res.json(rows);

@@ -402,7 +402,7 @@ function ScanItemVerifyModal({
   function selectMasterItem(rowKey: string, item: any) {
     setRows(prev => prev.map(r => r._key === rowKey ? {
       ...r, item_id: item.id, item_code: item.code, item_name: item.name,
-      unit: (item.uom || r.unit || "").toUpperCase(),
+      unit: (item.unit || item.uom || r.unit || "").toUpperCase(),
       hsn: item.hsnCode || item.hsn_code || r.hsn,
     } : r));
     setItemSearch(prev => ({ ...prev, [rowKey]: item.name }));
@@ -685,7 +685,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     }
     setItems(prev => prev.map(r => r._key === rowKey ? {
       ...r, item_id: item.id, item_code: item.code, item_name: item.name,
-      unit: (item.uom || r.unit || "").toUpperCase(), hsn: item.hsnCode || item.hsn_code || r.hsn,
+      unit: (item.unit || item.uom || r.unit || "").toUpperCase(), hsn: item.hsnCode || item.hsn_code || r.hsn,
     } : r));
     setItemSearch(prev => ({ ...prev, [rowKey]: item.name }));
     setItemDropOpen(null);
