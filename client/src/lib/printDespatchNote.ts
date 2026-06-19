@@ -181,7 +181,7 @@ export function buildDespatchNoteHTML(doc: any): string {
         <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:5%">Sl<br>No</th>
         <th style="border:1px solid #000;padding:3px 6px;text-align:left">Description of Services</th>
         <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:10%">HSN/SAC</th>
-        <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:8%">Unit</th>
+        <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:8%">UOM</th>
         <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:12%">Quantity</th>
       </tr>
     </thead>
