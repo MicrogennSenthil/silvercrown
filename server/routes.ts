@@ -3426,7 +3426,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         if (!h) return res.status(404).json({ message: "Not found" });
         const items = (await pool.query(`
           SELECT di.*,
-            COALESCE(NULLIF(di.unit,''), jwii.unit, '') AS unit
+            COALESCE(NULLIF(di.unit,''), NULLIF(jwii.unit,''), '') AS unit
           FROM job_work_despatch_items di
           LEFT JOIN job_work_inward_items jwii ON jwii.id = di.inward_item_id
           WHERE di.despatch_id=$1 ORDER BY di.seq_no
@@ -4519,7 +4519,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         WHERE d.id=$1
       `, [req.params.id])).rows;
       if (!header) return res.status(404).json({ message: "Not found" });
-      const items = (await pool.query(`SELECT * FROM job_work_despatch_items WHERE despatch_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+      const items = (await pool.query(`
+        SELECT di.*,
+          COALESCE(NULLIF(di.unit,''), NULLIF(jwii.unit,''), '') AS unit
+        FROM job_work_despatch_items di
+        LEFT JOIN job_work_inward_items jwii ON jwii.id = di.inward_item_id
+        WHERE di.despatch_id=$1 ORDER BY di.seq_no
+      `, [req.params.id])).rows;
       res.json({ ...header, items });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
