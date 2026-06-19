@@ -172,7 +172,10 @@ export function buildDespatchNoteHTML(doc: any): string {
   </table>
 
   <!-- ITEMS TABLE (fills remaining space) -->
-  <table class="items-table" style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:10px">
+  <!-- Wrapper div takes flex:1 and draws the outer border — avoids the ghost mid-table
+       horizontal line that appears when flex:1 is applied directly to a <table> element -->
+  <div class="items-table" style="border:1px solid #000;border-top:none;overflow:hidden">
+  <table style="width:100%;border-collapse:collapse;font-size:10px">
     <thead>
       <tr style="background:#f0f0f0">
         <th style="border:1px solid #000;padding:3px 6px;text-align:center;width:5%">Sl<br>No</th>
@@ -195,6 +198,7 @@ export function buildDespatchNoteHTML(doc: any): string {
       </tr>
     </tfoot>
   </table>
+  </div>
 
   <!-- SIGNATURES -->
   <table style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:9px">
