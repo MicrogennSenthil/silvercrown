@@ -216,7 +216,7 @@ export function buildDespatchNoteHTML(doc: any): string {
           </td>
           <td style="border-right:1px solid #000;padding:4px 8px;width:34%;vertical-align:top">
             <div style="font-size:7.5px;font-weight:700;margin-bottom:3px">DUPLICATE FOR TRANSPORTER</div>
-            for SILVER CROWN METAL COATINGS<br><br><br>
+            <br><br><br>
             <div style="border-top:1px solid #000;padding-top:3px;text-align:center;font-size:8.5px">Prepared by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Verified by</div>
           </td>
           <td style="padding:4px 8px;width:33%;vertical-align:top">

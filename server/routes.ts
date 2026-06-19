@@ -3424,7 +3424,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           WHERE jwd.id=$1
         `, [id])).rows[0];
         if (!h) return res.status(404).json({ message: "Not found" });
-        const items = (await pool.query(`SELECT * FROM job_work_despatch_items WHERE despatch_id=$1 ORDER BY seq_no`, [id])).rows;
+        const items = (await pool.query(`
+          SELECT di.*,
+            COALESCE(NULLIF(di.unit,''), jwii.unit, '') AS unit
+          FROM job_work_despatch_items di
+          LEFT JOIN job_work_inward_items jwii ON jwii.id = di.inward_item_id
+          WHERE di.despatch_id=$1 ORDER BY di.seq_no
+        `, [id])).rows;
         return res.json({ ...h, items });
 
       } else if (type === "purchase_order") {
