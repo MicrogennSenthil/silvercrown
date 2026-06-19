@@ -88,40 +88,41 @@ export function buildTaxInvoiceHTML(
       // ── Sub-detail sections (shown below item name) ──────────────────
       const sections: string[] = [];
 
-      // Section 1: packing details / remark
-      const packing = (it.packing_details || it.remark || "").trim();
-      if (packing) sections.push(packing);
-
-      // Section 2: DC No + PO No + WO No with dates
+      // Section 1: DC No + PO No + WO No with dates
       const dcNo   = (it.party_dc || it.dc_no_from_inward || "").trim();
       const dcDate = it.dc_date ? fmtDate(it.dc_date) : "";
       const poNo   = (it.po_no || it.po_no_from_inward || "").trim();
+      const poDate = it.po_date ? fmtDate(it.po_date) : "";
       const woNo   = (it.work_order_no || "").trim();
-      const refDate = it.inward_entry_date ? fmtDate(it.inward_entry_date) : "";
       const dcPoLines: string[] = [];
       if (dcNo) dcPoLines.push(`DC.NO.: ${dcNo}${dcDate ? " &ndash; " + dcDate : ""}`);
-      if (poNo) dcPoLines.push(`PO.NO.: ${poNo}${refDate ? " &ndash; " + refDate : ""}`);
-      if (woNo) dcPoLines.push(`WO.NO.: ${woNo}${refDate ? " &ndash; " + refDate : ""}`);
+      if (poNo) dcPoLines.push(`PO.NO.: ${poNo}${poDate ? " &ndash; " + poDate : ""}`);
+      if (woNo) dcPoLines.push(`WO.NO.: ${woNo}`);
       if (dcPoLines.length) sections.push(dcPoLines.join("<br>"));
 
-      // Section 3: process name
+      // Section 2: process name
       const process = (it.process || "").trim();
       if (process) sections.push(process);
 
+      // Section 3: packing details / remark (always last)
+      const packing = (it.packing_details || it.remark || "").trim();
+      if (packing) sections.push(packing);
+
       const subHTML = sections.length
-        ? `<div style="font-size:9px;color:#333;margin-top:3px;line-height:1.6">
+        ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6">
              ${sections.join(`<div style="color:#aaa;margin:1px 0">&ndash;</div>`)}
            </div>`
         : "";
 
+      const tdB = "border-left:1px solid #000;border-right:1px solid #000;padding:4px 6px;vertical-align:top";
       return `<tr>
-        <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:4%">${idx + 1}</td>
-        <td style="border:1px solid #000;padding:3px 5px;vertical-align:top"><strong>${desc}</strong>${subHTML}</td>
-        <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:9%">${it.resolved_hsn || it.hsn || ""}</td>
-        <td style="border:1px solid #000;padding:3px 5px;text-align:right;vertical-align:top;width:10%">${qty > 0 ? qty.toFixed(2) + " " + (it.unit || "") : "&nbsp;"}</td>
-        <td style="border:1px solid #000;padding:3px 5px;text-align:right;vertical-align:top;width:9%">${rate > 0 ? rate.toFixed(2) : "&nbsp;"}</td>
-        <td style="border:1px solid #000;padding:3px 5px;text-align:center;vertical-align:top;width:7%">${it.unit || ""}</td>
-        <td style="border:1px solid #000;padding:3px 5px;text-align:right;vertical-align:top;width:10%">${amt > 0 ? fmtAmt(amt) : "&nbsp;"}</td>
+        <td style="${tdB};text-align:center;width:4%">${idx + 1}</td>
+        <td style="${tdB}"><strong>${desc}</strong>${subHTML}</td>
+        <td style="${tdB};text-align:center;width:9%">${it.resolved_hsn || it.hsn || ""}</td>
+        <td style="${tdB};text-align:right;width:10%">${qty > 0 ? qty.toFixed(2) + " " + (it.unit || "") : "&nbsp;"}</td>
+        <td style="${tdB};text-align:right;width:9%">${rate > 0 ? rate.toFixed(2) : "&nbsp;"}</td>
+        <td style="${tdB};text-align:center;width:7%">${it.unit || ""}</td>
+        <td style="${tdB};text-align:right;width:10%">${amt > 0 ? fmtAmt(amt) : "&nbsp;"}</td>
       </tr>`;
     }).join("\n");
   }
@@ -132,29 +133,29 @@ export function buildTaxInvoiceHTML(
     ...[...cgstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
         <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left;font-size:9.5px">CGST Output ${r}%</td>
-        <td style="border:1px solid #000;padding:2px 5px;text-align:right;font-size:9.5px">${fmtAmt(a)}</td>
+        <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left">CGST Output ${r}%</td>
+        <td style="border:1px solid #000;padding:2px 5px;text-align:right">${fmtAmt(a)}</td>
       </tr>`
     ),
     ...[...sgstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
         <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left;font-size:9.5px">SGST Output ${r}%</td>
-        <td style="border:1px solid #000;padding:2px 5px;text-align:right;font-size:9.5px">${fmtAmt(a)}</td>
+        <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left">SGST Output ${r}%</td>
+        <td style="border:1px solid #000;padding:2px 5px;text-align:right">${fmtAmt(a)}</td>
       </tr>`
     ),
     ...[...igstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
         <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left;font-size:9.5px">IGST Output ${r}%</td>
-        <td style="border:1px solid #000;padding:2px 5px;text-align:right;font-size:9.5px">${r} %&nbsp;&nbsp;&nbsp;&nbsp;${fmtAmt(a)}</td>
+        <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left">IGST Output ${r}%</td>
+        <td style="border:1px solid #000;padding:2px 5px;text-align:right">${r} %&nbsp;&nbsp;&nbsp;&nbsp;${fmtAmt(a)}</td>
       </tr>`
     ),
     ...(chargesAmt > 0 ? charges.map(ch =>
       `<tr>
         <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
-        <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left;font-size:9.5px">${ch.charge_name || "Other Charges"}</td>
-        <td style="border:1px solid #000;padding:2px 5px;text-align:right;font-size:9.5px">${fmtAmt(parseFloat(ch.amount || "0"))}</td>
+        <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left">${ch.charge_name || "Other Charges"}</td>
+        <td style="border:1px solid #000;padding:2px 5px;text-align:right">${fmtAmt(parseFloat(ch.amount || "0"))}</td>
       </tr>`
     ) : []),
   ].join("\n");
@@ -205,7 +206,7 @@ export function buildTaxInvoiceHTML(
             <td colspan="2" style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Delivery Note</td>
           </tr>
           <tr>
-            <td colspan="2" style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${deliveryNoteNo || "&nbsp;"}</td>
+            <td colspan="2" style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">&nbsp;</td>
           </tr>
           <tr>
             <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Dispatch Doc No.</td>
@@ -237,7 +238,7 @@ export function buildTaxInvoiceHTML(
       </td>
     </tr>
   </table>
-  <table class="items-table" style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:10px">
+  <table class="items-table" style="width:100%;border-collapse:collapse;border:1px solid #000;border-top:none;font-size:12px">
     <thead>
       <tr style="background:#f0f0f0">
         <th style="border:1px solid #000;padding:3px 5px;text-align:center;width:4%">Sl<br>No.</th>
@@ -263,8 +264,8 @@ export function buildTaxInvoiceHTML(
       </tr>
       <!-- taxable sub-total -->
       <tr>
-        <td colspan="6" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px;text-align:right">
-          ${doc.remark ? `<div style="font-size:9.5px;text-align:left">${doc.remark}</div>` : ""}
+        <td colspan="6" style="border-left:1px solid #000;border-right:1px solid #000;border-top:1px solid #000;padding:2px 5px;text-align:right">
+          ${doc.remark ? `<div style="font-size:10px;text-align:left">${doc.remark}</div>` : ""}
         </td>
         <td style="border:1px solid #000;padding:3px 5px;text-align:right;font-weight:600">${fmtAmt(taxable)}</td>
       </tr>
@@ -356,7 +357,7 @@ export function buildTaxInvoiceHTML(
 <title>Tax Invoice — ${doc.voucher_no || ""}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 10px; color: #000; background: #fff; }
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #000; background: #fff; }
   .ti-copy {
     width: 210mm;
     height: 297mm;
