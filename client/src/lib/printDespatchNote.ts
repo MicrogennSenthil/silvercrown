@@ -48,7 +48,7 @@ export function buildDespatchNoteHTML(doc: any): string {
           ${subHTML}
         </td>
         <td style="${itemTd};text-align:center;width:10%">${it.hsn || ""}</td>
-        <td style="${itemTd};text-align:center;width:8%">${it.unit || ""}</td>
+        <td style="${itemTd};text-align:center;width:8%">${it.unit || it.uom_code || ""}</td>
         <td style="${itemTd};text-align:center;width:12%">${qty > 0 ? qty.toFixed(3) : "&nbsp;"}</td>
       </tr>`);
     });
@@ -73,7 +73,7 @@ export function buildDespatchNoteHTML(doc: any): string {
     [doc.customer_city, doc.customer_state].filter(Boolean).join(", "),
   ].filter(Boolean).join("<br>");
 
-  function buildCopy(copyLabel: string) {
+  function buildCopy() {
     return `<div class="dn-copy">
 <!--
   Outer table fills the full A4 height. The items row uses height:100% to claim
@@ -87,8 +87,6 @@ export function buildDespatchNoteHTML(doc: any): string {
   <tr>
     <td style="padding:4px 8px;border-bottom:1px solid #000;text-align:center">
       <span style="font-weight:700;font-size:14px">Despatch Note</span>
-      &nbsp;&nbsp;
-      <span style="font-size:9.5px;font-style:italic">(${copyLabel})</span>
     </td>
   </tr>
 
@@ -206,20 +204,23 @@ export function buildDespatchNoteHTML(doc: any): string {
     </td>
   </tr>
 
-  <!-- ⑤ SIGNATURES -->
+  <!-- ⑤ SIGNATURES — all three copy labels shown in one row -->
   <tr>
     <td style="padding:0;border-bottom:1px solid #000">
       <table style="width:100%;border-collapse:collapse;font-size:9px">
         <tr>
-          <td style="border-right:1px solid #000;padding:5px 8px;width:33%;vertical-align:top">
+          <td style="border-right:1px solid #000;padding:4px 8px;width:33%;vertical-align:top">
+            <div style="font-size:7.5px;font-weight:700;margin-bottom:3px">ORIGINAL FOR CONSIGNEE</div>
             Recd. in Good Condition<br><br><br>
             <div style="border-top:1px solid #000;padding-top:3px;text-align:center;font-size:8.5px">Receiver's Signature</div>
           </td>
-          <td style="border-right:1px solid #000;padding:5px 8px;width:34%;vertical-align:top">
+          <td style="border-right:1px solid #000;padding:4px 8px;width:34%;vertical-align:top">
+            <div style="font-size:7.5px;font-weight:700;margin-bottom:3px">DUPLICATE FOR TRANSPORTER</div>
             for SILVER CROWN METAL COATINGS<br><br><br>
             <div style="border-top:1px solid #000;padding-top:3px;text-align:center;font-size:8.5px">Prepared by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Verified by</div>
           </td>
-          <td style="padding:5px 8px;width:33%;vertical-align:top">
+          <td style="padding:4px 8px;width:33%;vertical-align:top">
+            <div style="font-size:7.5px;font-weight:700;margin-bottom:3px">TRIPLICATE FOR CONSIGNER</div>
             for SILVER CROWN METAL COATINGS<br><br><br>
             <div style="border-top:1px solid #000;padding-top:3px;text-align:center;font-size:8.5px">Authorised Signatory</div>
           </td>
@@ -240,13 +241,7 @@ export function buildDespatchNoteHTML(doc: any): string {
 </div>`;
   }
 
-  const copies = [
-    "ORIGINAL FOR CONSIGNEE",
-    "DUPLICATE FOR TRANSPORTER",
-    "TRIPLICATE FOR CONSIGNER",
-  ];
-
-  const copiesHTML = copies.map((label) => buildCopy(label)).join("\n");
+  const copiesHTML = buildCopy();
 
   return `<!DOCTYPE html>
 <html>
