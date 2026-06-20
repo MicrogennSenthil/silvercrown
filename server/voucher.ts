@@ -19,6 +19,8 @@ const TYPE_TABLE: Record<string, string> = {
   goods_receipt_return:     "goods_receipt_returns",
   phy_reconciliation:       "phy_reconciliations",
   manual_voucher:           "manual_vouchers",
+  process_outward:          "process_outward",
+  process_inward:           "process_inward",
 };
 
 export async function generateVoucherNo(
