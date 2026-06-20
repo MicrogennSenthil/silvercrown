@@ -50,6 +50,65 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // ── Auto-migrate: ensure process-module tables exist ──────────────
+  try {
+    const { pool } = await import("./db");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS processes (
+        id TEXT DEFAULT gen_random_uuid() PRIMARY KEY,
+        code TEXT, name TEXT, price NUMERIC(14,3) DEFAULT 0,
+        is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS process_outward (
+        id TEXT DEFAULT gen_random_uuid() PRIMARY KEY,
+        voucher_no TEXT, outward_date DATE,
+        supplier_id TEXT, supplier_name_manual TEXT,
+        vehicle_no TEXT, purpose TEXT, notes TEXT, status TEXT,
+        is_returnable BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW()
+      );
+      ALTER TABLE process_outward ADD COLUMN IF NOT EXISTS is_returnable BOOLEAN DEFAULT FALSE;
+      CREATE TABLE IF NOT EXISTS process_outward_items (
+        id TEXT DEFAULT gen_random_uuid() PRIMARY KEY,
+        outward_id TEXT, seq_no INTEGER DEFAULT 0,
+        customer_ref TEXT, item_id TEXT, item_code TEXT,
+        item_name TEXT, drawing_no TEXT, hsn TEXT,
+        process_nature TEXT, bill_ref TEXT,
+        qty NUMERIC(14,3) DEFAULT 0, unit TEXT
+      );
+      CREATE TABLE IF NOT EXISTS process_inward (
+        id TEXT DEFAULT gen_random_uuid() PRIMARY KEY,
+        voucher_no TEXT, inward_date DATE, outward_id TEXT,
+        supplier_id TEXT, supplier_name_manual TEXT,
+        supplier_invoice_no TEXT, supplier_invoice_date DATE,
+        taxable_amount NUMERIC(14,3) DEFAULT 0, cgst_amount NUMERIC(14,3) DEFAULT 0,
+        sgst_amount NUMERIC(14,3) DEFAULT 0, igst_amount NUMERIC(14,3) DEFAULT 0,
+        total_amount NUMERIC(14,3) DEFAULT 0, payment_mode TEXT,
+        payment_account_id TEXT, expense_gl_id TEXT,
+        notes TEXT, status TEXT, voucher_mas_id TEXT, created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS process_inward_items (
+        id TEXT DEFAULT gen_random_uuid() PRIMARY KEY,
+        inward_id TEXT, seq_no INTEGER DEFAULT 0, outward_item_id TEXT,
+        item_id TEXT, item_code TEXT, item_name TEXT, hsn TEXT,
+        qty NUMERIC(14,3) DEFAULT 0, unit TEXT, rate NUMERIC(14,3) DEFAULT 0,
+        taxable_amount NUMERIC(14,3) DEFAULT 0,
+        cgst_rate NUMERIC(14,3) DEFAULT 0, sgst_rate NUMERIC(14,3) DEFAULT 0,
+        igst_rate NUMERIC(14,3) DEFAULT 0, cgst_amount NUMERIC(14,3) DEFAULT 0,
+        sgst_amount NUMERIC(14,3) DEFAULT 0, igst_amount NUMERIC(14,3) DEFAULT 0,
+        amount NUMERIC(14,3) DEFAULT 0
+      );
+      INSERT INTO voucher_series (transaction_type, transaction_label, prefix, digits, starting_number, current_number, is_active)
+      SELECT 'process_outward','Process Outward DC','PO-DC',4,1,1,true
+      WHERE NOT EXISTS (SELECT 1 FROM voucher_series WHERE transaction_type='process_outward');
+      INSERT INTO voucher_series (transaction_type, transaction_label, prefix, digits, starting_number, current_number, is_active)
+      SELECT 'process_inward','Process Inward Invoice','PI',4,1,1,true
+      WHERE NOT EXISTS (SELECT 1 FROM voucher_series WHERE transaction_type='process_inward');
+    `);
+    log("Process tables ready", "migrate");
+  } catch (e: any) {
+    console.error("[migrate] Process tables setup error:", e.message);
+  }
+
   setupAuth(app);
   await registerRoutes(httpServer, app);
 
