@@ -178,12 +178,12 @@ export function buildProcessOutwardHTML(doc: any): string {
         <tr>
           <td style="border-right:1px solid #000;padding:6px 8px;width:45%;vertical-align:bottom">
             Recd. in Good Condition<br><br><br>
-            <div style="border-top:1px solid #000;padding-top:3px;text-align:center;font-size:8.5px">Receiver's Signature</div>
+            <div style="padding-top:3px;text-align:center;font-size:8.5px">Receiver's Signature</div>
           </td>
           <td style="padding:6px 8px;width:55%;vertical-align:top">
             <div style="text-align:center;font-weight:700;font-size:9px;margin-bottom:6px">for SILVER CROWN METAL COATINGS</div>
             <br><br><br>
-            <div style="border-top:1px solid #000;padding-top:3px;display:flex;justify-content:space-between;font-size:8.5px">
+            <div style="padding-top:3px;display:flex;justify-content:space-between;font-size:8.5px">
               <span>Prepared by</span><span>Checked by</span><span>Authorised Signatory</span>
             </div>
           </td>
