@@ -555,9 +555,17 @@ export default function ProcessInward() {
     if (w) { w.document.write(buildProcessInwardHTML(doc)); w.document.close(); setTimeout(() => w.print(), 600); }
   }
 
-  function openNew()        { setEditData(null); setView("form"); }
-  function openEdit(r: any) { setEditData(r);    setView("form"); }
-  function back()           { setEditData(null); setView("list"); qc.invalidateQueries({ queryKey: ["/api/process-inward"] }); }
+  function openNew() { setEditData(null); setView("form"); }
+  async function openEdit(r: any) {
+    try {
+      const full = await fetch(`/api/process-inward/${r.id}`, { credentials: "include" }).then(res => res.json());
+      setEditData(full);
+    } catch {
+      setEditData(r);
+    }
+    setView("form");
+  }
+  function back() { setEditData(null); setView("list"); qc.invalidateQueries({ queryKey: ["/api/process-inward"] }); }
 
   if (view === "form") return <PiForm editData={editData} onBack={back} />;
 

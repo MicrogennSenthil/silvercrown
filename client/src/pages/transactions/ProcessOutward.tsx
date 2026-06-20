@@ -517,9 +517,17 @@ export default function ProcessOutward() {
     if (w) { w.document.write(buildProcessOutwardHTML(doc)); w.document.close(); setTimeout(() => w.print(), 600); }
   }
 
-  function openNew()        { setEditData(null); setView("form"); }
-  function openEdit(r: any) { setEditData(r);    setView("form"); }
-  function back()           { setEditData(null); setView("list"); qc.invalidateQueries({ queryKey: ["/api/process-outward"] }); }
+  function openNew() { setEditData(null); setView("form"); }
+  async function openEdit(r: any) {
+    try {
+      const full = await fetch(`/api/process-outward/${r.id}`, { credentials: "include" }).then(res => res.json());
+      setEditData(full);
+    } catch {
+      setEditData(r);
+    }
+    setView("form");
+  }
+  function back() { setEditData(null); setView("list"); qc.invalidateQueries({ queryKey: ["/api/process-outward"] }); }
 
   if (view === "form") return <PoForm editData={editData} onBack={back} />;
 
