@@ -2,7 +2,8 @@
 // Run this on the VPS once to create all process-related tables:
 // node script/migrate-vps.js
 
-const { Pool } = require("pg");
+import pg from "pg";
+const { Pool } = pg;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -40,10 +41,7 @@ const migrations = [
   },
   {
     name: "process_outward.is_returnable column (safe add)",
-    sql: `
-      ALTER TABLE process_outward
-        ADD COLUMN IF NOT EXISTS is_returnable BOOLEAN DEFAULT FALSE
-    `,
+    sql: `ALTER TABLE process_outward ADD COLUMN IF NOT EXISTS is_returnable BOOLEAN DEFAULT FALSE`,
   },
   {
     name: "process_outward_items",
@@ -123,9 +121,7 @@ const migrations = [
     sql: `
       INSERT INTO voucher_series (transaction_type, transaction_label, prefix, digits, starting_number, current_number, is_active)
       SELECT 'process_outward','Process Outward DC','PO-DC',4,1,1,true
-      WHERE NOT EXISTS (
-        SELECT 1 FROM voucher_series WHERE transaction_type = 'process_outward'
-      )
+      WHERE NOT EXISTS (SELECT 1 FROM voucher_series WHERE transaction_type = 'process_outward')
     `,
   },
   {
@@ -133,9 +129,7 @@ const migrations = [
     sql: `
       INSERT INTO voucher_series (transaction_type, transaction_label, prefix, digits, starting_number, current_number, is_active)
       SELECT 'process_inward','Process Inward Invoice','PI',4,1,1,true
-      WHERE NOT EXISTS (
-        SELECT 1 FROM voucher_series WHERE transaction_type = 'process_inward'
-      )
+      WHERE NOT EXISTS (SELECT 1 FROM voucher_series WHERE transaction_type = 'process_inward')
     `,
   },
 ];
