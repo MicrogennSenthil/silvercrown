@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Printer, PencilLine, Search, ChevronDown, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,28 @@ function newRow(): PoItem {
     drawing_no: "", hsn: "", process_nature: "",
     bill_ref: "", qty: "", unit: "",
   };
+}
+
+/* ── PortalDropdown: renders dropdown via fixed position to escape overflow ── */
+function PortalDropdown({ anchorEl, open, minWidth = 240, children }: {
+  anchorEl: HTMLElement | null; open: boolean; minWidth?: number; children: React.ReactNode;
+}) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  useEffect(() => {
+    if (open && anchorEl) setRect(anchorEl.getBoundingClientRect());
+  }, [open, anchorEl]);
+  if (!open || !rect) return null;
+  return createPortal(
+    <div style={{
+      position: "fixed", zIndex: 9999,
+      top: rect.bottom + 2, left: rect.left,
+      minWidth: Math.max(minWidth, rect.width),
+    }}
+      className="bg-white border border-[#027fa5]/30 rounded-xl shadow-2xl overflow-hidden">
+      {children}
+    </div>,
+    document.body
+  );
 }
 
 /* ── SearchCombo: reusable searchable dropdown ──────────────────────── */
@@ -119,6 +142,11 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const [custDropOpen,  setCustDropOpen]  = useState<string | null>(null);
   const [procSearch,    setProcSearch]    = useState<Record<string, string>>({});
   const [procDropOpen,  setProcDropOpen]  = useState<string | null>(null);
+
+  // Refs for portal dropdown anchors (per row key)
+  const custRefs = useRef<Record<string, HTMLElement | null>>({});
+  const itemRefs = useRef<Record<string, HTMLElement | null>>({});
+  const procRefs = useRef<Record<string, HTMLElement | null>>({});
 
   useEffect(() => {
     if (!isEdit && !voucherNo) {
@@ -315,8 +343,8 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                         <td className={`${cellCls} text-center text-gray-400 text-xs`}>{idx + 1}</td>
 
                         {/* Customer combo */}
-                        <td className={`${cellCls} relative`}>
-                          <div className="flex items-center gap-1">
+                        <td className={cellCls}>
+                          <div className="flex items-center gap-1" ref={el => { custRefs.current[row._key] = el; }}>
                             <input
                               value={custSearch[row._key] ?? row.customer_name}
                               onChange={e => {
@@ -331,32 +359,30 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                             />
                             <ChevronDown size={10} className="text-gray-300 flex-shrink-0" />
                           </div>
-                          {custDropOpen === row._key && (
-                            <div className="absolute z-50 left-0 top-full mt-0.5 bg-white border border-[#027fa5]/30 rounded-xl shadow-2xl overflow-hidden"
-                              style={{ minWidth: 260 }}>
-                              {filtCusts.length === 0 ? (
-                                <div className="px-4 py-3 text-sm text-gray-400 italic">No customers match</div>
-                              ) : (
-                                <div className="max-h-52 overflow-auto">
-                                  {filtCusts.slice(0, 25).map((c: any) => (
-                                    <div key={c.id} onMouseDown={() => selectCustomer(row._key, c)}
-                                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
-                                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                                        style={{ background: SC.primary }}>
-                                        {c.name?.charAt(0).toUpperCase()}
-                                      </div>
-                                      <span className="text-sm font-semibold text-gray-800">{c.name}</span>
+                          <PortalDropdown anchorEl={custRefs.current[row._key]} open={custDropOpen === row._key} minWidth={260}>
+                            {filtCusts.length === 0 ? (
+                              <div className="px-4 py-3 text-sm text-gray-400 italic">No customers match</div>
+                            ) : (
+                              <div className="max-h-52 overflow-auto">
+                                {filtCusts.slice(0, 25).map((c: any) => (
+                                  <div key={c.id} onMouseDown={() => selectCustomer(row._key, c)}
+                                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                                      style={{ background: SC.primary }}>
+                                      {c.name?.charAt(0).toUpperCase()}
                                     </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
+                                    <span className="text-sm font-semibold text-gray-800">{c.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </PortalDropdown>
                         </td>
 
                         {/* Item search */}
-                        <td className={`${cellCls} relative`}>
+                        <td className={cellCls}>
                           <input
+                            ref={el => { itemRefs.current[row._key] = el; }}
                             value={itemSearch[row._key] ?? row.item_name}
                             onChange={e => {
                               setItemSearch(p => ({ ...p, [row._key]: e.target.value }));
@@ -367,28 +393,25 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                             onBlur={() => setTimeout(() => setItemDropOpen(null), 200)}
                             className={inpCls} placeholder="Search item…"
                           />
-                          {itemDropOpen === row._key && (
-                            <div className="absolute z-50 left-0 top-full mt-0.5 bg-white border border-[#027fa5]/30 rounded-xl shadow-2xl overflow-hidden"
-                              style={{ minWidth: 300 }}>
-                              {filtItems.length === 0 ? (
-                                <div className="px-4 py-3 text-sm text-gray-400 italic">No items match</div>
-                              ) : (
-                                <div className="max-h-56 overflow-auto">
-                                  {filtItems.slice(0, 25).map((p: any) => (
-                                    <div key={p.id} onMouseDown={() => selectItem(row._key, p)}
-                                      className="px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
-                                      <div className="text-sm font-semibold text-gray-800">{p.name}</div>
-                                      <div className="flex items-center gap-3 mt-0.5">
-                                        {p.code && <span className="text-xs text-[#027fa5] font-mono font-semibold">{p.code}</span>}
-                                        {(p.hsnCode || p.hsn_code) && <span className="text-xs text-gray-400">HSN: {p.hsnCode || p.hsn_code}</span>}
-                                        {p.uom && <span className="text-xs text-gray-400">{p.uom}</span>}
-                                      </div>
+                          <PortalDropdown anchorEl={itemRefs.current[row._key]} open={itemDropOpen === row._key} minWidth={300}>
+                            {filtItems.length === 0 ? (
+                              <div className="px-4 py-3 text-sm text-gray-400 italic">No items match</div>
+                            ) : (
+                              <div className="max-h-56 overflow-auto">
+                                {filtItems.slice(0, 25).map((p: any) => (
+                                  <div key={p.id} onMouseDown={() => selectItem(row._key, p)}
+                                    className="px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                                    <div className="text-sm font-semibold text-gray-800">{p.name}</div>
+                                    <div className="flex items-center gap-3 mt-0.5">
+                                      {p.code && <span className="text-xs text-[#027fa5] font-mono font-semibold">{p.code}</span>}
+                                      {(p.hsnCode || p.hsn_code) && <span className="text-xs text-gray-400">HSN: {p.hsnCode || p.hsn_code}</span>}
+                                      {p.uom && <span className="text-xs text-gray-400">{p.uom}</span>}
                                     </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </PortalDropdown>
                         </td>
 
                         <td className={cellCls}>
@@ -400,8 +423,8 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                             className={inpCls} />
                         </td>
                         {/* Process / Nature combo */}
-                        <td className={`${cellCls} relative`}>
-                          <div className="flex items-center gap-1">
+                        <td className={cellCls}>
+                          <div className="flex items-center gap-1" ref={el => { procRefs.current[row._key] = el; }}>
                             <input
                               value={procSearch[row._key] ?? row.process_nature}
                               onChange={e => {
@@ -415,24 +438,21 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                             />
                             <ChevronDown size={10} className="text-gray-300 flex-shrink-0" />
                           </div>
-                          {procDropOpen === row._key && (
-                            <div className="absolute z-50 left-0 top-full mt-0.5 bg-white border border-[#027fa5]/30 rounded-xl shadow-2xl overflow-hidden"
-                              style={{ minWidth: 240 }}>
-                              {filtProcs.length === 0 ? (
-                                <div className="px-4 py-3 text-sm text-gray-400 italic">No processes match</div>
-                              ) : (
-                                <div className="max-h-52 overflow-auto">
-                                  {filtProcs.map((p: any) => (
-                                    <div key={p.id} onMouseDown={() => selectProcess(row._key, p)}
-                                      className="px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
-                                      <div className="text-sm font-semibold text-gray-800">{p.name}</div>
-                                      {p.code && <div className="text-xs text-[#027fa5] font-mono mt-0.5">{p.code}</div>}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
+                          <PortalDropdown anchorEl={procRefs.current[row._key]} open={procDropOpen === row._key} minWidth={240}>
+                            {filtProcs.length === 0 ? (
+                              <div className="px-4 py-3 text-sm text-gray-400 italic">No processes match</div>
+                            ) : (
+                              <div className="max-h-52 overflow-auto">
+                                {filtProcs.map((p: any) => (
+                                  <div key={p.id} onMouseDown={() => selectProcess(row._key, p)}
+                                    className="px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                                    <div className="text-sm font-semibold text-gray-800">{p.name}</div>
+                                    {p.code && <div className="text-xs text-[#027fa5] font-mono mt-0.5">{p.code}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </PortalDropdown>
                         </td>
                         <td className={cellCls}>
                           <input value={row.bill_ref} onChange={e => updateRow(row._key, "bill_ref", e.target.value)}
