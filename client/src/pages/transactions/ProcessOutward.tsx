@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Printer, PencilLine, Search, ChevronDown, X } from "lucide-react";
+import { Plus, Trash2, Printer, PencilLine, Search, ChevronDown, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import DatePicker from "@/components/DatePicker";
@@ -91,13 +91,14 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const { data: products   = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: customers  = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
 
-  const [voucherNo,   setVoucherNo]   = useState(editData?.voucher_no || "");
-  const [outwardDate, setOutwardDate] = useState(editData?.outward_date?.split("T")[0] || today());
-  const [supplierId,  setSupplierId]  = useState(editData?.supplier_id || "");
-  const [suppSearch,  setSuppSearch]  = useState(editData?.supplier_name || "");
-  const [vehicleNo,   setVehicleNo]   = useState(editData?.vehicle_no || "");
-  const [purpose,     setPurpose]     = useState(editData?.purpose || "");
-  const [notes,       setNotes]       = useState(editData?.notes || "");
+  const [voucherNo,     setVoucherNo]     = useState(editData?.voucher_no || "");
+  const [outwardDate,   setOutwardDate]   = useState(editData?.outward_date?.split("T")[0] || today());
+  const [supplierId,    setSupplierId]    = useState(editData?.supplier_id || "");
+  const [suppSearch,    setSuppSearch]    = useState(editData?.supplier_name || "");
+  const [vehicleNo,     setVehicleNo]     = useState(editData?.vehicle_no || "");
+  const [purpose,       setPurpose]       = useState(editData?.purpose || "");
+  const [notes,         setNotes]         = useState(editData?.notes || "");
+  const [isReturnable,  setIsReturnable]  = useState<boolean>(editData?.is_returnable === true);
 
   const [items, setItems] = useState<PoItem[]>(
     editData?.items?.length
@@ -156,6 +157,7 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
         supplier_id: supplierId || null,
         supplier_name_manual: !supplierId ? suppSearch : "",
         vehicle_no: vehicleNo, purpose, notes,
+        is_returnable: isReturnable,
         items: items.filter(r => r.item_name || r.qty).map(r => ({
           item_id: r.item_id || null, item_code: r.item_code, item_name: r.item_name,
           customer_ref: r.customer_name,
@@ -192,7 +194,20 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             </div>
             <div className="text-xs text-gray-400 mt-0.5">DC for items sent for testing / calibration / plating</div>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap justify-end">
+            {/* Returnable toggle */}
+            <button
+              type="button"
+              onClick={() => setIsReturnable(p => !p)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+                isReturnable
+                  ? "border-green-400 bg-green-50 text-green-700"
+                  : "border-gray-300 bg-white text-gray-500"
+              }`}
+            >
+              <RotateCcw size={14} className={isReturnable ? "text-green-600" : "text-gray-400"} />
+              {isReturnable ? "Returnable" : "Non-Returnable"}
+            </button>
             <button onClick={onBack}
               className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
               Cancel
@@ -483,6 +498,7 @@ export default function ProcessOutward() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-white">DC No.</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-white">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-white">Supplier / Agency</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-white hidden sm:table-cell">Type</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-white hidden md:table-cell">Purpose</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-white hidden lg:table-cell">Vehicle No</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-white">Actions</th>
@@ -490,13 +506,18 @@ export default function ProcessOutward() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-14 text-gray-400">No records found</td></tr>
+                    <tr><td colSpan={7} className="text-center py-14 text-gray-400">No records found</td></tr>
                   ) : filtered.map((r: any, idx: number) => (
                     <tr key={r.id}
                       className={`border-t border-gray-50 hover:bg-[#f0f9ff] transition-colors ${idx % 2 === 0 ? "" : "bg-gray-50/30"}`}>
                       <td className="px-4 py-2.5 font-bold text-sm" style={{ color: SC.primary }}>{r.voucher_no}</td>
                       <td className="px-4 py-2.5 text-gray-700">{fmtDate(r.outward_date)}</td>
                       <td className="px-4 py-2.5 text-gray-800">{r.supplier_name || "—"}</td>
+                      <td className="px-4 py-2.5 hidden sm:table-cell">
+                        {r.is_returnable
+                          ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-green-50 text-green-700 border border-green-200">Returnable</span>
+                          : <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-100 text-gray-500">Non-Returnable</span>}
+                      </td>
                       <td className="px-4 py-2.5 text-gray-500 hidden md:table-cell">{r.purpose || "—"}</td>
                       <td className="px-4 py-2.5 text-gray-400 hidden lg:table-cell">{r.vehicle_no || "—"}</td>
                       <td className="px-4 py-2.5">

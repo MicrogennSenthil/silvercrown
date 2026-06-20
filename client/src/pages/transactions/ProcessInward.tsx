@@ -106,7 +106,8 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const isEdit = !!editData?.id;
 
   const { data: suppliers  = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
-  const { data: outwards   = [] } = useQuery<any[]>({ queryKey: ["/api/process-outward"] });
+  const { data: outwardsAll = [] } = useQuery<any[]>({ queryKey: ["/api/process-outward"] });
+  const outwards = (outwardsAll as any[]).filter((o: any) => o.is_returnable === true);
   const { data: glAccounts = [] } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
   const { data: products   = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
 
@@ -281,9 +282,15 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
               </button>
               {outwardOpen && (
                 <div className="absolute z-40 top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-xl max-h-52 overflow-auto mt-0.5">
-                  <div className="px-3 py-2 text-xs font-semibold text-gray-400 border-b">Select Process Outward DC</div>
+                  <div className="px-3 py-2 text-xs font-semibold text-gray-400 border-b flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                    Returnable DCs only
+                  </div>
                   {(outwards as any[]).length === 0 && (
-                    <div className="px-3 py-4 text-xs text-gray-400 text-center">No outward DCs found</div>
+                    <div className="px-3 py-4 text-xs text-gray-400 text-center">
+                      No returnable Process Outward DCs found.<br/>
+                      <span className="text-gray-300">Mark outward entries as Returnable first.</span>
+                    </div>
                   )}
                   {(outwards as any[]).map((o: any) => (
                     <div key={o.id} onMouseDown={() => selectOutward(o)}

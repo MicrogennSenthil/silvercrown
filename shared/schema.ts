@@ -784,6 +784,7 @@ export const processOutward = pgTable("process_outward", {
   purpose: text("purpose").default(""),
   notes: text("notes").default(""),
   status: text("status").default("Saved"),
+  isReturnable: boolean("is_returnable").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 export const insertProcessOutwardSchema = createInsertSchema(processOutward).omit({ id: true, createdAt: true });

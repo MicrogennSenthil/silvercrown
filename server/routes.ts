@@ -8256,10 +8256,11 @@ Return ONLY valid JSON (no markdown, no explanation):
       const b = req.body;
       const voucher_no = await generateVoucherNo("process_outward", client);
       const hRes = await client.query(`
-        INSERT INTO process_outward (voucher_no, outward_date, supplier_id, supplier_name_manual, vehicle_no, purpose, notes, status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,'Saved') RETURNING *
+        INSERT INTO process_outward (voucher_no, outward_date, supplier_id, supplier_name_manual, vehicle_no, purpose, notes, status, is_returnable)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,'Saved',$8) RETURNING *
       `, [voucher_no, b.outward_date || new Date().toISOString().split("T")[0],
-          b.supplier_id || null, b.supplier_name_manual || "", b.vehicle_no || "", b.purpose || "", b.notes || ""]);
+          b.supplier_id || null, b.supplier_name_manual || "", b.vehicle_no || "", b.purpose || "", b.notes || "",
+          b.is_returnable === true]);
       const hdr = hRes.rows[0];
       for (let i = 0; i < (b.items || []).length; i++) {
         const it = b.items[i];
@@ -8284,9 +8285,10 @@ Return ONLY valid JSON (no markdown, no explanation):
       const b = req.body;
       const hRes = await client.query(`
         UPDATE process_outward SET outward_date=$1, supplier_id=$2, supplier_name_manual=$3,
-          vehicle_no=$4, purpose=$5, notes=$6 WHERE id=$7 RETURNING *
+          vehicle_no=$4, purpose=$5, notes=$6, is_returnable=$7 WHERE id=$8 RETURNING *
       `, [b.outward_date, b.supplier_id||null, b.supplier_name_manual||"",
-          b.vehicle_no||"", b.purpose||"", b.notes||"", req.params.id]);
+          b.vehicle_no||"", b.purpose||"", b.notes||"",
+          b.is_returnable === true, req.params.id]);
       await client.query(`DELETE FROM process_outward_items WHERE outward_id=$1`, [req.params.id]);
       for (let i = 0; i < (b.items || []).length; i++) {
         const it = b.items[i];
