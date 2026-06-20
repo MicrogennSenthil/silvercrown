@@ -206,32 +206,19 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             </div>
             <div className="text-xs text-gray-400 mt-0.5">DC for items sent for testing / calibration / plating</div>
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap justify-end">
-            {/* Returnable toggle */}
-            <button
-              type="button"
-              onClick={() => setIsReturnable(p => !p)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
-                isReturnable
-                  ? "border-green-400 bg-green-50 text-green-700"
-                  : "border-gray-300 bg-white text-gray-500"
-              }`}
-            >
-              <RotateCcw size={14} className={isReturnable ? "text-green-600" : "text-gray-400"} />
-              {isReturnable ? "Returnable" : "Non-Returnable"}
-            </button>
-            <button onClick={onBack}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
-              Cancel
-            </button>
-            <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
-              className="px-5 py-2 rounded-lg text-sm font-bold text-white flex items-center gap-2 disabled:opacity-60 transition-colors"
-              style={{ background: SC.orange }}>
-              {saveMut.isPending
-                ? <><div className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />Saving…</>
-                : "Save"}
-            </button>
-          </div>
+          {/* Returnable toggle only in header */}
+          <button
+            type="button"
+            onClick={() => setIsReturnable(p => !p)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
+              isReturnable
+                ? "border-green-400 bg-green-50 text-green-700"
+                : "border-gray-300 bg-white text-gray-500"
+            }`}
+          >
+            <RotateCcw size={14} className={isReturnable ? "text-green-600" : "text-gray-400"} />
+            {isReturnable ? "Returnable" : "Non-Returnable"}
+          </button>
         </div>
 
         {/* ── Body ── */}
@@ -483,6 +470,21 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors hover:bg-[#d2f1fa]"
             style={{ color: SC.primary, borderColor: SC.primary }}>
             <Plus size={13} /> Add Row
+          </button>
+        </div>
+
+        {/* ── Bottom action bar ── */}
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50/60 rounded-b-xl">
+          <button onClick={onBack}
+            className="px-5 py-2.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
+            className="px-7 py-2.5 rounded-lg text-sm font-bold text-white flex items-center gap-2 disabled:opacity-60 transition-colors shadow-sm"
+            style={{ background: SC.orange }}>
+            {saveMut.isPending
+              ? <><div className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />Saving…</>
+              : "Save"}
           </button>
         </div>
       </div>
