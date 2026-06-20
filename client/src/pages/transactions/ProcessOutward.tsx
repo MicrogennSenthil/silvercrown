@@ -338,19 +338,30 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                                 setCustDropOpen(row._key);
                               }}
                               onFocus={() => setCustDropOpen(row._key)}
-                              onBlur={() => setTimeout(() => setCustDropOpen(null), 180)}
+                              onBlur={() => setTimeout(() => setCustDropOpen(null), 200)}
                               className={inpCls} placeholder="Select customer…"
                             />
                             <ChevronDown size={10} className="text-gray-300 flex-shrink-0" />
                           </div>
-                          {custDropOpen === row._key && filtCusts.length > 0 && (
-                            <div className="absolute z-40 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-xl w-52 max-h-40 overflow-auto">
-                              {filtCusts.slice(0, 20).map((c: any) => (
-                                <div key={c.id} onMouseDown={() => selectCustomer(row._key, c)}
-                                  className="px-2.5 py-1.5 hover:bg-[#d2f1fa] cursor-pointer text-xs font-medium text-gray-800">
-                                  {c.name}
+                          {custDropOpen === row._key && (
+                            <div className="absolute z-50 left-0 top-full mt-0.5 bg-white border border-[#027fa5]/30 rounded-xl shadow-2xl overflow-hidden"
+                              style={{ minWidth: 260 }}>
+                              {filtCusts.length === 0 ? (
+                                <div className="px-4 py-3 text-sm text-gray-400 italic">No customers match</div>
+                              ) : (
+                                <div className="max-h-52 overflow-auto">
+                                  {filtCusts.slice(0, 25).map((c: any) => (
+                                    <div key={c.id} onMouseDown={() => selectCustomer(row._key, c)}
+                                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                                        style={{ background: SC.primary }}>
+                                        {c.name?.charAt(0).toUpperCase()}
+                                      </div>
+                                      <span className="text-sm font-semibold text-gray-800">{c.name}</span>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
                             </div>
                           )}
                         </td>
@@ -365,18 +376,29 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                               setItemDropOpen(row._key);
                             }}
                             onFocus={() => setItemDropOpen(row._key)}
-                            onBlur={() => setTimeout(() => setItemDropOpen(null), 180)}
+                            onBlur={() => setTimeout(() => setItemDropOpen(null), 200)}
                             className={inpCls} placeholder="Search item…"
                           />
-                          {itemDropOpen === row._key && filtItems.length > 0 && (
-                            <div className="absolute z-40 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-xl w-60 max-h-40 overflow-auto">
-                              {filtItems.slice(0, 20).map((p: any) => (
-                                <div key={p.id} onMouseDown={() => selectItem(row._key, p)}
-                                  className="px-2.5 py-1.5 hover:bg-[#d2f1fa] cursor-pointer text-xs">
-                                  <span className="font-medium text-gray-800">{p.name}</span>
-                                  {p.code && <span className="text-gray-400 ml-1">{p.code}</span>}
+                          {itemDropOpen === row._key && (
+                            <div className="absolute z-50 left-0 top-full mt-0.5 bg-white border border-[#027fa5]/30 rounded-xl shadow-2xl overflow-hidden"
+                              style={{ minWidth: 300 }}>
+                              {filtItems.length === 0 ? (
+                                <div className="px-4 py-3 text-sm text-gray-400 italic">No items match</div>
+                              ) : (
+                                <div className="max-h-56 overflow-auto">
+                                  {filtItems.slice(0, 25).map((p: any) => (
+                                    <div key={p.id} onMouseDown={() => selectItem(row._key, p)}
+                                      className="px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                                      <div className="text-sm font-semibold text-gray-800">{p.name}</div>
+                                      <div className="flex items-center gap-3 mt-0.5">
+                                        {p.code && <span className="text-xs text-[#027fa5] font-mono font-semibold">{p.code}</span>}
+                                        {(p.hsnCode || p.hsn_code) && <span className="text-xs text-gray-400">HSN: {p.hsnCode || p.hsn_code}</span>}
+                                        {p.uom && <span className="text-xs text-gray-400">{p.uom}</span>}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
                             </div>
                           )}
                         </td>
@@ -400,20 +422,27 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                                 setProcDropOpen(row._key);
                               }}
                               onFocus={() => setProcDropOpen(row._key)}
-                              onBlur={() => setTimeout(() => setProcDropOpen(null), 180)}
+                              onBlur={() => setTimeout(() => setProcDropOpen(null), 200)}
                               className={inpCls} placeholder="Select process…"
                             />
                             <ChevronDown size={10} className="text-gray-300 flex-shrink-0" />
                           </div>
-                          {procDropOpen === row._key && filtProcs.length > 0 && (
-                            <div className="absolute z-40 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-xl w-52 max-h-40 overflow-auto">
-                              {filtProcs.map((p: any) => (
-                                <div key={p.id} onMouseDown={() => selectProcess(row._key, p)}
-                                  className="px-2.5 py-1.5 hover:bg-[#d2f1fa] cursor-pointer text-xs font-medium text-gray-800">
-                                  {p.name}
-                                  {p.code && <span className="text-gray-400 ml-1 font-normal">({p.code})</span>}
+                          {procDropOpen === row._key && (
+                            <div className="absolute z-50 left-0 top-full mt-0.5 bg-white border border-[#027fa5]/30 rounded-xl shadow-2xl overflow-hidden"
+                              style={{ minWidth: 240 }}>
+                              {filtProcs.length === 0 ? (
+                                <div className="px-4 py-3 text-sm text-gray-400 italic">No processes match</div>
+                              ) : (
+                                <div className="max-h-52 overflow-auto">
+                                  {filtProcs.map((p: any) => (
+                                    <div key={p.id} onMouseDown={() => selectProcess(row._key, p)}
+                                      className="px-4 py-2.5 hover:bg-[#d2f1fa] cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                                      <div className="text-sm font-semibold text-gray-800">{p.name}</div>
+                                      {p.code && <div className="text-xs text-[#027fa5] font-mono mt-0.5">{p.code}</div>}
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
                             </div>
                           )}
                         </td>
