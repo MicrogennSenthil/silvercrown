@@ -156,19 +156,28 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
     try {
       const full = await fetch(`/api/process-outward/${o.id}`, { credentials: "include" }).then(r => r.json());
       if (full.items?.length) {
-        setItems(full.items.map((it: any) => calcRow({
-          _key: crypto.randomUUID(),
-          outward_item_id: it.id || "",
-          item_id: it.item_id || "",
-          item_code: it.item_code || "",
-          item_name: it.item_name || "",
-          hsn: it.hsn || "",
-          qty: String(it.qty || ""),
-          unit: it.unit || "",
-          rate: "",
-          taxable_amount: "", cgst_rate: "", sgst_rate: "", igst_rate: "",
-          cgst_amount: "", sgst_amount: "", igst_amount: "", amount: "",
-        })));
+        const newRows = full.items.map((it: any) => {
+          const key = crypto.randomUUID();
+          return { key, row: calcRow({
+            _key: key,
+            outward_item_id: it.id || "",
+            item_id: it.item_id || "",
+            item_code: it.item_code || "",
+            item_name: it.item_name || "",
+            hsn: it.hsn || "",
+            qty: String(it.qty || ""),
+            unit: it.unit || "",
+            rate: "",
+            taxable_amount: "", cgst_rate: "", sgst_rate: "", igst_rate: "",
+            cgst_amount: "", sgst_amount: "", igst_amount: "", amount: "",
+          })};
+        });
+        setItems(newRows.map(r => r.row));
+        // Pre-fill itemSearch so inputs show the name (not empty)
+        const searchMap: Record<string, string> = {};
+        newRows.forEach(({ key, row }) => { searchMap[key] = row.item_name; });
+        setItemSearch(searchMap);
+        setItemDropOpen(null);
       }
     } catch { /* silently ignore */ }
   }
