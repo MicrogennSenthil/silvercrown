@@ -108,16 +108,29 @@ client/public/
 - `uploads/` directory is auto-created on startup for Gemini invoice processing
 
 ## Deployment Workflow
-- **One-command deploy** from Replit Shell: `bash deploy-vps.sh`
-  - Pushes to GitHub, SSHes to VPS, clean-rebuilds, restarts PM2
-- **VPS details**:
-  - Host: `root@72.61.231.157`
-  - App directory: `/var/www/silvercrown-element` ← ONLY correct directory
-  - SSH key: `~/.ssh/sc_deploy_silvercrown` (stored in Replit)
-  - PM2 process: `silvercrown-element` (cluster, IDs 15 & 16)
+
+### After every code change — TWO steps:
+
+**Step 1 — Agent does this (Replit):**
+1. Run DB migrations via `executeSql` if schema changed
+2. Run `npm run build` locally to verify no errors
+3. Push to GitHub: `git push "https://MicrogennSenthil:${GITHUB_PAT}@github.com/MicrogennSenthil/silvercrown.git" main`
+
+**Step 2 — User does this (Hostinger VPS terminal):**
+```bash
+cd /var/www/silvercrown-element
+git pull origin main && npm run build && pm2 restart silvercrown-element
+```
+> ⚠️ SSH from Replit to VPS times out — agent cannot do Step 2. User must run from Hostinger panel terminal.
+
+### VPS details:
+- **Hostinger terminal**: Login to Hostinger → VPS → Terminal (already logged in as root, you ARE on `srv1163666` = `72.61.231.157`)
+- App directory: `/var/www/silvercrown-element`
+- PM2 process: `silvercrown-element`
 - **Production URL**: https://silver.microgenn.com
 - **GitHub repo**: https://github.com/MicrogennSenthil/silvercrown
+- **Production DB**: Replit-managed PostgreSQL (NOT on VPS) — agent migrates directly via `executeSql`
 
 ## User Preferences
-- **Auto-deploy after every change**: Project is in continuous testing mode. After every set of code changes, deploy to production automatically without asking — push to GitHub (handled by checkpoint), `git stash && git pull` on VPS, `npm run build`, then `pm2 restart silvercrown-element`.
+- **Deploy process**: Agent pushes code to GitHub + runs DB migrations. User then runs `git pull && npm run build && pm2 restart silvercrown-element` from Hostinger VPS terminal. No SSH from Replit needed.
 - **ID/type-based filtering always**: Never use name-based string matching (ILIKE, `.includes()`, `.toLowerCase()`) to identify GL accounts or sub-ledger categories. Always use the `gl_type` column on `general_ledgers` (values: `bank`, `cash`, `sundry_debtor`, `sundry_creditor`, `purchase`, `expense`, `tax`, `roundoff`, `liability`, `other`). Apply this to all SQL WHERE clauses, frontend filter functions, and any logic that distinguishes account types. When creating new GLs or features that need account-type awareness, wire through `gl_type` from day one.
