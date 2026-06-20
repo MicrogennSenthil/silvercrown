@@ -158,6 +158,14 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
       if (full.items?.length) {
         const newRows = full.items.map((it: any) => {
           const key = crypto.randomUUID();
+          // Look up GST rates from product master
+          const prod = (products as any[]).find((p: any) => p.id === it.item_id);
+          const totalTax = parseFloat(prod?.taxRate || prod?.tax_rate || "0");
+          const cgstR = parseFloat(prod?.cgstRate ?? prod?.cgst_rate ?? "NaN");
+          const sgstR = parseFloat(prod?.sgstRate ?? prod?.sgst_rate ?? "NaN");
+          const igstR = parseFloat(prod?.igstRate ?? prod?.igst_rate ?? "0") || 0;
+          const finalCgst = isNaN(cgstR) ? totalTax / 2 : cgstR;
+          const finalSgst = isNaN(sgstR) ? totalTax / 2 : sgstR;
           return { key, row: calcRow({
             _key: key,
             outward_item_id: it.id || "",
@@ -168,7 +176,10 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             qty: String(it.qty || ""),
             unit: it.unit || "",
             rate: "",
-            taxable_amount: "", cgst_rate: "", sgst_rate: "", igst_rate: "",
+            taxable_amount: "",
+            cgst_rate: String(finalCgst),
+            sgst_rate: String(finalSgst),
+            igst_rate: String(igstR),
             cgst_amount: "", sgst_amount: "", igst_amount: "", amount: "",
           })};
         });
@@ -189,10 +200,21 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   }
 
   function selectItem(key: string, item: any) {
+    const totalTax = parseFloat(item.taxRate || item.tax_rate || "0");
+    const cgstR = parseFloat(item.cgstRate ?? item.cgst_rate ?? "NaN");
+    const sgstR = parseFloat(item.sgstRate ?? item.sgst_rate ?? "NaN");
+    const igstR = parseFloat(item.igstRate ?? item.igst_rate ?? "0") || 0;
+    const finalCgst = isNaN(cgstR) ? totalTax / 2 : cgstR;
+    const finalSgst = isNaN(sgstR) ? totalTax / 2 : sgstR;
     setItems(prev => prev.map(r => r._key === key
-      ? calcRow({ ...r, item_id: item.id, item_code: item.code, item_name: item.name,
-                  hsn: item.hsnCode || item.hsn_code || r.hsn,
-                  unit: (item.uom || item.unit || r.unit || "").toUpperCase() })
+      ? calcRow({ ...r,
+          item_id: item.id, item_code: item.code, item_name: item.name,
+          hsn: item.hsnCode || item.hsn_code || r.hsn,
+          unit: (item.uom || item.unit || r.unit || "").toUpperCase(),
+          cgst_rate: String(finalCgst),
+          sgst_rate: String(finalSgst),
+          igst_rate: String(igstR),
+        })
       : r
     ));
     setItemSearch(prev => ({ ...prev, [key]: item.name }));
