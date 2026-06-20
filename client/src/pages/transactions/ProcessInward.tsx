@@ -106,10 +106,8 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const isEdit = !!editData?.id;
 
   const { data: suppliers  = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
-  const { data: processes  = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
   const { data: outwardsAll = [] } = useQuery<any[]>({ queryKey: ["/api/process-outward"] });
   const outwards = (outwardsAll as any[]).filter((o: any) => o.is_returnable === true);
-  const { data: glAccounts = [] } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
   const { data: products   = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
 
   const [voucherNo,   setVoucherNo]   = useState(editData?.voucher_no || "");
@@ -120,9 +118,9 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const [suppSearch,  setSuppSearch]  = useState(editData?.supplier_name || "");
   const [supInvNo,    setSupInvNo]    = useState(editData?.supplier_invoice_no || "");
   const [supInvDate,  setSupInvDate]  = useState(editData?.supplier_invoice_date?.split("T")[0] || "");
-  const [payMode,     setPayMode]     = useState(editData?.payment_mode || "Credit");
-  const [payAccId,    setPayAccId]    = useState(editData?.payment_account_id || "");
-  const [expenseGlId, setExpenseGlId] = useState(editData?.expense_gl_id || "");
+  const payMode     = "Credit";   // always silent credit posting
+  const payAccId    = "";
+  const expenseGlId = "";
   const [notes,       setNotes]       = useState(editData?.notes || "");
 
   const [items, setItems] = useState<PiItem[]>(
@@ -150,19 +148,30 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
     }
   }, [isEdit, voucherNo]);
 
-  function selectOutward(o: any) {
+  async function selectOutward(o: any) {
     setOutwardId(o.id);
     if (o.supplier_id) { setSupplierId(o.supplier_id); setSuppSearch(o.supplier_name || ""); }
     setOutwardOpen(false);
+    // Auto-fill items from the selected DC
+    try {
+      const full = await fetch(`/api/process-outward/${o.id}`, { credentials: "include" }).then(r => r.json());
+      if (full.items?.length) {
+        setItems(full.items.map((it: any) => calcRow({
+          _key: crypto.randomUUID(),
+          outward_item_id: it.id || "",
+          item_id: it.item_id || "",
+          item_code: it.item_code || "",
+          item_name: it.item_name || "",
+          hsn: it.hsn || "",
+          qty: String(it.qty || ""),
+          unit: it.unit || "",
+          rate: "",
+          taxable_amount: "", cgst_rate: "", sgst_rate: "", igst_rate: "",
+          cgst_amount: "", sgst_amount: "", igst_amount: "", amount: "",
+        })));
+      }
+    } catch { /* silently ignore */ }
   }
-
-  const bankCashGLs = (glAccounts as any[]).filter((gl: any) =>
-    gl.gl_type === "bank" || gl.gl_type === "cash" || gl.glType === "bank" || gl.glType === "cash"
-  );
-  const expenseGLs = (glAccounts as any[]).filter((gl: any) =>
-    gl.gl_type === "expense" || gl.glType === "expense" ||
-    gl.gl_type === "other"   || gl.glType === "other"
-  );
 
   const selectedOutward = (outwards as any[]).find((o: any) => o.id === outwardId);
 
@@ -329,8 +338,8 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
             </div>
           </div>
 
-          {/* Row 2: Supplier Inv No, Supplier Inv Date, Expense GL, Payment Mode */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          {/* Row 2: Supplier Inv No, Supplier Inv Date, Notes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <div>
               <label className={LABEL}>Supplier Invoice No.</label>
               <input value={supInvNo} onChange={e => setSupInvNo(e.target.value)}
@@ -341,39 +350,6 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
               <DatePicker value={supInvDate} onChange={setSupInvDate} className={INPUT} />
             </div>
             <div>
-              <label className={LABEL}>Expense GL Account</label>
-              <select value={expenseGlId} onChange={e => setExpenseGlId(e.target.value)} className={SELECT}>
-                <option value="">— select expense account —</option>
-                {expenseGLs.map((gl: any) => (
-                  <option key={gl.id} value={gl.id}>{gl.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={LABEL}>Payment Mode</label>
-              <select value={payMode} onChange={e => setPayMode(e.target.value)} className={SELECT}>
-                <option value="Credit">Credit (Book as payable)</option>
-                <option value="Cash">Cash</option>
-                <option value="Bank">Bank Transfer</option>
-                <option value="Cheque">Cheque</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Row 3: Bank/Cash account (conditional) + Notes */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            {payMode !== "Credit" && (
-              <div>
-                <label className={LABEL}>Bank / Cash Account</label>
-                <select value={payAccId} onChange={e => setPayAccId(e.target.value)} className={SELECT}>
-                  <option value="">— select account —</option>
-                  {bankCashGLs.map((gl: any) => (
-                    <option key={gl.id} value={gl.id}>{gl.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className={payMode !== "Credit" ? "" : "sm:col-span-2"}>
               <label className={LABEL}>Notes</label>
               <input value={notes} onChange={e => setNotes(e.target.value)}
                 className={INPUT} placeholder="Additional notes…" />
