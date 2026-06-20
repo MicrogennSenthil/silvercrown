@@ -195,7 +195,8 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   });
 
   return (
-    <div className="p-3 sm:p-5" style={{ background: SC.bg, minHeight: "100%", fontFamily: "Source Sans Pro, sans-serif" }}>
+    <div className="flex flex-col" style={{ background: SC.bg, minHeight: "100%", fontFamily: "Source Sans Pro, sans-serif" }}>
+      <div className="p-3 sm:p-5 flex-1">
       <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100">
 
         {/* ── Header bar ── */}
@@ -473,18 +474,17 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
           </button>
         </div>
 
-        {/* ── Spacer so content isn't hidden behind the fixed bar ── */}
-        <div className="h-20" />
+      </div>
       </div>
 
-      {/* ── Fixed bottom-right action bar ── */}
-      <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3">
+      {/* ── Sticky bottom-right action bar (inside scroll container, works with overflow-auto parent) ── */}
+      <div className="sticky bottom-0 flex justify-end gap-3 px-6 py-4 bg-white/90 backdrop-blur border-t border-gray-100 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
         <button onClick={onBack}
-          className="px-5 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-600 bg-white hover:bg-gray-50 transition-colors shadow-lg">
+          className="px-5 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-600 bg-white hover:bg-gray-50 transition-colors shadow-sm">
           Cancel
         </button>
         <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
-          className="px-7 py-2.5 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-60 transition-all shadow-xl hover:shadow-2xl hover:scale-105"
+          className="px-8 py-2.5 rounded-xl text-sm font-bold text-white flex items-center gap-2 disabled:opacity-60 transition-all shadow-md hover:shadow-lg hover:scale-105"
           style={{ background: SC.orange }}>
           {saveMut.isPending
             ? <><div className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />Saving…</>
