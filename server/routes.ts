@@ -3344,6 +3344,32 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           GROUP BY po.id, po.voucher_no, po.po_date, s.name, po.supplier_name_manual, s.email
           ORDER BY CAST(NULLIF(REGEXP_REPLACE(SPLIT_PART(po.voucher_no, '/', 2), '[^0-9]', '', 'g'), '') AS BIGINT) ASC NULLS LAST, po.voucher_no ASC
         `, [from, to])).rows;
+
+      } else if (type === "process_outward") {
+        rows = (await pool.query(`
+          SELECT po.id, po.voucher_no AS txn_no, po.outward_date AS txn_date,
+            COALESCE(s.name, po.supplier_name_manual, '') AS party_name,
+            COALESCE(s.email, '') AS party_email,
+            COALESCE(SUM(poi.qty), 0) AS amount
+          FROM process_outward po
+          LEFT JOIN suppliers s ON s.id = po.supplier_id
+          LEFT JOIN process_outward_items poi ON poi.outward_id = po.id
+          WHERE po.outward_date BETWEEN $1 AND $2
+          GROUP BY po.id, po.voucher_no, po.outward_date, s.name, po.supplier_name_manual, s.email
+          ORDER BY po.outward_date DESC, po.voucher_no DESC
+        `, [from, to])).rows;
+
+      } else if (type === "process_inward") {
+        rows = (await pool.query(`
+          SELECT pi.id, pi.voucher_no AS txn_no, pi.inward_date AS txn_date,
+            COALESCE(s.name, pi.supplier_name_manual, '') AS party_name,
+            COALESCE(s.email, '') AS party_email,
+            COALESCE(pi.total_amount, 0) AS amount
+          FROM process_inward pi
+          LEFT JOIN suppliers s ON s.id = pi.supplier_id
+          WHERE pi.inward_date BETWEEN $1 AND $2
+          ORDER BY pi.inward_date DESC, pi.voucher_no DESC
+        `, [from, to])).rows;
       }
 
       res.json(rows.map(r => ({
@@ -3468,6 +3494,37 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           company_email:   cfg.company_email   || "",
           signature_image: cfg.signature_image || "",
         });
+
+      } else if (type === "process_outward") {
+        const h = (await pool.query(`
+          SELECT po.*, COALESCE(s.name, po.supplier_name_manual,'') AS party_name_db,
+                 COALESCE(s.email,'') AS party_email, COALESCE(s.phone,'') AS party_phone,
+                 s.address1 AS supplier_address1, s.address2 AS supplier_address2,
+                 s.city AS supplier_city, s.state AS supplier_state,
+                 s.pincode AS supplier_pincode, s.gstin AS supplier_gstin
+          FROM process_outward po LEFT JOIN suppliers s ON s.id = po.supplier_id
+          WHERE po.id=$1
+        `, [id])).rows[0];
+        if (!h) return res.status(404).json({ message: "Not found" });
+        const items = (await pool.query(`SELECT * FROM process_outward_items WHERE outward_id=$1 ORDER BY seq_no`, [id])).rows;
+        return res.json({ ...h, items });
+
+      } else if (type === "process_inward") {
+        const h = (await pool.query(`
+          SELECT pi.*, COALESCE(s.name, pi.supplier_name_manual,'') AS party_name_db,
+                 COALESCE(s.email,'') AS party_email, COALESCE(s.phone,'') AS party_phone,
+                 s.address1 AS supplier_address1, s.address2 AS supplier_address2,
+                 s.city AS supplier_city, s.state AS supplier_state,
+                 s.pincode AS supplier_pincode, s.gstin AS supplier_gstin,
+                 po.voucher_no AS outward_voucher_no
+          FROM process_inward pi
+          LEFT JOIN suppliers s ON s.id = pi.supplier_id
+          LEFT JOIN process_outward po ON po.id = pi.outward_id
+          WHERE pi.id=$1
+        `, [id])).rows[0];
+        if (!h) return res.status(404).json({ message: "Not found" });
+        const items = (await pool.query(`SELECT * FROM process_inward_items WHERE inward_id=$1 ORDER BY seq_no`, [id])).rows;
+        return res.json({ ...h, items });
       }
       res.status(400).json({ message: "Unknown type" });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

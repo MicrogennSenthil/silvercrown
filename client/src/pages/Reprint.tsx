@@ -5,11 +5,13 @@ import { useToast } from "@/hooks/use-toast";
 import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
 import { buildTaxInvoiceHTML } from "@/lib/printTaxInvoice";
 import { buildPurchaseOrderHTML } from "@/lib/printPurchaseOrder";
+import { buildProcessOutwardHTML } from "@/lib/printProcessOutward";
+import { buildProcessInwardHTML } from "@/lib/printProcessInward";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa" };
 
 /* ── Types ─────────────────────────────────────────────────────────── */
-type DocType = "invoice" | "despatch_note" | "purchase_order";
+type DocType = "invoice" | "despatch_note" | "purchase_order" | "process_outward" | "process_inward";
 interface ListRow {
   id: string;
   txn_no: string;
@@ -20,9 +22,11 @@ interface ListRow {
 }
 
 const DOC_TYPES: { value: DocType; label: string }[] = [
-  { value: "invoice",        label: "Invoice"        },
-  { value: "despatch_note",  label: "Despatch Note"  },
-  { value: "purchase_order", label: "Purchase Order" },
+  { value: "invoice",         label: "Invoice"              },
+  { value: "despatch_note",   label: "Despatch Note"        },
+  { value: "purchase_order",  label: "Purchase Order"       },
+  { value: "process_outward", label: "Process Outward DC"   },
+  { value: "process_inward",  label: "Process Inward Invoice"},
 ];
 
 function fmtDate(d: string) {
@@ -60,6 +64,20 @@ async function openPrint(type: DocType, row: ListRow, isEInvoice = false, eInvDa
   if (type === "purchase_order") {
     const html = buildPurchaseOrderHTML(doc);
     const win = window.open("", "_blank", "width=1100,height=780");
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+    return;
+  }
+
+  if (type === "process_outward") {
+    const html = buildProcessOutwardHTML(doc);
+    const win = window.open("", "_blank", "width=900,height=760");
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
+    return;
+  }
+
+  if (type === "process_inward") {
+    const html = buildProcessInwardHTML(doc);
+    const win = window.open("", "_blank", "width=1000,height=760");
     if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
     return;
   }
@@ -204,14 +222,19 @@ function ViewModal({ type, row, onClose, onInvoicePrint }: {
   });
 
   const typeLabel =
-    type === "invoice"       ? "Job Work Invoice"  :
-    type === "despatch_note" ? "Despatch Note"     : "Purchase Order";
+    type === "invoice"         ? "Job Work Invoice"       :
+    type === "despatch_note"   ? "Despatch Note"          :
+    type === "purchase_order"  ? "Purchase Order"         :
+    type === "process_outward" ? "Process Outward DC"     : "Process Inward Invoice";
 
   const dateField = doc ?
-    (type === "invoice" ? doc.invoice_date : type === "despatch_note" ? doc.despatch_date : doc.po_date)
+    type === "invoice"         ? doc.invoice_date   :
+    type === "despatch_note"   ? doc.despatch_date  :
+    type === "purchase_order"  ? doc.po_date        :
+    type === "process_outward" ? doc.outward_date   : doc.inward_date
     : "";
 
-  const isDC = type === "despatch_note";
+  const isDC = type === "despatch_note" || type === "process_outward";
 
   const items: any[] = doc?.items || [];
   const charges: any[] = doc?.charges || [];
@@ -358,8 +381,10 @@ function ViewModal({ type, row, onClose, onInvoicePrint }: {
 function EmailModal({ type, row, onClose }: { type: DocType; row: ListRow; onClose: () => void }) {
   const { toast } = useToast();
   const typeLabel =
-    type === "invoice"       ? "Job Work Invoice"  :
-    type === "despatch_note" ? "Despatch Note"     : "Purchase Order";
+    type === "invoice"         ? "Job Work Invoice"       :
+    type === "despatch_note"   ? "Despatch Note"          :
+    type === "purchase_order"  ? "Purchase Order"         :
+    type === "process_outward" ? "Process Outward DC"     : "Process Inward Invoice";
 
   const [to,      setTo]      = useState(row.party_email || "");
   const [subject, setSubject] = useState(`${typeLabel} — ${row.txn_no}`);
@@ -601,7 +626,9 @@ export default function Reprint() {
                     <th className="px-4 py-3 text-left text-white font-semibold text-xs">Transaction Date</th>
                     <th className="px-4 py-3 text-left text-white font-semibold text-xs">Transaction No</th>
                     <th className="px-4 py-3 text-left text-white font-semibold text-xs">Party name / Department</th>
-                    <th className="px-4 py-3 text-right text-white font-semibold text-xs">Amount ₹</th>
+                    <th className="px-4 py-3 text-right text-white font-semibold text-xs">
+                      {docType === "process_outward" ? "Total Qty" : "Amount ₹"}
+                    </th>
                     <th className="px-4 py-3 text-center text-white font-semibold text-xs w-28">Actions</th>
                   </tr>
                 </thead>
@@ -646,7 +673,9 @@ export default function Reprint() {
                       <td className="px-4 py-2.5 font-semibold" style={{ color: SC.primary }}>{row.txn_no}</td>
                       <td className="px-4 py-2.5 text-gray-800">{row.party_name || "—"}</td>
                       <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-gray-800">
-                        {fmtAmt(row.amount)}
+                        {docType === "process_outward"
+                          ? row.amount.toFixed(3)
+                          : fmtAmt(row.amount)}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-center gap-1.5">
@@ -692,7 +721,9 @@ export default function Reprint() {
                         {search.trim() ? ` (filtered from ${rows.length})` : ""}
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-bold text-gray-800 tabular-nums">
-                        ₹ {fmtAmt(grandTotal)}
+                        {docType === "process_outward"
+                          ? grandTotal.toFixed(3) + " qty"
+                          : "₹ " + fmtAmt(grandTotal)}
                       </td>
                       <td/>
                     </tr>
