@@ -90,6 +90,7 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const { data: suppliers  = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
   const { data: products   = [] } = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: customers  = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const { data: processes  = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
 
   const [voucherNo,     setVoucherNo]     = useState(editData?.voucher_no || "");
   const [outwardDate,   setOutwardDate]   = useState(editData?.outward_date?.split("T")[0] || today());
@@ -112,10 +113,12 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
       : [newRow()]
   );
 
-  const [itemSearch,   setItemSearch]   = useState<Record<string, string>>({});
-  const [itemDropOpen, setItemDropOpen] = useState<string | null>(null);
-  const [custSearch,   setCustSearch]   = useState<Record<string, string>>({});
-  const [custDropOpen, setCustDropOpen] = useState<string | null>(null);
+  const [itemSearch,    setItemSearch]    = useState<Record<string, string>>({});
+  const [itemDropOpen,  setItemDropOpen]  = useState<string | null>(null);
+  const [custSearch,    setCustSearch]    = useState<Record<string, string>>({});
+  const [custDropOpen,  setCustDropOpen]  = useState<string | null>(null);
+  const [procSearch,    setProcSearch]    = useState<Record<string, string>>({});
+  const [procDropOpen,  setProcDropOpen]  = useState<string | null>(null);
 
   useEffect(() => {
     if (!isEdit && !voucherNo) {
@@ -132,11 +135,20 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
     setItems(prev => prev.map(r => r._key === key ? {
       ...r,
       item_id: item.id, item_code: item.code, item_name: item.name,
-      hsn: item.hsn_code || r.hsn,
-      unit: (item.unit || item.uom || r.unit || "").toUpperCase(),
+      hsn: item.hsnCode || item.hsn_code || r.hsn,
+      unit: (item.uom || item.unit || r.unit || "").toUpperCase(),
     } : r));
     setItemSearch(prev => ({ ...prev, [key]: item.name }));
     setItemDropOpen(null);
+  }
+
+  function selectProcess(key: string, proc: any) {
+    setItems(prev => prev.map(r => r._key === key
+      ? { ...r, process_nature: proc.name }
+      : r
+    ));
+    setProcSearch(prev => ({ ...prev, [key]: proc.name }));
+    setProcDropOpen(null);
   }
 
   function selectCustomer(key: string, cust: any) {
@@ -304,6 +316,10 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                       !custSearch[row._key] ||
                       c.name?.toLowerCase().includes((custSearch[row._key] || "").toLowerCase())
                     );
+                    const filtProcs = (processes as any[]).filter((p: any) =>
+                      !procSearch[row._key] ||
+                      p.name?.toLowerCase().includes((procSearch[row._key] || "").toLowerCase())
+                    );
                     const cellCls = "border-b border-gray-100 px-1.5 py-1 align-middle";
                     const inpCls  = "w-full px-1.5 py-1 text-xs border border-transparent rounded focus:outline-none focus:border-[#027fa5] bg-transparent";
                     return (
@@ -373,9 +389,33 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
                           <input value={row.hsn} onChange={e => updateRow(row._key, "hsn", e.target.value)}
                             className={inpCls} />
                         </td>
-                        <td className={cellCls}>
-                          <input value={row.process_nature} onChange={e => updateRow(row._key, "process_nature", e.target.value)}
-                            className={inpCls} placeholder="e.g. Zinc Plating" />
+                        {/* Process / Nature combo */}
+                        <td className={`${cellCls} relative`}>
+                          <div className="flex items-center gap-1">
+                            <input
+                              value={procSearch[row._key] ?? row.process_nature}
+                              onChange={e => {
+                                setProcSearch(p => ({ ...p, [row._key]: e.target.value }));
+                                updateRow(row._key, "process_nature", e.target.value);
+                                setProcDropOpen(row._key);
+                              }}
+                              onFocus={() => setProcDropOpen(row._key)}
+                              onBlur={() => setTimeout(() => setProcDropOpen(null), 180)}
+                              className={inpCls} placeholder="Select process…"
+                            />
+                            <ChevronDown size={10} className="text-gray-300 flex-shrink-0" />
+                          </div>
+                          {procDropOpen === row._key && filtProcs.length > 0 && (
+                            <div className="absolute z-40 left-0 top-full bg-white border border-gray-200 rounded-lg shadow-xl w-52 max-h-40 overflow-auto">
+                              {filtProcs.map((p: any) => (
+                                <div key={p.id} onMouseDown={() => selectProcess(row._key, p)}
+                                  className="px-2.5 py-1.5 hover:bg-[#d2f1fa] cursor-pointer text-xs font-medium text-gray-800">
+                                  {p.name}
+                                  {p.code && <span className="text-gray-400 ml-1 font-normal">({p.code})</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </td>
                         <td className={cellCls}>
                           <input value={row.bill_ref} onChange={e => updateRow(row._key, "bill_ref", e.target.value)}

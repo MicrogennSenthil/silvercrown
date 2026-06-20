@@ -106,6 +106,7 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   const isEdit = !!editData?.id;
 
   const { data: suppliers  = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
+  const { data: processes  = [] } = useQuery<any[]>({ queryKey: ["/api/processes"] });
   const { data: outwardsAll = [] } = useQuery<any[]>({ queryKey: ["/api/process-outward"] });
   const outwards = (outwardsAll as any[]).filter((o: any) => o.is_returnable === true);
   const { data: glAccounts = [] } = useQuery<any[]>({ queryKey: ["/api/general-ledgers"] });
@@ -139,6 +140,8 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   );
   const [itemSearch,   setItemSearch]   = useState<Record<string, string>>({});
   const [itemDropOpen, setItemDropOpen] = useState<string | null>(null);
+  const [procSearch,   setProcSearch]   = useState<Record<string, string>>({});
+  const [procDropOpen, setProcDropOpen] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isEdit && !voucherNo) {
@@ -170,11 +173,21 @@ function PiForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   function selectItem(key: string, item: any) {
     setItems(prev => prev.map(r => r._key === key
       ? calcRow({ ...r, item_id: item.id, item_code: item.code, item_name: item.name,
-                  hsn: item.hsn_code || r.hsn, unit: (item.unit || item.uom || r.unit || "").toUpperCase() })
+                  hsn: item.hsnCode || item.hsn_code || r.hsn,
+                  unit: (item.uom || item.unit || r.unit || "").toUpperCase() })
       : r
     ));
     setItemSearch(prev => ({ ...prev, [key]: item.name }));
     setItemDropOpen(null);
+  }
+
+  function selectProcess(key: string, proc: any) {
+    setItems(prev => prev.map(r => r._key === key
+      ? calcRow({ ...r, process_nature: proc.name } as any)
+      : r
+    ));
+    setProcSearch(prev => ({ ...prev, [key]: proc.name }));
+    setProcDropOpen(null);
   }
 
   const totTaxable = items.reduce((s, r) => s + (parseFloat(r.taxable_amount) || 0), 0);
