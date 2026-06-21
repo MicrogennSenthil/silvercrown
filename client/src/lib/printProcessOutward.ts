@@ -21,20 +21,12 @@ export function buildProcessOutwardHTML(doc: any): string {
   const B = "border:1px solid #000";
   const itemTd = `${B};padding:3px 6px;vertical-align:top`;
 
+  // Minimum 12 rows so items section always has visible empty space
+  const MIN_ROWS = 12;
+  const blankRowsNeeded = Math.max(0, MIN_ROWS - items.length);
+
   function itemRowsHTML() {
-    if (items.length === 0) {
-      return `<tr style="height:60px">
-        <td style="${itemTd};text-align:center"></td>
-        <td style="${itemTd}"></td>
-        <td style="${itemTd}"></td>
-        <td style="${itemTd}"></td>
-        <td style="${itemTd}"></td>
-        <td style="${itemTd}"></td>
-        <td style="${itemTd};text-align:center"></td>
-        <td style="${itemTd};text-align:center"></td>
-      </tr>`;
-    }
-    return items.map((it: any, i: number) => `<tr>
+    const rows = items.map((it: any, i: number) => `<tr>
       <td style="${itemTd};text-align:center;width:5%">${i + 1}</td>
       <td style="${itemTd};width:15%">${it.customer_ref || ""}</td>
       <td style="${itemTd};width:18%">${it.drawing_no || ""}</td>
@@ -44,6 +36,23 @@ export function buildProcessOutwardHTML(doc: any): string {
       <td style="${itemTd};text-align:center;width:8%">${it.unit || ""}</td>
       <td style="${itemTd};text-align:center;width:8%">${parseFloat(it.qty || 0) > 0 ? parseFloat(it.qty).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
     </tr>`).join("\n");
+
+    // Blank filler rows — last one grows to fill remaining space
+    const blanks = Array.from({ length: blankRowsNeeded }, (_, i) => {
+      const isLast = i === blankRowsNeeded - 1;
+      return `<tr style="${isLast ? "height:100%" : ""}">
+        <td style="${itemTd};text-align:center;width:5%">&nbsp;</td>
+        <td style="${itemTd};width:15%">&nbsp;</td>
+        <td style="${itemTd};width:18%">&nbsp;</td>
+        <td style="${itemTd}">&nbsp;</td>
+        <td style="${itemTd};width:20%">&nbsp;</td>
+        <td style="${itemTd};width:12%">&nbsp;</td>
+        <td style="${itemTd};text-align:center;width:8%">&nbsp;</td>
+        <td style="${itemTd};text-align:center;width:8%">&nbsp;</td>
+      </tr>`;
+    }).join("\n");
+
+    return rows + blanks;
   }
 
   const partyAddr = [
@@ -67,24 +76,34 @@ export function buildProcessOutwardHTML(doc: any): string {
 <title>Process Outward — ${voucherNo}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
   body { font-family: Arial, sans-serif; font-size: 10px; color: #000; background: #fff; }
-  @page { size: A4; margin: 10mm; }
+  @page { size: A4 portrait; margin: 8mm; }
   @media print {
+    html, body { height: 100%; }
     body { margin: 0; }
-    .po-copy { page-break-after: avoid; box-shadow: none !important; margin: 0 !important; }
+    .po-copy { box-shadow: none !important; margin: 0 !important; width: 100% !important; height: 100% !important; }
   }
   .po-copy {
-    width: 210mm; min-height: 297mm;
-    margin: 10px auto; background: #fff;
+    width: 210mm;
+    height: 281mm;
+    margin: 0 auto;
+    background: #fff;
     box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    display: flex;
+    flex-direction: column;
   }
-  table { border-collapse: collapse; }
+  table { border-collapse: collapse; width: 100%; }
+  .outer-table { height: 100%; display: flex; flex-direction: column; border: 1px solid #000; }
+  .items-section { flex: 1; display: flex; flex-direction: column; border-bottom: 1px solid #000; overflow: hidden; }
+  .items-table { height: 100%; }
+  .items-table tbody { height: 100%; }
 </style>
 </head>
 <body>
 <div class="po-copy">
-<table style="width:100%;height:100%;border:1px solid #000;font-size:10px">
-<tbody>
+<table style="height:100%;border:1px solid #000;font-size:10px;table-layout:fixed">
+<tbody style="height:100%">
 
   <!-- ① Company header -->
   <tr>
@@ -99,18 +118,16 @@ export function buildProcessOutwardHTML(doc: any): string {
   <!-- ② Party + DC info row -->
   <tr>
     <td style="padding:0;border-bottom:1px solid #000">
-      <table style="width:100%">
+      <table>
         <tr>
-          <!-- Left: party address -->
           <td style="width:60%;border-right:1px solid #000;padding:5px 8px;vertical-align:top">
             <div style="font-size:8.5px;margin-bottom:1px">To,</div>
             <div style="font-weight:700;font-size:10px">M/s. ${partyName}</div>
             ${partyAddr ? `<div style="font-size:9px;line-height:1.5;margin-top:1px">${partyAddr}</div>` : ""}
             ${doc.supplier_gstin ? `<div style="font-size:9px">GSTIN : ${doc.supplier_gstin}</div>` : ""}
           </td>
-          <!-- Right: 2×2 info grid — all cells bordered so lines join -->
           <td style="width:40%;padding:0;vertical-align:top">
-            <table style="width:100%">
+            <table>
               <tr>
                 <td style="${infoLabel};border-right:1px solid #000;border-bottom:1px solid #000">DC No.</td>
                 <td style="${infoLabel};border-bottom:1px solid #000">Date</td>
@@ -136,10 +153,10 @@ export function buildProcessOutwardHTML(doc: any): string {
     </td>
   </tr>
 
-  <!-- ③ Items table -->
+  <!-- ③ Items table — expands to fill remaining height -->
   <tr style="height:100%">
-    <td style="padding:0;border-bottom:1px solid #000;vertical-align:top">
-      <table style="width:100%;font-size:10px">
+    <td style="padding:0;border-bottom:1px solid #000;vertical-align:top;height:100%">
+      <table style="width:100%;height:100%;font-size:10px;table-layout:fixed">
         <thead>
           <tr style="background:#f0f0f0">
             <th style="${B};padding:3px 4px;text-align:center;width:5%">Sl<br>No</th>
@@ -152,7 +169,7 @@ export function buildProcessOutwardHTML(doc: any): string {
             <th style="${B};padding:3px 4px;text-align:center;width:8%">Qty</th>
           </tr>
         </thead>
-        <tbody>${itemRowsHTML()}</tbody>
+        <tbody style="height:100%">${itemRowsHTML()}</tbody>
         <tfoot>
           <tr>
             <td colspan="7" style="${B};padding:3px 8px;text-align:right;font-weight:700">Total Qty</td>
@@ -174,7 +191,7 @@ export function buildProcessOutwardHTML(doc: any): string {
   <!-- ⑤ Signature row -->
   <tr>
     <td style="padding:0;border-bottom:1px solid #000">
-      <table style="width:100%">
+      <table>
         <tr>
           <td style="border-right:1px solid #000;padding:6px 8px;width:45%;vertical-align:bottom">
             Recd. in Good Condition<br><br><br>
