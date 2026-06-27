@@ -583,9 +583,23 @@ export default function GeneralLedgerTree() {
     }
   }, []);
 
+  const onPointerCancel = useCallback(() => {
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerCancel);
+    document.body.style.userSelect = "";
+    pendingRef.current = null;
+    dragActiveRef.current = false;
+    dragItemRef.current = null;
+    setDragItem(null);
+    setDropTarget(null);
+    setDropTargetCat(null);
+  }, [onPointerMove]);
+
   const onPointerUp = useCallback(async (e: PointerEvent) => {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerCancel);
     document.body.style.userSelect = "";
     const di = dragItemRef.current;
     const wasActive = dragActiveRef.current;
@@ -622,13 +636,15 @@ export default function GeneralLedgerTree() {
     dragActiveRef.current = false;
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
   }
 
   useEffect(() => () => {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerCancel);
     document.body.style.userSelect = "";
-  }, [onPointerMove, onPointerUp]);
+  }, [onPointerMove, onPointerUp, onPointerCancel]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
   async function doDelete() {
