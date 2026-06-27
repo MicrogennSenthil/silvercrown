@@ -256,18 +256,12 @@ function getLineFilter(vtName: string, idx: number): FilterType {
   const nature = getNature(vtName);
   if (n.includes("contra")) return "bank_cash";
   if (nature === "payment") {
-    // Payment Voucher:
-    //   Row 0  = Any ledger — expense, supplier, or other account
-    //   Row 1+ = Bank or Cash (source of funds)
-    if (idx === 0) return "all";
-    return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+    // Payment Voucher: all rows can select any ledger
+    return "all";
   }
   if (nature === "receipt") {
-    // Receipt Voucher:
-    //   Row 0  = Any ledger — income, customer, or other account
-    //   Row 1+ = Bank or Cash (where money is received)
-    if (idx === 0) return "all";
-    return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
+    // Receipt Voucher: all rows can select any ledger
+    return "all";
   }
   return "all";
 }
