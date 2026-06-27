@@ -547,9 +547,11 @@ export default function GeneralLedgerTree() {
     const glEl  = el.closest("[data-dnd-gl]") as HTMLElement | null;
     const catEl = el.closest("[data-dnd-cat]") as HTMLElement | null;
     if (di.type === "sl") {
-      // Sub-ledger can be reassigned to any GL (drop on a GL row or any SL belonging to a GL)
+      // Sub-ledger can be reassigned to any GL (drop on a GL row or any SL belonging to a GL),
+      // or dropped on a category header to move it into that category.
       if (slEl) return { kind: "gl", glId: slEl.dataset.dndSlgl! };
       if (glEl) return { kind: "gl", glId: glEl.dataset.dndGl! };
+      if (catEl) return { kind: "cat", catId: catEl.dataset.dndCat! };
       return null;
     }
     // GL can be moved to any category (drop anywhere within a category zone)
@@ -619,14 +621,34 @@ export default function GeneralLedgerTree() {
         await apiRequest("PATCH", `/api/general-ledgers/${di.id}`, { categoryId: t.catId });
         qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
         showToast("GL moved to new category");
-      } else if (di.type === "sl" && t.kind === "gl") {
-        if (di.glId === t.glId) return;
-        await apiRequest("PATCH", `/api/sub-ledgers/${di.id}`, { generalLedgerId: t.glId });
+      } else if (di.type === "sl") {
+        const gls = generalLedgers as any[];
+        let targetGlId: string | undefined;
+        let targetCatId: string | undefined;
+        if (t.kind === "gl") {
+          // Dropped on a specific GL → reassign + sync its category
+          targetGlId  = t.glId;
+          targetCatId = gls.find(g => g.id === t.glId)?.categoryId;
+        } else {
+          // Dropped on a category header → move under that category's first GL
+          const glsInCat = gls
+            .filter(g => g.categoryId === t.catId)
+            .sort((a, b) => a.name.localeCompare(b.name));
+          if (glsInCat.length === 0) {
+            showToast("Add a ledger group to that category first");
+            return;
+          }
+          targetGlId  = glsInCat[0].id;
+          targetCatId = t.catId;
+        }
+        if (!targetGlId || di.glId === targetGlId) return;
+        if (!targetCatId) { showToast("Could not resolve target category — refresh and retry"); return; }
+        await apiRequest("PATCH", `/api/sub-ledgers/${di.id}`, { generalLedgerId: targetGlId, categoryId: targetCatId });
         qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
         showToast("Sub-ledger moved successfully");
       }
     } catch (err: any) { showToast(err.message || "Move failed"); }
-  }, [onPointerMove, qc, showToast]);
+  }, [onPointerMove, qc, showToast, generalLedgers]);
 
   function beginDrag(e: React.PointerEvent, item: DragItem, label: string) {
     if (e.button !== 0) return;                                   // left button / touch only
@@ -835,7 +857,7 @@ export default function GeneralLedgerTree() {
         {/* Legend */}
         <div className="mt-4 flex items-center gap-3 text-xs text-gray-400">
           <Info size={12}/>
-          <span>Hover over any row to see actions. Drag a GL onto any category to move it. Drag a sub-ledger onto any GL to reassign it.</span>
+          <span>Hover over any row to see actions. Drag a GL onto any category to move it. Drag a sub-ledger onto any GL — or onto another category — to move it across.</span>
         </div>
       </div>
 
