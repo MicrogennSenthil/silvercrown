@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
@@ -514,12 +514,18 @@ export default function GeneralLedgerTree() {
   const [deleteItem, setDeleteItem] = useState<{ item: any; type: "gl"|"sl" } | null>(null);
   const [toast, setToast]           = useState("");
 
-  // Drag state
-  const drag = useRef<DragItem | null>(null);
+  // Drag state (pointer-based — reliable across browsers, unlike native HTML5 DnD)
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [dropTargetCat, setDropTargetCat] = useState<string | null>(null);
+  const [dragItem, setDragItem] = useState<DragItem | null>(null);
+  const [dragLabel, setDragLabel] = useState("");
+  const [dragPos, setDragPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragItemRef = useRef<DragItem | null>(null);
+  const pendingRef  = useRef<{ item: DragItem; label: string } | null>(null);
+  const startPosRef = useRef<{ x: number; y: number } | null>(null);
+  const dragActiveRef = useRef(false);
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3000); }
+  const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); }, []);
   function closePanel() { setPanel(null); setSelectedGL(null); setSelectedSL(null); }
 
   function toggleCat(id: string) {
@@ -529,86 +535,100 @@ export default function GeneralLedgerTree() {
     setExpandedGLs(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
-  // ── Drag/Drop ──────────────────────────────────────────────────────────────
-  function onDragStart(e: React.DragEvent, type: NodeType, id: string, categoryId: string, glId?: string) {
-    drag.current = { type, id, categoryId, glId };
-    e.dataTransfer.effectAllowed = "move";
+  // ── Pointer-based Drag/Drop ─────────────────────────────────────────────────
+  // Resolve the drop target under a screen point, given what's being dragged.
+  function resolveTarget(x: number, y: number, di: DragItem):
+    | { kind: "cat"; catId: string }
+    | { kind: "gl"; glId: string }
+    | null {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    if (!el) return null;
+    const slEl  = el.closest("[data-dnd-slgl]") as HTMLElement | null;
+    const glEl  = el.closest("[data-dnd-gl]") as HTMLElement | null;
+    const catEl = el.closest("[data-dnd-cat]") as HTMLElement | null;
+    if (di.type === "sl") {
+      // Sub-ledger can be reassigned to any GL (drop on a GL row or any SL belonging to a GL)
+      if (slEl) return { kind: "gl", glId: slEl.dataset.dndSlgl! };
+      if (glEl) return { kind: "gl", glId: glEl.dataset.dndGl! };
+      return null;
+    }
+    // GL can be moved to any category (drop anywhere within a category zone)
+    if (glEl)  return { kind: "cat", catId: glEl.dataset.dndGlcat! };
+    if (catEl) return { kind: "cat", catId: catEl.dataset.dndCat! };
+    return null;
   }
 
-  function onDragOver(e: React.DragEvent, targetId: string, targetType: NodeType, targetCatId: string) {
-    e.preventDefault();
-    if (!drag.current) return;
-    if (drag.current.id === targetId) return;
-    e.dataTransfer.dropEffect = "move";
-    setDropTarget(targetId);
-  }
+  const onPointerMove = useCallback((e: PointerEvent) => {
+    const pending = pendingRef.current;
+    if (!pending) return;
+    const sp = startPosRef.current!;
+    if (!dragActiveRef.current) {
+      if (Math.hypot(e.clientX - sp.x, e.clientY - sp.y) < 6) return; // movement threshold
+      dragActiveRef.current = true;
+      dragItemRef.current = pending.item;
+      setDragItem(pending.item);
+      setDragLabel(pending.label);
+      document.body.style.userSelect = "none";
+    }
+    setDragPos({ x: e.clientX, y: e.clientY });
+    const di = dragItemRef.current!;
+    const t = resolveTarget(e.clientX, e.clientY, di);
+    if (!t) { setDropTarget(null); setDropTargetCat(null); return; }
+    if (t.kind === "cat") {
+      setDropTargetCat(t.catId === di.categoryId && di.type === "gl" ? null : t.catId);
+      setDropTarget(null);
+    } else {
+      setDropTarget(t.glId === di.glId ? null : t.glId);
+      setDropTargetCat(null);
+    }
+  }, []);
 
-  function onDragOverCat(e: React.DragEvent, catId: string) {
-    e.preventDefault();
-    if (!drag.current) return;
-    if (drag.current.type !== "gl") return;
-    if (drag.current.categoryId === catId) return;
-    e.dataTransfer.dropEffect = "move";
-    setDropTargetCat(catId);
-  }
-
-  function onDragLeave(e: React.DragEvent) {
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+  const onPointerUp = useCallback(async (e: PointerEvent) => {
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    document.body.style.userSelect = "";
+    const di = dragItemRef.current;
+    const wasActive = dragActiveRef.current;
+    pendingRef.current = null;
+    dragActiveRef.current = false;
+    dragItemRef.current = null;
+    setDragItem(null);
     setDropTarget(null);
-  }
-  function onDragLeaveCat(e: React.DragEvent) {
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
     setDropTargetCat(null);
-  }
+    if (!wasActive || !di) return;
 
-  async function onDropCat(e: React.DragEvent, catId: string) {
-    e.preventDefault();
-    setDropTargetCat(null);
-    if (!drag.current) return;
-    if (drag.current.type !== "gl") return;
-    if (drag.current.categoryId === catId) return;
+    const t = resolveTarget(e.clientX, e.clientY, di);
+    if (!t) return;
     try {
-      await apiRequest("PATCH", `/api/general-ledgers/${drag.current.id}`, { categoryId: catId });
-      qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
-      showToast("GL moved to new category");
-    } catch (err: any) { showToast(err.message || "Move failed"); }
-    drag.current = null;
-  }
-
-  async function onDrop(e: React.DragEvent, targetId: string, targetType: NodeType, targetCatId: string, targetGLId?: string) {
-    e.preventDefault();
-    setDropTarget(null);
-    if (!drag.current || drag.current.id === targetId) return;
-
-    // GL dropped onto another GL → move GL to target's category (if different)
-    if (drag.current.type === "gl" && targetType === "gl" && drag.current.categoryId !== targetCatId) {
-      try {
-        await apiRequest("PATCH", `/api/general-ledgers/${drag.current.id}`, { categoryId: targetCatId });
+      if (di.type === "gl" && t.kind === "cat") {
+        if (di.categoryId === t.catId) return;
+        await apiRequest("PATCH", `/api/general-ledgers/${di.id}`, { categoryId: t.catId });
         qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
         showToast("GL moved to new category");
-      } catch (err: any) { showToast(err.message || "Move failed"); }
-      drag.current = null;
-      return;
-    }
+      } else if (di.type === "sl" && t.kind === "gl") {
+        if (di.glId === t.glId) return;
+        await apiRequest("PATCH", `/api/sub-ledgers/${di.id}`, { generalLedgerId: t.glId });
+        qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
+        showToast("Sub-ledger moved successfully");
+      }
+    } catch (err: any) { showToast(err.message || "Move failed"); }
+  }, [onPointerMove, qc, showToast]);
 
-    // SL dropped onto any GL → move SL under that GL
-    if (drag.current.type === "sl" && targetType === "gl") {
-      try {
-        await apiRequest("PATCH", `/api/sub-ledgers/${drag.current.id}`, { generalLedgerId: targetId });
-        qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
-        showToast("Sub-ledger moved successfully");
-      } catch {}
-    }
-    // SL dropped onto another SL → move SL to that SL's parent GL
-    else if (drag.current.type === "sl" && targetType === "sl" && drag.current.glId !== targetGLId) {
-      try {
-        await apiRequest("PATCH", `/api/sub-ledgers/${drag.current.id}`, { generalLedgerId: targetGLId });
-        qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
-        showToast("Sub-ledger moved successfully");
-      } catch {}
-    }
-    drag.current = null;
+  function beginDrag(e: React.PointerEvent, item: DragItem, label: string) {
+    if (e.button !== 0) return;                                   // left button / touch only
+    if ((e.target as HTMLElement).closest("button")) return;      // let buttons work normally
+    pendingRef.current = { item, label };
+    startPosRef.current = { x: e.clientX, y: e.clientY };
+    dragActiveRef.current = false;
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
   }
+
+  useEffect(() => () => {
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    document.body.style.userSelect = "";
+  }, [onPointerMove, onPointerUp]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
   async function doDelete() {
@@ -664,9 +684,7 @@ export default function GeneralLedgerTree() {
               <div key={cat.id} className="border-b last:border-b-0">
                 {/* ── Category Row ── */}
                 <div
-                  onDragOver={e => onDragOverCat(e, cat.id)}
-                  onDragLeave={onDragLeaveCat}
-                  onDrop={e => onDropCat(e, cat.id)}
+                  data-dnd-cat={cat.id}
                   className={`flex items-center gap-1 px-4 py-2.5 select-none group transition-colors
                     ${dropTargetCat === cat.id
                       ? "bg-blue-100 border-2 border-dashed border-[#027fa5]"
@@ -698,15 +716,13 @@ export default function GeneralLedgerTree() {
 
                   return (
                     <div key={gl.id}
-                      onDragOver={e => onDragOver(e, gl.id, "gl", cat.id)}
-                      onDragLeave={onDragLeave}
-                      onDrop={e => onDrop(e, gl.id, "gl", cat.id)}
+                      data-dnd-gl={gl.id}
+                      data-dnd-glcat={cat.id}
                       className={`transition-colors ${isDropGL ? "bg-blue-50 border border-dashed border-[#027fa5]" : ""}`}
                     >
                       {/* GL Row */}
                       <div
-                        draggable
-                        onDragStart={e => onDragStart(e, "gl", gl.id, cat.id)}
+                        onPointerDown={e => beginDrag(e, { type: "gl", id: gl.id, categoryId: cat.id }, gl.name)}
                         className={`flex items-center gap-1 px-4 py-2 pl-10 border-b border-gray-100 select-none group cursor-grab active:cursor-grabbing hover:bg-blue-50/30 transition-colors ${selectedGL?.id === gl.id && panel === "edit-gl" ? "bg-[#d2f1fa]/60" : ""}`}
                       >
                         <GripVertical size={13} className="text-gray-300 flex-shrink-0"/>
@@ -746,11 +762,9 @@ export default function GeneralLedgerTree() {
                         const isDropSL = dropTarget === sl.id;
                         return (
                           <div key={sl.id}
-                            draggable
-                            onDragStart={e => onDragStart(e, "sl", sl.id, cat.id, gl.id)}
-                            onDragOver={e => onDragOver(e, sl.id, "sl", cat.id)}
-                            onDragLeave={onDragLeave}
-                            onDrop={e => onDrop(e, sl.id, "sl", cat.id, gl.id)}
+                            data-dnd-sl={sl.id}
+                            data-dnd-slgl={gl.id}
+                            onPointerDown={e => beginDrag(e, { type: "sl", id: sl.id, categoryId: cat.id, glId: gl.id }, sl.name)}
                             className={`flex items-center gap-1 px-4 py-1.5 pl-16 border-b border-gray-50 select-none group cursor-grab active:cursor-grabbing hover:bg-blue-50/20 transition-colors
                               ${selectedSL?.id === sl.id && panel === "edit-sl" ? "bg-[#d2f1fa]/40" : ""}
                               ${isDropSL ? "border border-dashed border-[#027fa5] bg-blue-50" : ""}`}
@@ -805,7 +819,7 @@ export default function GeneralLedgerTree() {
         {/* Legend */}
         <div className="mt-4 flex items-center gap-3 text-xs text-gray-400">
           <Info size={12}/>
-          <span>Hover over any row to see actions. Drag GLs onto a category header to move them across categories. Drag SLs onto any GL to reassign them.</span>
+          <span>Hover over any row to see actions. Drag a GL onto any category to move it. Drag a sub-ledger onto any GL to reassign it.</span>
         </div>
       </div>
 
@@ -837,6 +851,17 @@ export default function GeneralLedgerTree() {
       {deleteItem && (
         <DeleteModal item={deleteItem.item} type={deleteItem.type}
           onConfirm={doDelete} onCancel={() => setDeleteItem(null)} />
+      )}
+
+      {/* ── Drag ghost (follows pointer) ───────────────────────────────────── */}
+      {dragItem && (
+        <div
+          className="fixed z-[9999] pointer-events-none px-3 py-1.5 rounded-md text-white text-xs shadow-lg flex items-center gap-1.5"
+          style={{ left: dragPos.x + 14, top: dragPos.y + 14, background: SC.primary }}
+        >
+          <GripVertical size={12}/>
+          {dragLabel}
+        </div>
       )}
 
       {/* ── Toast ──────────────────────────────────────────────────────────── */}
