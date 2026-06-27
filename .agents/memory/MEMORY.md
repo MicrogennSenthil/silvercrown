@@ -2,3 +2,4 @@
 - [TDZ blank-page pattern](tdz-blank-page.md) — const declared after a useEffect that uses it in the dependency array causes a Temporal Dead Zone ReferenceError → blank white React page.
 - [Schema-first rule](schema-first-rule.md) — before any new feature/report/modification, read shared/schema.ts and the DB fully first; reuse or extend existing tables with conditions rather than creating new ones.
 - [DB + deploy pattern](db-deploy-pattern.md) — production DB is Replit PostgreSQL (use executeSql); VPS SSH from Replit times out so push via GITHUB_PAT inline URL then user runs git pull+build+pm2 restart on VPS manually.
+- [Pointer-based drag-drop](dnd-pointer-based.md) — native HTML5 DnD is unreliable here; use pointer events + elementFromPoint + data-dnd attrs, with pointercancel cleanup.
