@@ -552,8 +552,14 @@ export default function GeneralLedgerTree() {
     setDropTargetCat(catId);
   }
 
-  function onDragLeave() { setDropTarget(null); }
-  function onDragLeaveCat() { setDropTargetCat(null); }
+  function onDragLeave(e: React.DragEvent) {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDropTarget(null);
+  }
+  function onDragLeaveCat(e: React.DragEvent) {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDropTargetCat(null);
+  }
 
   async function onDropCat(e: React.DragEvent, catId: string) {
     e.preventDefault();
