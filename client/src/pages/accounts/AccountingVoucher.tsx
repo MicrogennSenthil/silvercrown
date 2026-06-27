@@ -256,17 +256,17 @@ function getLineFilter(vtName: string, idx: number): FilterType {
   const nature = getNature(vtName);
   if (n.includes("contra")) return "bank_cash";
   if (nature === "payment") {
-    // Tally standard Payment Voucher:
-    //   Row 0  = Supplier/Party (To — Dr: their payable cleared)
-    //   Row 1+ = Bank or Cash  (By — Cr: source of funds)
-    if (idx === 0) return "sundry_creditors";
+    // Payment Voucher:
+    //   Row 0  = Any ledger — expense, supplier, or other account
+    //   Row 1+ = Bank or Cash (source of funds)
+    if (idx === 0) return "all";
     return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   if (nature === "receipt") {
     // Receipt Voucher:
-    //   Row 0  = Customer/Party (By — Cr: who paid us) — party first
-    //   Row 1+ = Bank or Cash   (To — Dr: money received into bank)
-    if (idx === 0) return "sundry_debtors";
+    //   Row 0  = Any ledger — income, customer, or other account
+    //   Row 1+ = Bank or Cash (where money is received)
+    if (idx === 0) return "all";
     return n.includes("bank") ? "bank" : n.includes("cash") ? "cash" : "bank_cash";
   }
   return "all";
@@ -538,11 +538,11 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
       return updated;
     });
 
-    // Trigger bill adjustment dialog when a party ledger is selected
+    // Trigger bill adjustment dialog when a party (sundry debtor/creditor) ledger is selected
     if (id && vtName) {
-      const idx = lines.findIndex(l => l._key === key);
-      const f = getLineFilter(vtName, idx);
-      if (f === "sundry_creditors" || f === "sundry_debtors" || f === "party") {
+      const selectedSl = (allSubs as any[]).find((s: any) => String(s.id) === String(id));
+      const glType = selectedSl?.gl_type || "";
+      if (glType === "sundry_creditor" || glType === "sundry_debtor") {
         setBillAdjSlId(id);
         setBillAdjPartyLineKey(key);
         setBillAdjRows([]); // reset previous for new party
