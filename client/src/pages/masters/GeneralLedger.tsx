@@ -517,6 +517,7 @@ export default function GeneralLedgerTree() {
   // Drag state
   const drag = useRef<DragItem | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dropTargetCat, setDropTargetCat] = useState<string | null>(null);
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 3000); }
   function closePanel() { setPanel(null); setSelectedGL(null); setSelectedSL(null); }
@@ -537,34 +538,67 @@ export default function GeneralLedgerTree() {
   function onDragOver(e: React.DragEvent, targetId: string, targetType: NodeType, targetCatId: string) {
     e.preventDefault();
     if (!drag.current) return;
-    if (drag.current.categoryId !== targetCatId) { e.dataTransfer.dropEffect = "none"; return; }
     if (drag.current.id === targetId) return;
     e.dataTransfer.dropEffect = "move";
     setDropTarget(targetId);
   }
 
+  function onDragOverCat(e: React.DragEvent, catId: string) {
+    e.preventDefault();
+    if (!drag.current) return;
+    if (drag.current.type !== "gl") return;
+    if (drag.current.categoryId === catId) return;
+    e.dataTransfer.dropEffect = "move";
+    setDropTargetCat(catId);
+  }
+
   function onDragLeave() { setDropTarget(null); }
+  function onDragLeaveCat() { setDropTargetCat(null); }
+
+  async function onDropCat(e: React.DragEvent, catId: string) {
+    e.preventDefault();
+    setDropTargetCat(null);
+    if (!drag.current) return;
+    if (drag.current.type !== "gl") return;
+    if (drag.current.categoryId === catId) return;
+    try {
+      await apiRequest("PATCH", `/api/general-ledgers/${drag.current.id}`, { categoryId: catId });
+      qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
+      showToast("GL moved to new category");
+    } catch (err: any) { showToast(err.message || "Move failed"); }
+    drag.current = null;
+  }
 
   async function onDrop(e: React.DragEvent, targetId: string, targetType: NodeType, targetCatId: string, targetGLId?: string) {
     e.preventDefault();
     setDropTarget(null);
     if (!drag.current || drag.current.id === targetId) return;
-    if (drag.current.categoryId !== targetCatId) return; // Can't move between categories
 
-    // Move SL to a different GL (drop onto GL header)
+    // GL dropped onto another GL → move GL to target's category (if different)
+    if (drag.current.type === "gl" && targetType === "gl" && drag.current.categoryId !== targetCatId) {
+      try {
+        await apiRequest("PATCH", `/api/general-ledgers/${drag.current.id}`, { categoryId: targetCatId });
+        qc.invalidateQueries({ queryKey: ["/api/general-ledgers"] });
+        showToast("GL moved to new category");
+      } catch (err: any) { showToast(err.message || "Move failed"); }
+      drag.current = null;
+      return;
+    }
+
+    // SL dropped onto any GL → move SL under that GL
     if (drag.current.type === "sl" && targetType === "gl") {
       try {
         await apiRequest("PATCH", `/api/sub-ledgers/${drag.current.id}`, { generalLedgerId: targetId });
         qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
-        showToast("Ledger moved successfully");
+        showToast("Sub-ledger moved successfully");
       } catch {}
     }
-    // Move SL to same position as another SL (reorder within GL)
+    // SL dropped onto another SL → move SL to that SL's parent GL
     else if (drag.current.type === "sl" && targetType === "sl" && drag.current.glId !== targetGLId) {
       try {
         await apiRequest("PATCH", `/api/sub-ledgers/${drag.current.id}`, { generalLedgerId: targetGLId });
         qc.invalidateQueries({ queryKey: ["/api/sub-ledgers"] });
-        showToast("Ledger moved successfully");
+        showToast("Sub-ledger moved successfully");
       } catch {}
     }
     drag.current = null;
@@ -624,8 +658,14 @@ export default function GeneralLedgerTree() {
               <div key={cat.id} className="border-b last:border-b-0">
                 {/* ── Category Row ── */}
                 <div
-                  className="flex items-center gap-1 px-4 py-2.5 bg-gray-50 select-none group hover:bg-blue-50/40 transition-colors"
-                  style={{ borderLeft: `3px solid ${SC.primary}` }}
+                  onDragOver={e => onDragOverCat(e, cat.id)}
+                  onDragLeave={onDragLeaveCat}
+                  onDrop={e => onDropCat(e, cat.id)}
+                  className={`flex items-center gap-1 px-4 py-2.5 select-none group transition-colors
+                    ${dropTargetCat === cat.id
+                      ? "bg-blue-100 border-2 border-dashed border-[#027fa5]"
+                      : "bg-gray-50 hover:bg-blue-50/40"}`}
+                  style={{ borderLeft: dropTargetCat === cat.id ? undefined : `3px solid ${SC.primary}` }}
                 >
                   <button onClick={() => toggleCat(cat.id)} className="p-0.5 text-gray-400 hover:text-gray-700 flex-shrink-0" data-testid={`btn-expand-cat-${cat.id}`}>
                     {isCatExpanded ? <ChevronDown size={16}/> : <ChevronRight size={16}/>}
@@ -759,7 +799,7 @@ export default function GeneralLedgerTree() {
         {/* Legend */}
         <div className="mt-4 flex items-center gap-3 text-xs text-gray-400">
           <Info size={12}/>
-          <span>Hover over any row to see actions. Drag items to reorder or move between ledger groups (within the same category).</span>
+          <span>Hover over any row to see actions. Drag GLs onto a category header to move them across categories. Drag SLs onto any GL to reassign them.</span>
         </div>
       </div>
 
