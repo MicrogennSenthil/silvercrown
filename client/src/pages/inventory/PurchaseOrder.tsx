@@ -251,11 +251,13 @@ function PoForm({ editData, onBack }: { editData?: any; onBack: () => void }) {
   // ── Tax breakdown — one row per GST slab (grouped by unique tax %) ─────────
   type TaxSlabRow = { slabPct: number; taxable: number; cgst: number; sgst: number; igst: number; total: number };
   const taxSlabMap = new Map<string, TaxSlabRow>();
+  const interState = purchaseType === "inter_state";
   items.forEach(r => {
     const cp = parseFloat(r.cgst_pct)||0, sp = parseFloat(r.sgst_pct)||0, ip = parseFloat(r.igst_pct)||0;
-    const slabPct = cp + sp + ip;
+    // Only the rates that actually apply for the selected purchase type count toward the slab %
+    const slabPct = interState ? ip : cp + sp;
     if (slabPct === 0) return;
-    const key = `${cp}_${sp}_${ip}`;
+    const key = `${slabPct}`;
     const existing = taxSlabMap.get(key) || { slabPct, taxable: 0, cgst: 0, sgst: 0, igst: 0, total: 0 };
     const tx = parseFloat(r.taxable_amt)||0;
     const ca = parseFloat(r.cgst_amt)||0, sa = parseFloat(r.sgst_amt)||0, ia = parseFloat(r.igst_amt)||0;
