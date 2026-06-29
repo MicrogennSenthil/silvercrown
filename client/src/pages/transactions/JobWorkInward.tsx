@@ -11,6 +11,46 @@ import DatePicker from "@/components/DatePicker";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
+// Normalize an uploaded image to a clean baseline JPEG before sending to the AI.
+// Re-encodes via canvas (downscales oversized images, flattens transparency onto
+// white, strips odd color profiles) — fixes most "invalid image data" errors.
+// PDFs and non-image files pass through untouched.
+async function normalizeImageFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file; // PDFs etc. → leave as-is
+  const dataUrl: string = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Could not read the selected file."));
+    reader.readAsDataURL(file);
+  });
+  const img: HTMLImageElement = await new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error("Could not read this image format. Please upload a JPG or PNG image, or take a photo instead."));
+    im.src = dataUrl;
+  });
+  const maxDim = 2200;
+  let { width, height } = img;
+  if (!width || !height) return file;
+  if (width > maxDim || height > maxDim) {
+    const scale = Math.min(maxDim / width, maxDim / height);
+    width = Math.round(width * scale);
+    height = Math.round(height * scale);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(img, 0, 0, width, height);
+  const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.92));
+  if (!blob) return file;
+  const baseName = file.name.replace(/\.[^.]+$/, "") || "scan";
+  return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
+}
+
 // ── Quick-Add Party Modal ────────────────────────────────────────────────────
 function QuickAddPartyModal({ defaultName, onCreated, onClose }: { defaultName: string; onCreated: (p: any) => void; onClose: () => void }) {
   const [name, setName] = useState(defaultName);
@@ -220,8 +260,9 @@ function UploadScanModal({ onExtracted, onClose }: { onExtracted: (data: any) =>
   async function extract(file: File) {
     setStage("extracting");
     try {
+      const prepared = await normalizeImageFile(file);
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", prepared);
       const res = await fetch("/api/ai/extract-dc", {
         method: "POST", credentials: "include", body: form,
       });
