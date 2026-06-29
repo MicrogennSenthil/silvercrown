@@ -2661,18 +2661,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const cfg: Record<string, string> = {};
       rows.rows.forEach((r: any) => { cfg[r.key] = r.value; });
 
-      const provider = cfg["ai_provider"] || "gemini";
-      const model = cfg["ai_model"] || "gemini-2.0-flash";
-      const apiKey = provider === "gemini" ? cfg["gemini_api_key"] : cfg["groq_api_key"];
-
-      if (!apiKey) return res.status(400).json({ message: `${provider === "gemini" ? "Gemini" : "Groq"} API key not configured. Please set it in Software Setup → AI Configuration.` });
-
       const filePath = (req as any).file?.path;
       if (!filePath) return res.status(400).json({ message: "No file uploaded" });
 
       const imageData = fs.readFileSync(filePath);
       const base64 = imageData.toString("base64");
       const mimeType = (req as any).file?.mimetype || "image/jpeg";
+      const isPdf = mimeType === "application/pdf";
+
+      let provider = cfg["ai_provider"] || "gemini";
+      let model = cfg["ai_model"] || "gemini-2.0-flash";
+      // Groq vision models cannot read raw PDF bytes (returns "invalid image data").
+      // Fall back to Gemini — which supports PDF inline data — for PDF uploads.
+      if (isPdf && provider === "groq" && cfg["gemini_api_key"]) {
+        provider = "gemini";
+        model = "gemini-2.0-flash";
+      }
+      const apiKey = provider === "gemini" ? cfg["gemini_api_key"] : cfg["groq_api_key"];
+
+      if (!apiKey) return res.status(400).json({ message: `${provider === "gemini" ? "Gemini" : "Groq"} API key not configured. Please set it in Software Setup → AI Configuration.` });
+      if (isPdf && provider === "groq") return res.status(400).json({ message: "PDF scanning needs a Gemini API key configured. Please upload a photo/image of the DC, or set a Gemini key in Software Setup → AI Configuration." });
 
       const prompt = `You are an OCR assistant for an Indian manufacturing ERP called Silver Crown Metal Coatings (also known as Silver Crown Metals). Extract data from this Delivery Challan / DC image.
 
