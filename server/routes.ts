@@ -2667,7 +2667,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const imageData = fs.readFileSync(filePath);
       const base64 = imageData.toString("base64");
       const mimeType = (req as any).file?.mimetype || "image/jpeg";
-      const isPdf = mimeType === "application/pdf";
+      const isPdf = mimeType.includes("pdf") || /\.pdf$/i.test((req as any).file?.originalname || "");
 
       let provider = cfg["ai_provider"] || "gemini";
       let model = cfg["ai_model"] || "gemini-2.0-flash";
