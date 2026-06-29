@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { createPortal } from "react-dom";
 import {
   Plus, Trash2, Info, Upload, Camera, FolderOpen, X,
   Search, PencilLine, Loader2, AlertCircle, CheckCircle2, Receipt
@@ -639,6 +640,25 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
   // Item search state per row
   const [itemSearch, setItemSearch] = useState<Record<string, string>>({});
   const [itemDropOpen, setItemDropOpen] = useState<string | null>(null);
+  const [itemDropRect, setItemDropRect] = useState<{ left: number; top: number; width: number } | null>(null);
+  const itemInputRef = useRef<HTMLInputElement | null>(null);
+  const positionItemDrop = () => {
+    const el = itemInputRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setItemDropRect({ left: r.left, top: r.bottom + 2, width: r.width });
+  };
+  useEffect(() => {
+    if (!itemDropOpen) return;
+    positionItemDrop();
+    const onScroll = () => positionItemDrop();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [itemDropOpen]);
 
   const totalQty = items.reduce((a, r) => a + (parseFloat(r.qty) || 0), 0);
 
@@ -943,12 +963,15 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                           <input
                             value={itemSearch[row._key] !== undefined ? itemSearch[row._key] : row.item_name}
                             onChange={e => {
+                              itemInputRef.current = e.currentTarget;
                               setItemSearch(prev => ({ ...prev, [row._key]: e.target.value }));
                               updateRow(row._key, "item_name", e.target.value);
                               updateRow(row._key, "item_id", "");
                               setItemDropOpen(row._key);
+                              positionItemDrop();
                             }}
-                            onFocus={() => setItemDropOpen(row._key)}
+                            onFocus={e => { itemInputRef.current = e.currentTarget; setItemDropOpen(row._key); positionItemDrop(); }}
+                            onBlur={() => setTimeout(() => setItemDropOpen(null), 150)}
                             placeholder="Search item..."
                             className="flex-1 border border-gray-200 rounded-l px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
                             data-testid={`input-item-name-${i}`}
@@ -962,9 +985,12 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                             <Plus size={12} />
                           </button>
                         </div>
-                        {itemDropOpen === row._key && (itemSearch[row._key] || "").length > 0 && filteredItems.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-60 overflow-y-auto mt-0.5">
-                            {filteredItems.slice(0, 12).map((s: any) => (
+                        {itemDropOpen === row._key && (itemSearch[row._key] || "").length > 0 && filteredItems.length > 0 && itemDropRect && createPortal(
+                          <div
+                            style={{ position: "fixed", left: itemDropRect.left, top: itemDropRect.top, width: itemDropRect.width, zIndex: 9999 }}
+                            className="bg-white border border-gray-200 rounded-lg shadow-2xl max-h-72 overflow-y-auto"
+                            onMouseDown={e => e.preventDefault()}>
+                            {filteredItems.slice(0, 20).map((s: any) => (
                               <button key={s.id} onClick={() => selectItem(row._key, s)}
                                 className="w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] transition-colors border-b border-gray-100 last:border-0 leading-tight"
                                 data-testid={`opt-item-${s.id}`}>
@@ -972,7 +998,8 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                                 <div className="text-[10px] text-gray-400 truncate">{s.code}</div>
                               </button>
                             ))}
-                          </div>
+                          </div>,
+                          document.body
                         )}
                       </td>
 
