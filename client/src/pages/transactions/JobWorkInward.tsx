@@ -559,6 +559,13 @@ function ScanItemVerifyModal({
                                   className="w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] border-b border-gray-100 last:border-0 leading-tight">
                                   <div className="font-semibold text-gray-800 break-words">{s.name}</div>
                                   <div className="text-[10px] text-gray-400 truncate">{s.code}</div>
+                                  {(s.sapNo || s.sap_no || s.drgNo || s.drg_no) && (
+                                    <div className="text-[10px] text-gray-500 truncate">
+                                      {(s.sapNo || s.sap_no) && <span>SAP: {s.sapNo || s.sap_no}</span>}
+                                      {(s.sapNo || s.sap_no) && (s.drgNo || s.drg_no) && <span> · </span>}
+                                      {(s.drgNo || s.drg_no) && <span>DRG: {s.drgNo || s.drg_no}</span>}
+                                    </div>
+                                  )}
                                 </button>
                               ))}
                             </div>
