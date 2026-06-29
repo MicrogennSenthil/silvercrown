@@ -390,6 +390,8 @@ type PendingVerifyItem = {
   item_id: string;
   item_code: string;
   item_name: string;
+  sap_no: string;
+  drg_no: string;
   qty: string;
   unit: string;
   hsn: string;
@@ -418,6 +420,8 @@ function ScanItemVerifyModal({
         item_id: match?.id || "",
         item_code: it.itemCode || match?.code || "",
         item_name: it.itemName || match?.name || "",
+        sap_no: it.sapNo || match?.sapNo || match?.sap_no || "",
+        drg_no: it.drgNo || match?.drgNo || match?.drg_no || "",
         qty: String(it.qty || ""),
         unit: (it.unit || match?.uom || "").toUpperCase(),
         hsn: it.hsn || match?.hsnCode || match?.hsn_code || "",
@@ -444,6 +448,7 @@ function ScanItemVerifyModal({
   function selectMasterItem(rowKey: string, item: any) {
     setRows(prev => prev.map(r => r._key === rowKey ? {
       ...r, item_id: item.id, item_code: item.code, item_name: item.name,
+      sap_no: item.sapNo || item.sap_no || r.sap_no, drg_no: item.drgNo || item.drg_no || r.drg_no,
       unit: (item.unit || item.uom || r.unit || "").toUpperCase(),
       hsn: item.hsnCode || item.hsn_code || r.hsn,
     } : r));
@@ -611,6 +616,8 @@ type ItemRow = {
   item_id: string;
   item_code: string;
   item_name: string;
+  sap_no: string;
+  drg_no: string;
   qty: string;
   unit: string;
   process: string;
@@ -621,7 +628,7 @@ type ItemRow = {
 };
 
 function newRow(): ItemRow {
-  return { _key: crypto.randomUUID(), item_id: "", item_code: "", item_name: "", qty: "", unit: "", process: "", process_id: "", hsn: "", remark: "", work_order_no: "" };
+  return { _key: crypto.randomUUID(), item_id: "", item_code: "", item_name: "", sap_no: "", drg_no: "", qty: "", unit: "", process: "", process_id: "", hsn: "", remark: "", work_order_no: "" };
 }
 
 // ── Inward Form ──────────────────────────────────────────────────────────────
@@ -667,7 +674,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
   const [items, setItems] = useState<ItemRow[]>(
     editData?.items?.length
-      ? editData.items.map((it: any) => ({ _key: crypto.randomUUID(), item_id: it.item_id || "", item_code: it.item_code || "", item_name: it.item_name || "", qty: String(it.qty || ""), unit: it.unit || "", process: it.process || "", process_id: it.process_id || "", hsn: it.hsn || "", remark: it.remark || "", work_order_no: it.work_order_no || "" }))
+      ? editData.items.map((it: any) => ({ _key: crypto.randomUUID(), item_id: it.item_id || "", item_code: it.item_code || "", item_name: it.item_name || "", sap_no: it.sap_no || "", drg_no: it.drg_no || "", qty: String(it.qty || ""), unit: it.unit || "", process: it.process || "", process_id: it.process_id || "", hsn: it.hsn || "", remark: it.remark || "", work_order_no: it.work_order_no || "" }))
       : [newRow()]
   );
 
@@ -739,13 +746,14 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
     const existing = items.find(r => r._key !== rowKey && r.item_id === item.id && (r.work_order_no || "") === currentWO);
     if (existing) {
       const msg = currentWO
-        ? `${item.name} with Work Order No "${currentWO}" is already in the list.`
-        : `${item.name} is already in the list. Use a different Work Order No to add it again.`;
+        ? `${item.name} with Reference No "${currentWO}" is already in the list.`
+        : `${item.name} is already in the list. Use a different Reference No to add it again.`;
       toast({ title: "Duplicate item", description: msg, variant: "destructive" });
       return;
     }
     setItems(prev => prev.map(r => r._key === rowKey ? {
       ...r, item_id: item.id, item_code: item.code, item_name: item.name,
+      sap_no: item.sapNo || item.sap_no || r.sap_no, drg_no: item.drgNo || item.drg_no || r.drg_no,
       unit: (item.unit || item.uom || r.unit || "").toUpperCase(), hsn: item.hsnCode || item.hsn_code || r.hsn,
     } : r));
     setItemSearch(prev => ({ ...prev, [rowKey]: item.name }));
@@ -794,13 +802,15 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
         item_id: it.item_id || "",
         item_code: it.item_code || "",
         item_name: it.item_name || "",
+        sap_no: it.sap_no || "",
+        drg_no: it.drg_no || "",
         qty: String(it.qty || ""),
         unit: (it.unit || "").toUpperCase(),
         process: it.process || "",
         process_id: it.process_id || "",
         hsn: it.hsn || "",
         remark: it.remark || "",
-        rate: String(it.rate || ""),
+        work_order_no: it.work_order_no || "",
       })));
     }
     setPendingScannedData(null);
@@ -820,7 +830,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
         vehicle_no: vehicleNo,
         notes,
         items: items.filter(r => r.item_name || r.qty).map(r => ({
-          item_id: r.item_id || null, item_code: r.item_code, item_name: r.item_name,
+          item_id: r.item_id || null, item_code: r.item_code, item_name: r.item_name, sap_no: r.sap_no || "", drg_no: r.drg_no || "",
           qty: r.qty || "0", unit: r.unit, process: r.process, process_id: r.process_id || null, hsn: r.hsn, remark: r.remark, work_order_no: r.work_order_no || "",
         })),
       };
@@ -972,10 +982,12 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-10">S.no</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">Item Code</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Item Name</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">SAP No</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">DRG No</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-32">Qty</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-16">Unit</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-40">Process</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">Work Order No</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">Reference No</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-20">HSN</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Remark</th>
                   <th className="w-8"></th>
@@ -1037,6 +1049,13 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                                 data-testid={`opt-item-${s.id}`}>
                                 <div className="font-semibold text-gray-800 break-words">{s.name}</div>
                                 <div className="text-[10px] text-gray-400 truncate">{s.code}</div>
+                                {(s.sapNo || s.sap_no || s.drgNo || s.drg_no) && (
+                                  <div className="text-[10px] text-gray-500 truncate">
+                                    {(s.sapNo || s.sap_no) && <span>SAP: {s.sapNo || s.sap_no}</span>}
+                                    {(s.sapNo || s.sap_no) && (s.drgNo || s.drg_no) && <span> · </span>}
+                                    {(s.drgNo || s.drg_no) && <span>DRG: {s.drgNo || s.drg_no}</span>}
+                                  </div>
+                                )}
                               </button>
                             ))}
                           </div>,
@@ -1044,6 +1063,18 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                         )}
                       </td>
 
+                      <td className="px-2 py-1.5">
+                        <input value={row.sap_no} onChange={e => updateRow(row._key, "sap_no", e.target.value)}
+                          placeholder="SAP No"
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
+                          data-testid={`input-sap-no-${i}`} />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input value={row.drg_no} onChange={e => updateRow(row._key, "drg_no", e.target.value)}
+                          placeholder="DRG No"
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
+                          data-testid={`input-drg-no-${i}`} />
+                      </td>
                       <td className="px-2 py-1.5">
                         <input type="number" value={row.qty} onChange={e => updateRow(row._key, "qty", e.target.value)}
                           className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm font-medium outline-none focus:border-[#027fa5] focus:ring-1 focus:ring-[#027fa5]/20 text-right bg-white"
@@ -1083,7 +1114,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                       <td className="px-2 py-1.5">
                         <input value={row.work_order_no}
                           onChange={e => updateRow(row._key, "work_order_no", e.target.value)}
-                          placeholder="Work Order No"
+                          placeholder="Reference No"
                           className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
                           data-testid={`input-work-order-no-${i}`} />
                       </td>
