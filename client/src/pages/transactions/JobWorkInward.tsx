@@ -506,12 +506,12 @@ function ScanItemVerifyModal({
                             />
                           </div>
                           {itemDropOpen === row._key && filteredItems.length > 0 && (
-                            <div className="absolute top-full left-2 right-2 bg-white border border-gray-200 rounded shadow-lg z-40 max-h-32 overflow-y-auto mt-0.5">
-                              {filteredItems.slice(0, 10).map((s: any) => (
+                            <div className="absolute top-full left-2 right-2 bg-white border border-gray-200 rounded shadow-lg z-40 max-h-60 overflow-y-auto mt-0.5">
+                              {filteredItems.slice(0, 12).map((s: any) => (
                                 <button key={s.id} onMouseDown={() => selectMasterItem(row._key, s)}
-                                  className="w-full text-left px-2 py-1.5 text-xs hover:bg-[#d2f1fa] flex justify-between gap-2">
-                                  <span className="truncate">{s.name}</span>
-                                  <span className="text-gray-400 shrink-0">{s.code}</span>
+                                  className="w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] border-b border-gray-100 last:border-0 leading-tight">
+                                  <div className="font-semibold text-gray-800 break-words">{s.name}</div>
+                                  <div className="text-[10px] text-gray-400 truncate">{s.code}</div>
                                 </button>
                               ))}
                             </div>
@@ -963,12 +963,13 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                           </button>
                         </div>
                         {itemDropOpen === row._key && (itemSearch[row._key] || "").length > 0 && filteredItems.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-36 overflow-y-auto mt-0.5">
-                            {filteredItems.slice(0, 8).map((s: any) => (
+                          <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-60 overflow-y-auto mt-0.5">
+                            {filteredItems.slice(0, 12).map((s: any) => (
                               <button key={s.id} onClick={() => selectItem(row._key, s)}
-                                className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#d2f1fa] transition-colors"
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] transition-colors border-b border-gray-100 last:border-0 leading-tight"
                                 data-testid={`opt-item-${s.id}`}>
-                                <span className="font-medium">{s.code}</span> — {s.name}
+                                <div className="font-semibold text-gray-800 break-words">{s.name}</div>
+                                <div className="text-[10px] text-gray-400 truncate">{s.code}</div>
                               </button>
                             ))}
                           </div>
