@@ -324,6 +324,13 @@ export default function GoodsReceiptNote() {
   function openEdit(grn: any) {
     setGrnNo(grn.voucher_no || "");
     setSelectedPoIds(grn.po_id ? [grn.po_id] : []);
+    // Derive tax type from loaded items: inter-state when IGST is used and CGST/SGST is not
+    {
+      const its = grn.items || [];
+      const hasIgst = its.some((it: any) => p2(it.igst_pct) > 0 || p2(it.igst_amt) > 0);
+      const hasCgstSgst = its.some((it: any) => p2(it.cgst_pct) > 0 || p2(it.sgst_pct) > 0);
+      setGrnInterState(hasIgst && !hasCgstSgst);
+    }
     setForm({
       grn_date: grn.grn_date?.slice(0,10)||"", store_id: grn.store_id||"", store_name: grn.store_name||"",
       supplier_id: grn.supplier_id||"", supplier_name_manual: grn.supplier_name||grn.supplier_name_manual||"",
@@ -512,8 +519,14 @@ export default function GoodsReceiptNote() {
       ...form,
       round_off: computedRoundOff,
       grand_total: grandRounded,
-      // strip internal tracking field before sending to server
-      items: form.items.map(({ _poId, ...rest }) => rest),
+      // strip internal tracking field + normalize tax to the selected tax type so
+      // stored amounts never carry both CGST/SGST and IGST (keeps print/reports consistent)
+      items: form.items.map(({ _poId, ...rest }) => {
+        const it = grnInterState
+          ? { ...rest, cgst_pct: 0, cgst_amt: 0, sgst_pct: 0, sgst_amt: 0 }
+          : { ...rest, igst_pct: 0, igst_amt: 0 };
+        return { ...it, total: rowTotal(rest) };
+      }),
     };
     const url = editId ? `/api/goods-receipt-notes/${editId}` : "/api/goods-receipt-notes";
     const method = editId ? "PATCH" : "POST";
