@@ -305,10 +305,13 @@ export default function GoodsReceiptNote() {
   // Totals
   const totalQty      = form.items.reduce((s, it) => s + p2(it.qty), 0);
   const taxableTotal  = form.items.reduce((s, it) => s + p2(it.taxable_amt), 0);
-  const cgstTotal     = form.items.reduce((s, it) => s + p2(it.cgst_amt), 0);
-  const sgstTotal     = form.items.reduce((s, it) => s + p2(it.sgst_amt), 0);
-  const igstTotal     = form.items.reduce((s, it) => s + p2(it.igst_amt), 0);
-  const grandTotal    = taxableTotal + cgstTotal + sgstTotal + igstTotal + p2(form.round_off);
+  const cgstTotal     = grnInterState ? 0 : form.items.reduce((s, it) => s + p2(it.cgst_amt), 0);
+  const sgstTotal     = grnInterState ? 0 : form.items.reduce((s, it) => s + p2(it.sgst_amt), 0);
+  const igstTotal     = grnInterState ? form.items.reduce((s, it) => s + p2(it.igst_amt), 0) : 0;
+  // Only add the tax applicable to the selected tax type — never both CGST/SGST and IGST
+  const taxTotal      = grnInterState ? igstTotal : cgstTotal + sgstTotal;
+  const rowTotal      = (it: GrnItem) => p2(it.taxable_amt) + (grnInterState ? p2(it.igst_amt) : p2(it.cgst_amt) + p2(it.sgst_amt));
+  const grandTotal    = taxableTotal + taxTotal + p2(form.round_off);
   const grandRounded  = Math.round(grandTotal);
   const computedRoundOff = +(grandRounded - grandTotal).toFixed(2);
 
@@ -864,7 +867,7 @@ export default function GoodsReceiptNote() {
                           placeholder="%"/>
                       </td>
                       <td className="px-2 py-1 text-right text-gray-600 w-16">{!grnInterState ? "—" : n2(it.igst_amt)}</td>
-                      <td className="px-2 py-1 text-right font-semibold text-gray-800 w-20">{n2(it.total)}</td>
+                      <td className="px-2 py-1 text-right font-semibold text-gray-800 w-20">{n2(rowTotal(it))}</td>
                       <td className="px-2 py-1">
                         <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600"
                           data-testid={`btn-del-item-${i}`}><Trash2 size={12}/></button>
