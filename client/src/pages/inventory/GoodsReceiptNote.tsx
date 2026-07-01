@@ -42,6 +42,13 @@ const blankForm = (): GrnForm => ({
   grand_total:0, items:[{ ...blankItem() }],
 });
 
+type GrnTerm   = { _key: string; term_type: string; terms: string };
+type GrnCharge = { _key: string; charge_type: string; amount: string };
+let _grnKeySeq = 0;
+const grnKey     = () => `k${Date.now()}_${_grnKeySeq++}`;
+const newTerm    = (): GrnTerm   => ({ _key: grnKey(), term_type:"", terms:"" });
+const newCharge  = (): GrnCharge => ({ _key: grnKey(), charge_type:"", amount:"" });
+
 function calcItem(it: GrnItem): GrnItem {
   const taxable_amt = p2(it.qty) * p2(it.rate);
   const cgst_amt    = taxable_amt * p2(it.cgst_pct) / 100;
@@ -218,8 +225,17 @@ export default function GoodsReceiptNote() {
   const tableRef = useRef<HTMLDivElement>(null);
   const [valErrs, setValErrs] = useState<{ store?: boolean; supplier?: boolean; rows?: Set<number> }>({});
   const [savedGrn, setSavedGrn] = useState<{ id: string; voucher_no: string } | null>(null);
+  const [tab, setTab] = useState<"items"|"terms">("items");
+  const [terms, setTerms] = useState<GrnTerm[]>([newTerm()]);
+  const [charges, setCharges] = useState<GrnCharge[]>([newCharge()]);
+  const [ourRef, setOurRef] = useState("");
+  const [yourRef, setYourRef] = useState("");
+  const [delivLoc, setDelivLoc] = useState("");
 
   const { data: grns = [], isLoading } = useQuery<any[]>({ queryKey: ["/api/goods-receipt-notes"] });
+  const { data: termTypes = [] } = useQuery<any[]>({ queryKey: ["/api/term-types"] });
+  const { data: allTerms = [] } = useQuery<any[]>({ queryKey: ["/api/terms"] });
+  const { data: expenseSleds = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/stores"] });
   const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
@@ -311,13 +327,16 @@ export default function GoodsReceiptNote() {
   // Only add the tax applicable to the selected tax type — never both CGST/SGST and IGST
   const taxTotal      = grnInterState ? igstTotal : cgstTotal + sgstTotal;
   const rowTotal      = (it: GrnItem) => p2(it.taxable_amt) + (grnInterState ? p2(it.igst_amt) : p2(it.cgst_amt) + p2(it.sgst_amt));
-  const grandTotal    = taxableTotal + taxTotal + p2(form.round_off);
+  const chargesTotal  = charges.reduce((s, c) => (c.charge_type && p2(c.amount) > 0) ? s + p2(c.amount) : s, 0);
+  const grandTotal    = taxableTotal + taxTotal + chargesTotal + p2(form.round_off);
   const grandRounded  = Math.round(grandTotal);
   const computedRoundOff = +(grandRounded - grandTotal).toFixed(2);
 
   function openNew() {
     setForm(blankForm()); setEditId(null); setErr(""); setGrnNo("");
     setSelectedPoIds([]); setMode("form");
+    setTab("items"); setTerms([newTerm()]); setCharges([newCharge()]);
+    setOurRef(""); setYourRef(""); setDelivLoc("");
     fetch("/api/voucher-series/next/purchase_receipt", { credentials: "include" })
       .then(r => r.json()).then(d => { if (d.voucher_no) setGrnNo(d.voucher_no); });
   }
@@ -345,6 +364,9 @@ export default function GoodsReceiptNote() {
       })),
     });
     setEditId(grn.id); setErr(""); setMode("form");
+    setTab("items");
+    setTerms([newTerm()]); setCharges([newCharge()]);
+    setOurRef(grn.our_ref_no||""); setYourRef(grn.your_ref_no||""); setDelivLoc(grn.delivery_location||"");
     fetch(`/api/goods-receipt-notes/${grn.id}`, { credentials:"include" })
       .then(r => r.json()).then(full => {
         setForm(f => ({ ...f, items: (full.items||[]).map((it: any) => ({
@@ -355,6 +377,11 @@ export default function GoodsReceiptNote() {
           expiry_required: lookupItemFlags(it.item_code||"").expiry_required,
           batch_required:  lookupItemFlags(it.item_code||"").batch_required,
         })) }));
+        setOurRef(full.our_ref_no||""); setYourRef(full.your_ref_no||""); setDelivLoc(full.delivery_location||"");
+        const loadedTerms = (full.terms||[]).map((t: any) => ({ _key: grnKey(), term_type: t.term_type||"", terms: t.terms||"" }));
+        setTerms(loadedTerms.length ? loadedTerms : [newTerm()]);
+        const loadedCharges = (full.charges||[]).map((c: any) => ({ _key: grnKey(), charge_type: c.charge_type||"", amount: c.amount!=null ? String(c.amount) : "" }));
+        setCharges(loadedCharges.length ? loadedCharges : [newCharge()]);
       });
   }
 
@@ -503,13 +530,18 @@ export default function GoodsReceiptNote() {
       if (it.batch_required  && !it.batch_no)   badRows.add(i);
       if (it.expiry_required && !it.expiry_date) badRows.add(i);
     });
-    if (errStore || errSupplier || errPO || badRows.size > 0) {
+    // Each Other Charge row must have both a type and a positive amount (or be left fully blank)
+    const errCharge = charges.some(c =>
+      (c.charge_type && !(p2(c.amount) > 0)) || (!c.charge_type && c.amount !== "" && p2(c.amount) !== 0)
+    );
+    if (errStore || errSupplier || errPO || badRows.size > 0 || errCharge) {
       setValErrs({ store: errStore, supplier: errSupplier, rows: badRows });
       const msgs: string[] = [];
       if (errStore)    msgs.push("Store is required");
       if (errSupplier) msgs.push("Supplier is required");
       if (errPO)       msgs.push("An approved Purchase Order must be selected before creating a GRN");
       if (badRows.size > 0) msgs.push(`Row${badRows.size > 1 ? "s" : ""} ${[...badRows].map(r => r + 1).join(", ")}: check Item, Qty, Rate, Batch No and Expiry Date`);
+      if (errCharge) msgs.push("Terms tab: each Other Charge needs both a type and a positive amount");
       setErr(msgs.join(" · "));
       return;
     }
@@ -519,6 +551,15 @@ export default function GoodsReceiptNote() {
       ...form,
       round_off: computedRoundOff,
       grand_total: grandRounded,
+      our_ref_no: ourRef,
+      your_ref_no: yourRef,
+      delivery_location: delivLoc,
+      terms: terms
+        .filter(t => t.term_type || t.terms)
+        .map(t => ({ term_type: t.term_type, terms: t.terms })),
+      charges: charges
+        .filter(c => c.charge_type && p2(c.amount) > 0)
+        .map(c => ({ charge_type: c.charge_type, amount: p2(c.amount) })),
       // strip internal tracking field + normalize tax to the selected tax type so
       // stored amounts never carry both CGST/SGST and IGST (keeps print/reports consistent)
       items: form.items.map(({ _poId, ...rest }) => {
@@ -617,6 +658,12 @@ export default function GoodsReceiptNote() {
   }
 
   // ── Form View ────────────────────────────────────────────────────────────────
+  const tabBtn = (id: "items"|"terms", label: string) => (
+    <button onClick={() => setTab(id)}
+      className="px-5 py-2 text-sm font-semibold rounded-t-lg transition-colors flex-shrink-0"
+      style={tab === id ? { background: SC.primary, color: "#fff" } : { background: "#f0f9ff", color: SC.primary, border: `1px solid ${SC.primary}` }}
+      data-testid={`tab-${id}`}>{label}</button>
+  );
   return (
     <div className="p-4 md:p-6" style={{ background: SC.bg, minHeight:"100vh", fontFamily:"Source Sans Pro, sans-serif" }}>
       <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden">
@@ -774,6 +821,14 @@ export default function GoodsReceiptNote() {
             </div>
           </div>
 
+          {/* Tabs: Items Details / Terms */}
+          <div className="flex gap-1 border-b border-gray-200">
+            {tabBtn("items","Items Details")}
+            {tabBtn("terms","Terms")}
+          </div>
+
+          {tab === "items" && (
+          <>
           {/* Items Table — overflow-visible so item-search dropdown is not clipped */}
           <div className="border border-gray-200 rounded-lg overflow-visible">
             <div className="overflow-x-auto" ref={tableRef}>
@@ -904,6 +959,134 @@ export default function GoodsReceiptNote() {
               </div>
             </div>
           </div>
+          </>
+          )}
+
+          {tab === "terms" && (
+            <>
+              <div className="flex flex-col lg:flex-row gap-4">
+                {/* Term Types / Terms grid */}
+                <div className="flex-1 border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="grid text-xs font-semibold text-gray-600 bg-gray-50 border-b"
+                    style={{ gridTemplateColumns: "36px 1fr 1fr 30px" }}>
+                    {["S.No","Term Types","Terms",""].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
+                  </div>
+                  {terms.map((t, idx) => {
+                    const selectedTT = (termTypes as any[]).find((tt: any) => tt.name === t.term_type || tt.id === t.term_type);
+                    const filteredTerms = (allTerms as any[]).filter((tr: any) => !selectedTT || tr.term_type_id === selectedTT.id);
+                    return (
+                    <div key={t._key} className="grid items-center border-b last:border-0"
+                      style={{ gridTemplateColumns: "36px 1fr 1fr 30px" }}>
+                      <div className="px-2 py-1.5 text-xs text-gray-500">{String(idx+1).padStart(2,"0")}</div>
+                      <div className="px-1 py-1">
+                        <select value={t.term_type}
+                          onChange={e => setTerms(prev => prev.map(r => r._key===t._key ? {...r,term_type:e.target.value,terms:""} : r))}
+                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white"
+                          data-testid={`select-term-type-${idx}`}>
+                          <option value="">Select Type</option>
+                          {(termTypes as any[]).filter((tt: any) => tt.is_active !== false).map((tt: any) => (
+                            <option key={tt.id} value={tt.name}>{tt.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="px-1 py-1">
+                        <select value={t.terms}
+                          onChange={e => setTerms(prev => prev.map(r => r._key===t._key ? {...r,terms:e.target.value} : r))}
+                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white"
+                          data-testid={`select-terms-${idx}`}>
+                          <option value="">Select Terms</option>
+                          {filteredTerms.map((tr: any) => (
+                            <option key={tr.id} value={tr.name}>{tr.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex justify-center">
+                        {idx===terms.length-1
+                          ? <button onClick={() => setTerms(p=>[...p,newTerm()])} className="text-green-600 p-1" data-testid={`btn-add-term-${idx}`}><Plus size={12}/></button>
+                          : <button onClick={() => setTerms(p=>p.filter(r=>r._key!==t._key))} className="text-red-400 p-1" data-testid={`btn-del-term-${idx}`}><Trash2 size={12}/></button>}
+                      </div>
+                    </div>
+                    );
+                  })}
+                </div>
+
+                {/* Other Charges */}
+                <div className="lg:w-72 border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="grid text-xs font-semibold text-gray-600 bg-gray-50 border-b"
+                    style={{ gridTemplateColumns: "36px 1fr 80px 30px" }}>
+                    {["S.No","Other Charges","Amount ₹",""].map(h => <div key={h} className="px-2 py-2">{h}</div>)}
+                  </div>
+                  {charges.map((c, idx) => (
+                    <div key={c._key} className="grid items-center border-b last:border-0"
+                      style={{ gridTemplateColumns: "36px 1fr 80px 30px" }}>
+                      <div className="px-2 py-1.5 text-xs text-gray-500">{String(idx+1).padStart(2,"0")}</div>
+                      <div className="px-1 py-1">
+                        <select value={c.charge_type}
+                          onChange={e => setCharges(prev => prev.map(r => r._key===c._key ? {...r,charge_type:e.target.value} : r))}
+                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs outline-none bg-white"
+                          data-testid={`select-charge-type-${idx}`}>
+                          <option value="">Select Charges</option>
+                          {(expenseSleds as any[]).map((sl: any) => (
+                            <option key={sl.id} value={sl.name}>{sl.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="px-1 py-1">
+                        <input type="number" value={c.amount}
+                          onChange={e => setCharges(prev => prev.map(r => r._key===c._key ? {...r,amount:e.target.value} : r))}
+                          className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs text-right outline-none focus:border-[#027fa5]"
+                          data-testid={`input-charge-amount-${idx}`}/>
+                      </div>
+                      <div className="flex justify-center">
+                        {idx===charges.length-1
+                          ? <button onClick={() => setCharges(p=>[...p,newCharge()])} className="text-green-600 p-1" data-testid={`btn-add-charge-${idx}`}><Plus size={12}/></button>
+                          : <button onClick={() => setCharges(p=>p.filter(r=>r._key!==c._key))} className="text-red-400 p-1" data-testid={`btn-del-charge-${idx}`}><Trash2 size={12}/></button>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Ref / Delivery */}
+                <div className="lg:w-56 space-y-3">
+                  {[
+                    { label:"Our Ref No",  val:ourRef,  set:setOurRef,  id:"input-our-ref" },
+                    { label:"Your Ref No", val:yourRef, set:setYourRef, id:"input-your-ref" },
+                  ].map(f => (
+                    <div key={f.id} className="relative">
+                      <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">{f.label}</label>
+                      <input value={f.val} onChange={e => f.set(e.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5]"
+                        data-testid={f.id}/>
+                    </div>
+                  ))}
+                  <div className="relative">
+                    <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-500 z-10">Delivery Location</label>
+                    <textarea value={delivLoc} onChange={e => setDelivLoc(e.target.value)} rows={3}
+                      className="w-full border border-gray-300 rounded px-3 py-2.5 text-sm outline-none focus:border-[#027fa5] resize-none"
+                      data-testid="input-deliv-loc"/>
+                  </div>
+                </div>
+              </div>
+
+              {/* Terms footer */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-2 text-sm border-t border-gray-100">
+                <span className="text-xs text-gray-600">
+                  Total Amount : <span className="font-bold text-gray-800">₹ {n2(taxableTotal)}</span>
+                </span>
+                <span className="text-xs text-gray-600">
+                  Tax Amount : <span className="font-bold text-gray-800">₹ {n2(taxTotal)}</span>
+                </span>
+                {chargesTotal > 0 && (
+                  <span className="text-xs text-gray-600">
+                    Other Charges : <span className="font-bold text-gray-800">₹ {n2(chargesTotal)}</span>
+                  </span>
+                )}
+                <span className="font-bold text-sm text-gray-800">
+                  Grand Total : <span style={{ color: SC.primary }}>₹ {n2(grandRounded)}</span>
+                </span>
+              </div>
+            </>
+          )}
 
           {/* Tax summary + Grand total */}
           <div className="grid grid-cols-2 gap-4">

@@ -47,6 +47,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_user_id varchar`).catch(()=>{});
     await _pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_name text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS sl_id varchar`).catch(()=>{});
+    await _pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS our_ref_no text DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS your_ref_no text DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE goods_receipt_notes ADD COLUMN IF NOT EXISTS delivery_location text DEFAULT ''`).catch(()=>{});
+    await _pool.query(`CREATE TABLE IF NOT EXISTS goods_receipt_terms (id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text, grn_id varchar NOT NULL, seq_no int DEFAULT 0, term_type text DEFAULT '', terms text DEFAULT '')`).catch(()=>{});
+    await _pool.query(`CREATE TABLE IF NOT EXISTS goods_receipt_charges (id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text, grn_id varchar NOT NULL, seq_no int DEFAULT 0, charge_type text DEFAULT '', amount numeric(15,2) DEFAULT 0)`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_inward_items ADD COLUMN IF NOT EXISTS work_order_no TEXT DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_inward_items ADD COLUMN IF NOT EXISTS rate DECIMAL(12,2) DEFAULT 0`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_inward_items ADD COLUMN IF NOT EXISTS sap_no TEXT DEFAULT ''`).catch(()=>{});
@@ -6196,13 +6201,15 @@ Return ONLY valid JSON (no markdown, no explanation):
   app.get("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
-      const [hRes, iRes] = await Promise.all([
+      const [hRes, iRes, tRes, cRes] = await Promise.all([
         pool.query(`SELECT g.*, c.name AS supplier_name_db, w.name AS store_name_db
           FROM goods_receipt_notes g
           LEFT JOIN customers c ON c.id = g.supplier_id
           LEFT JOIN stores w ON w.id = g.store_id
           WHERE g.id=$1`, [req.params.id]),
         pool.query(`SELECT * FROM goods_receipt_note_items WHERE grn_id=$1 ORDER BY sno`, [req.params.id]),
+        pool.query(`SELECT * FROM goods_receipt_terms WHERE grn_id=$1 ORDER BY seq_no`, [req.params.id]).catch(()=>({rows:[]})),
+        pool.query(`SELECT * FROM goods_receipt_charges WHERE grn_id=$1 ORDER BY seq_no`, [req.params.id]).catch(()=>({rows:[]})),
       ]);
       if (!hRes.rows[0]) return res.status(404).json({ message: "GRN not found" });
       const hdr = hRes.rows[0];
@@ -6211,6 +6218,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         supplier_name: hdr.supplier_name_db || hdr.supplier_name_manual || "",
         store_name: hdr.store_name_db || hdr.store_name || "",
         items: iRes.rows,
+        terms: tRes.rows,
+        charges: cRes.rows,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -6231,7 +6240,12 @@ Return ONLY valid JSON (no markdown, no explanation):
     const sgstAmt    = items.reduce((s: number, it: any) => s + (+it.sgst_amt||0), 0);
     const igstAmt    = items.reduce((s: number, it: any) => s + (+it.igst_amt||0), 0);
     const roundOff   = +(b.round_off||0);
-    const grandTotal = +(b.grand_total||0) || (taxableAmt + cgstAmt + sgstAmt + igstAmt + roundOff);
+    // Only charges with both a type and a positive amount are postable (each is DR'd below)
+    const charges    = (b.charges || []).filter((c: any) => c.charge_type && +c.amount > 0);
+    const chargesTotal = charges.reduce((s: number, c: any) => s + (+c.amount||0), 0);
+    // Derive grand total from posted components so voucher DR always balances CR
+    // (never trust a client-supplied total that could drift from the lines actually posted)
+    const grandTotal = taxableAmt + cgstAmt + sgstAmt + igstAmt + chargesTotal + roundOff;
     if (grandTotal <= 0) return;
 
     const fyRes = await client.query(`SELECT id, label FROM financial_years WHERE is_current=true LIMIT 1`);
@@ -6305,6 +6319,22 @@ Return ONLY valid JSON (no markdown, no explanation):
     await det(SGST_GL, null, "DR", sgstAmt, `SGST Input Credit`);
     if (igstAmt > 0) await det(IGST_GL, null, "DR", igstAmt, `IGST Input Credit`);
     if (roundOff !== 0) await det(ROUND_GL, null, roundOff > 0 ? "DR" : "CR", Math.abs(roundOff), `Round Off`);
+
+    // Other Charges — DR each charge to its expense sub-ledger (parent GL is gl_type='expense')
+    for (const c of charges) {
+      const amt = +c.amount || 0;
+      if (amt === 0 || !c.charge_type) continue;
+      const slRow = await client.query(
+        `SELECT sl.id, sl.general_ledger_id FROM sub_ledgers sl
+         JOIN general_ledgers gl ON gl.id = sl.general_ledger_id
+         WHERE gl.gl_type='expense' AND LOWER(sl.name)=LOWER($1) LIMIT 1`, [c.charge_type]);
+      if (slRow.rows[0]) {
+        await det(slRow.rows[0].general_ledger_id, slRow.rows[0].id, "DR", amt, `${c.charge_type}`);
+      } else {
+        // Fallback: DR to Purchases so the voucher still balances
+        await det(PURCHASES_GL, null, "DR", amt, `Other Charge - ${c.charge_type}`);
+      }
+    }
 
     // CR line — always route through supplier SL (Tally-style) so every purchase
     // appears in the supplier's ledger.  For Cash purchases the payable is created
@@ -6512,15 +6542,18 @@ Return ONLY valid JSON (no markdown, no explanation):
       const sgst_amount    = items.reduce((s: number, it: any) => s + (+it.sgst_amt||0), 0);
       const igst_amount    = items.reduce((s: number, it: any) => s + (+it.igst_amt||0), 0);
       const round_off      = +(b.round_off||0);
-      const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + round_off);
+      const charges        = b.charges || [];
+      const terms          = b.terms || [];
+      const charges_total  = charges.reduce((s: number, c: any) => (c.charge_type && +c.amount > 0) ? s + (+c.amount) : s, 0);
+      const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + charges_total + round_off);
 
       const hdrRes = await client.query(`
         INSERT INTO goods_receipt_notes
           (voucher_no, grn_date, store_id, store_name, supplier_id, supplier_name_manual, sl_id,
            dc_no, bill_no, bill_date, payment_mode, purchase_type, po_id, po_no,
            total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
-           remark, status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'Draft')
+           remark, our_ref_no, your_ref_no, delivery_location, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'Draft')
         RETURNING *
       `, [voucher_no, b.grn_date||new Date().toISOString().slice(0,10),
           b.store_id||null, b.store_name||"", b.supplier_id||null, b.supplier_name_manual||"",
@@ -6528,8 +6561,21 @@ Return ONLY valid JSON (no markdown, no explanation):
           b.dc_no||"", b.bill_no||"", b.bill_date||null, b.payment_mode||"Cash",
           b.purchase_type||"PO", b.po_id||null, b.po_no||"",
           total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
-          b.remark||""]);
+          b.remark||"", b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||""]);
       const hdr = hdrRes.rows[0];
+
+      for (let i = 0; i < terms.length; i++) {
+        const t = terms[i];
+        if (!t.term_type && !t.terms) continue;
+        await client.query(`INSERT INTO goods_receipt_terms (grn_id,seq_no,term_type,terms) VALUES ($1,$2,$3,$4)`,
+          [hdr.id, i+1, t.term_type||"", t.terms||""]);
+      }
+      for (let i = 0; i < charges.length; i++) {
+        const c = charges[i];
+        if (!c.charge_type || !(+c.amount > 0)) continue;
+        await client.query(`INSERT INTO goods_receipt_charges (grn_id,seq_no,charge_type,amount) VALUES ($1,$2,$3,$4)`,
+          [hdr.id, i+1, c.charge_type||"", +c.amount||0]);
+      }
 
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
@@ -6599,23 +6645,42 @@ Return ONLY valid JSON (no markdown, no explanation):
       const sgst_amount    = items.reduce((s: number, it: any) => s + (+it.sgst_amt||0), 0);
       const igst_amount    = items.reduce((s: number, it: any) => s + (+it.igst_amt||0), 0);
       const round_off      = +(b.round_off||0);
-      const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + round_off);
+      const charges        = b.charges || [];
+      const terms          = b.terms || [];
+      const charges_total  = charges.reduce((s: number, c: any) => (c.charge_type && +c.amount > 0) ? s + (+c.amount) : s, 0);
+      const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + charges_total + round_off);
 
       const hdrRes = await client.query(`
         UPDATE goods_receipt_notes SET
           grn_date=$1, store_id=$2, store_name=$3, supplier_id=$4, supplier_name_manual=$5,
           sl_id=$6, dc_no=$7, bill_no=$8, bill_date=$9, payment_mode=$10, purchase_type=$11,
           po_id=$12, po_no=$13, total_qty=$14, taxable_amount=$15, cgst_amount=$16,
-          sgst_amount=$17, igst_amount=$18, round_off=$19, grand_total=$20, remark=$21
-        WHERE id=$22 RETURNING *
+          sgst_amount=$17, igst_amount=$18, round_off=$19, grand_total=$20, remark=$21,
+          our_ref_no=$22, your_ref_no=$23, delivery_location=$24
+        WHERE id=$25 RETURNING *
       `, [b.grn_date, b.store_id||null, b.store_name||"", b.supplier_id||null, b.supplier_name_manual||"",
           b.sl_id||null,
           b.dc_no||"", b.bill_no||"", b.bill_date||null, b.payment_mode||"Cash",
           b.purchase_type||"PO", b.po_id||null, b.po_no||"",
           total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
-          b.remark||"", req.params.id]);
+          b.remark||"", b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"", req.params.id]);
       if (!hdrRes.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "GRN not found" }); }
       const hdr = hdrRes.rows[0];
+
+      await client.query(`DELETE FROM goods_receipt_terms WHERE grn_id=$1`, [hdr.id]);
+      await client.query(`DELETE FROM goods_receipt_charges WHERE grn_id=$1`, [hdr.id]);
+      for (let i = 0; i < terms.length; i++) {
+        const t = terms[i];
+        if (!t.term_type && !t.terms) continue;
+        await client.query(`INSERT INTO goods_receipt_terms (grn_id,seq_no,term_type,terms) VALUES ($1,$2,$3,$4)`,
+          [hdr.id, i+1, t.term_type||"", t.terms||""]);
+      }
+      for (let i = 0; i < charges.length; i++) {
+        const c = charges[i];
+        if (!c.charge_type || !(+c.amount > 0)) continue;
+        await client.query(`INSERT INTO goods_receipt_charges (grn_id,seq_no,charge_type,amount) VALUES ($1,$2,$3,$4)`,
+          [hdr.id, i+1, c.charge_type||"", +c.amount||0]);
+      }
 
       // Reverse old stock + batch stock before updating items
       const oldGrnItems = await client.query(
