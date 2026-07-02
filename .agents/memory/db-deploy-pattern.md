@@ -5,11 +5,12 @@ description: Production DB is Replit PostgreSQL; full deploy now possible from R
 
 # DB and Deploy Pattern
 
-## Production Database
-- Hosted on **Replit PostgreSQL** — NOT on the VPS local DB.
-- VPS app connects to Replit DB via `DATABASE_URL` environment variable.
-- Run migrations using `executeSql()` in code_execution — this hits the live Replit DB directly.
-- Always check column names with `information_schema.columns` before writing migration SQL (e.g. `voucher_series` uses `transaction_type` not `series_key`).
+## Production Database — IMPORTANT
+- Production DB is a **local PostgreSQL ON THE VPS** (host `localhost`, db `silvercrown_db`), NOT Replit-managed. (Earlier notes claiming Replit PostgreSQL were WRONG — `executeSql` hits the Replit *dev* DB only.)
+- The VPS `.env` holds the real prod `DATABASE_URL`; app connects as `silvercrown_user`.
+- `silvercrown_user` is NOT the table owner (`postgres` owns tables) → `ALTER TABLE` as that user fails with "must be owner". Run DDL migrations as the postgres superuser: `sudo -u postgres psql -d silvercrown_db -c "..."` (root over SSH can sudo).
+- To migrate prod: SSH to VPS → get dbname via `psql "$DB" -tA -c "SELECT current_database()"` → run ALTER via `sudo -u postgres psql -d <db>`. `executeSql()` does NOT touch production.
+- Schema changes made in dev must be manually applied to prod (dev/prod DBs drift — e.g. job_work_inward_items was missing sap_no/drg_no on prod).
 
 ## Deployment Flow (fully agent-driven as of Jul 2026)
 - VPS: `root@72.61.231.157` (srv1163666), app dir: `/var/www/silvercrown-element`, PM2 process: `silvercrown-element`, prod URL: https://silver.microgenn.com
