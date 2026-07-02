@@ -77,6 +77,8 @@ interface SopItem {
   opening_qty: number;
   rate: number;
   amount: number;
+  batch_required: boolean;
+  expiry_required: boolean;
 }
 
 interface SopForm {
@@ -91,6 +93,7 @@ interface SopForm {
 const blankItem = (sno = 1): SopItem => ({
   sno, item_code: "", item_name: "", uom: "Nos",
   batch_no: "", expiry_date: "", opening_qty: 0, rate: 0, amount: 0,
+  batch_required: false, expiry_required: false,
 });
 
 const blankForm = (): SopForm => ({
@@ -168,6 +171,7 @@ export default function StoreOpening() {
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr]       = useState("");
+  const [valRows, setValRows] = useState<Set<number>>(new Set());
   const [importErr, setImportErr]     = useState("");
   const [importOk, setImportOk]       = useState("");
   const [bulkImporting, setBulkImporting] = useState(false);
@@ -201,6 +205,8 @@ export default function StoreOpening() {
       purchase_price: it.purchasePrice ?? it.purchase_price ?? "0",
       selling_price: it.sellingPrice ?? it.selling_price ?? "0",
       current_stock: it.currentStock ?? it.current_stock ?? 0,
+      batchRequired: !!(it.batchRequired ?? it.batch_required),
+      expiryRequired: !!(it.expiryRequired ?? it.expiry_required),
       _source: "inventory",
     })),
     ...(allProducts as any[])
@@ -210,6 +216,52 @@ export default function StoreOpening() {
 
   const prodMap = Object.fromEntries(products.map((p: any) => [p.code?.toLowerCase(), p]));
 
+  // Look up batch/expiry-required flags from the product master by item code
+  function lookupItemFlags(item_code: string): { batch_required: boolean; expiry_required: boolean } {
+    if (!item_code) return { batch_required: false, expiry_required: false };
+    const found = prodMap[item_code.toLowerCase()];
+    return {
+      batch_required:  !!(found?.batchRequired  ?? found?.batch_required),
+      expiry_required: !!(found?.expiryRequired ?? found?.expiry_required),
+    };
+  }
+
+  // A row is incomplete when its product-master flags demand batch/expiry that isn't filled yet.
+  // Flags are re-derived live from the product master at validation time so a row loaded
+  // before the products query resolved can never bypass the requirement.
+  function rowMissing(it: SopItem): string[] {
+    if (!it.item_code) return [];
+    const live = lookupItemFlags(it.item_code);
+    const batchReq  = it.batch_required  || live.batch_required;
+    const expiryReq = it.expiry_required || live.expiry_required;
+    const miss: string[] = [];
+    if (batchReq  && !it.batch_no.trim()) miss.push("Batch No");
+    if (expiryReq && !it.expiry_date)     miss.push("Expiry Date");
+    return miss;
+  }
+
+  // Once product master data arrives, sync required flags onto any already-loaded rows
+  // (covers openEdit / Excel import happening before the products query resolved)
+  useEffect(() => {
+    if ((allInvItems as any[]).length === 0 && (allProducts as any[]).length === 0) return;
+    setForm(f => {
+      let changed = false;
+      const items = f.items.map(it => {
+        if (!it.item_code) return it;
+        const live = lookupItemFlags(it.item_code);
+        const batchReq  = it.batch_required  || live.batch_required;
+        const expiryReq = it.expiry_required || live.expiry_required;
+        if (batchReq !== it.batch_required || expiryReq !== it.expiry_required) {
+          changed = true;
+          return { ...it, batch_required: batchReq, expiry_required: expiryReq };
+        }
+        return it;
+      });
+      return changed ? { ...f, items } : f;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allInvItems, allProducts]);
+
   const totalQty    = form.items.reduce((s, it) => s + p2(it.opening_qty), 0);
   const totalAmount = form.items.reduce((s, it) => s + p2(it.amount), 0);
 
@@ -218,14 +270,25 @@ export default function StoreOpening() {
     return [s.voucher_no, s.store_name, s.status, s.financial_year].join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
+  const pendingDrafts = (sops as any[]).filter((s: any) => s.status === "Draft");
+
   function openNew() {
+    if (isLoading) {
+      setErr("Loading existing opening entries — please wait a moment and try again.");
+      return;
+    }
     if (isLocked) {
       setErr(lockStatus?.reason || "Opening Stock is locked because transactions already exist.");
       return;
     }
+    if (pendingDrafts.length > 0) {
+      const nos = pendingDrafts.map((s: any) => s.voucher_no).filter(Boolean).join(", ");
+      setErr(`Draft opening entr${pendingDrafts.length > 1 ? "ies are" : "y is"} pending (${nos}). Post or delete the draft before creating a new opening entry.`);
+      return;
+    }
     const fyLabel = currentFY?.label || "";
     setForm({ ...blankForm(), financial_year: fyLabel });
-    setEditId(null); setErr(""); setImportErr(""); setImportOk("");
+    setEditId(null); setErr(""); setImportErr(""); setImportOk(""); setValRows(new Set());
     setSopNo(""); setMode("form");
     fetch("/api/voucher-series/next/store_opening", { credentials: "include" })
       .then(r => r.json()).then(d => { if (d.voucher_no) setSopNo(d.voucher_no); });
@@ -245,9 +308,10 @@ export default function StoreOpening() {
         uom: it.uom||"Nos",
         batch_no: it.batch_no||"", expiry_date: it.expiry_date?.slice(0,10)||"",
         opening_qty: p2(it.opening_qty), rate: p2(it.rate), amount: p2(it.amount),
+        ...lookupItemFlags(it.item_code||""),
       })),
     });
-    setEditId(sop.id); setErr(""); setMode("form");
+    setEditId(sop.id); setErr(""); setValRows(new Set()); setMode("form");
   }
 
   function updItem(i: number, key: keyof SopItem, val: any) {
@@ -256,7 +320,11 @@ export default function StoreOpening() {
       if (key === "item_code") {
         const prod = prodMap[String(val).toLowerCase()];
         if (prod) {
-          items[i] = calcItem({ ...items[i], item_code: prod.code, item_name: prod.name, uom: prod.uom||prod.unit||"Nos" });
+          items[i] = calcItem({
+            ...items[i], item_code: prod.code, item_name: prod.name, uom: prod.uom||prod.unit||"Nos",
+            batch_required:  !!(prod.batchRequired  ?? prod.batch_required),
+            expiry_required: !!(prod.expiryRequired ?? prod.expiry_required),
+          });
           return { ...f, items };
         }
       }
@@ -275,6 +343,8 @@ export default function StoreOpening() {
         item_name: prod.name || "",
         uom: prod.uom || prod.unit || "Nos",
         rate,
+        batch_required:  !!(prod.batchRequired  ?? prod.batch_required),
+        expiry_required: !!(prod.expiryRequired ?? prod.expiry_required),
       });
       return { ...f, items };
     });
@@ -288,15 +358,34 @@ export default function StoreOpening() {
     setItemQuery(p => ({ ...p, [i]: currentName }));
   }
 
+  // Block adding a new row while any existing row is missing a required Batch No / Expiry Date
+  function checkRowsBeforeAdd(): boolean {
+    const bad = new Set<number>();
+    form.items.forEach((it, idx) => { if (rowMissing(it).length > 0) bad.add(idx); });
+    if (bad.size > 0) {
+      setValRows(bad);
+      const rows = [...bad].map(r => r + 1).join(", ");
+      setErr(`Row${bad.size > 1 ? "s" : ""} ${rows}: fill the required Batch No / Expiry Date before adding the next row.`);
+      return false;
+    }
+    setValRows(new Set()); setErr("");
+    return true;
+  }
+
   function addItem() {
+    if (!checkRowsBeforeAdd()) return;
     setForm(f => ({ ...f, items: [...f.items, blankItem(f.items.length + 1)] }));
   }
 
   // Add a batch row — copies item_code/name/uom from the current row but blanks batch/qty
   function addBatchRow(i: number) {
+    if (!checkRowsBeforeAdd()) return;
     setForm(f => {
       const src = f.items[i];
-      const newRow: SopItem = { ...blankItem(0), item_code: src.item_code, item_name: src.item_name, uom: src.uom };
+      const newRow: SopItem = {
+        ...blankItem(0), item_code: src.item_code, item_name: src.item_name, uom: src.uom,
+        batch_required: src.batch_required, expiry_required: src.expiry_required,
+      };
       const items = [
         ...f.items.slice(0, i + 1),
         newRow,
@@ -470,6 +559,7 @@ export default function StoreOpening() {
             batch_no: batch,
             expiry_date: expiry,
             opening_qty: qty, rate, amount: 0,
+            ...lookupItemFlags(resolvedCode),
           }));
         }
         if (imported.length === 0) { setImportErr("No valid rows found in the file."); return; }
@@ -483,12 +573,30 @@ export default function StoreOpening() {
 
   async function handleSave(status?: "Draft"|"Posted") {
     const finalStatus = status || form.status;
-    setErr(""); setSaving(true);
+    setErr("");
     if (!form.store_id) {
       setErr("Please select a Store before saving the opening stock.");
-      setSaving(false);
       return;
     }
+    // Validate every filled row: required Batch No / Expiry Date (per product master) must be present
+    const bad = new Set<number>();
+    const msgs: string[] = [];
+    form.items.forEach((it, idx) => {
+      const miss = rowMissing(it);
+      if (miss.length > 0) { bad.add(idx); msgs.push(`Row ${idx + 1}: ${miss.join(", ")} required`); }
+    });
+    const hasFilledRow = form.items.some(it => it.item_code);
+    if (!hasFilledRow) {
+      setErr("Add at least one item before saving.");
+      return;
+    }
+    if (bad.size > 0) {
+      setValRows(bad);
+      setErr(msgs.join(" · "));
+      return;
+    }
+    setValRows(new Set());
+    setSaving(true);
     const payload = { ...form, status: finalStatus, total_qty: totalQty, total_amount: totalAmount };
     const url = editId ? `/api/store-openings/${editId}` : "/api/store-openings";
     const method = editId ? "PATCH" : "POST";
@@ -521,9 +629,11 @@ export default function StoreOpening() {
           <p className="text-sm text-gray-500">Set opening stock balances per store</p>
         </div>
         <button onClick={openNew}
-          className={`flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg text-white ${isLocked ? "opacity-50 cursor-not-allowed" : ""}`}
-          style={{ background: isLocked ? "#9ca3af" : SC.primary }}
-          title={isLocked ? (lockStatus?.reason || "Locked — transactions already exist") : ""}
+          className={`flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg text-white ${(isLoading || isLocked || pendingDrafts.length > 0) ? "opacity-50 cursor-not-allowed" : ""}`}
+          style={{ background: (isLoading || isLocked || pendingDrafts.length > 0) ? "#9ca3af" : SC.primary }}
+          title={isLoading ? "Loading…"
+            : isLocked ? (lockStatus?.reason || "Locked — transactions already exist")
+            : pendingDrafts.length > 0 ? "Post or delete the pending draft first" : ""}
           data-testid="btn-new-sop">
           <Plus size={15}/> New Store Opening
         </button>
@@ -535,6 +645,18 @@ export default function StoreOpening() {
           <span>{lockStatus?.reason}</span>
         </div>
       )}
+
+      {!isLocked && pendingDrafts.length > 0 && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-lg" data-testid="banner-pending-draft">
+          <Clock size={15} className="mt-0.5 shrink-0"/>
+          <span>
+            Draft pending: <b>{pendingDrafts.map((s: any) => s.voucher_no).filter(Boolean).join(", ")}</b> — post or delete
+            {pendingDrafts.length > 1 ? " these drafts" : " this draft"} before creating a new opening entry.
+          </span>
+        </div>
+      )}
+
+      {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg" data-testid="text-list-error">{err}</div>}
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -822,19 +944,23 @@ export default function StoreOpening() {
                         data-testid={`input-uom-${i}`}/>
                     </td>
 
-                    {/* Batch No */}
+                    {/* Batch No — required when the product master flags it */}
                     <td className="px-1 py-1">
                       <input value={it.batch_no} readOnly={isPostedEntry}
                         onChange={e => updItem(i, "batch_no", e.target.value)}
-                        className={`border rounded px-2 py-1.5 w-24 text-xs ${isPostedEntry ? "bg-gray-50 border-gray-200" : "border-gray-300 outline-none focus:border-[#027fa5]"}`}
-                        placeholder="Batch No" data-testid={`input-batch-${i}`}/>
+                        className={`border rounded px-2 py-1.5 w-24 text-xs ${isPostedEntry ? "bg-gray-50 border-gray-200"
+                          : (valRows.has(i) && it.batch_required && !it.batch_no.trim()) ? "border-red-400 bg-red-50 outline-none focus:border-red-500"
+                          : "border-gray-300 outline-none focus:border-[#027fa5]"}`}
+                        placeholder={it.batch_required ? "Batch No *" : "Batch No"} data-testid={`input-batch-${i}`}/>
                     </td>
 
-                    {/* Expiry Date */}
+                    {/* Expiry Date — required when the product master flags it */}
                     <td className="px-1 py-1">
                       <input type="date" value={it.expiry_date} readOnly={isPostedEntry}
                         onChange={e => updItem(i, "expiry_date", e.target.value)}
-                        className={`border rounded px-2 py-1.5 w-32 text-xs ${isPostedEntry ? "bg-gray-50 border-gray-200" : "border-gray-300 outline-none focus:border-[#027fa5]"}`}
+                        className={`border rounded px-2 py-1.5 w-32 text-xs ${isPostedEntry ? "bg-gray-50 border-gray-200"
+                          : (valRows.has(i) && it.expiry_required && !it.expiry_date) ? "border-red-400 bg-red-50 outline-none focus:border-red-500"
+                          : "border-gray-300 outline-none focus:border-[#027fa5]"}`}
                         data-testid={`input-expiry-${i}`}/>
                     </td>
 
