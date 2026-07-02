@@ -1071,16 +1071,16 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                       </td>
 
                       <td className="px-2 py-1.5">
-                        <input value={row.sap_no} onChange={e => updateRow(row._key, "sap_no", e.target.value)}
-                          placeholder="SAP No"
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
-                          data-testid={`input-sap-no-${i}`} />
+                        <div className="w-full px-2 py-1 text-xs text-gray-700 bg-gray-50 rounded border border-gray-100 min-h-[26px]"
+                          data-testid={`display-sap-no-${i}`}>
+                          {row.sap_no || <span className="text-gray-400">—</span>}
+                        </div>
                       </td>
                       <td className="px-2 py-1.5">
-                        <input value={row.drg_no} onChange={e => updateRow(row._key, "drg_no", e.target.value)}
-                          placeholder="DRG No"
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5]"
-                          data-testid={`input-drg-no-${i}`} />
+                        <div className="w-full px-2 py-1 text-xs text-gray-700 bg-gray-50 rounded border border-gray-100 min-h-[26px]"
+                          data-testid={`display-drg-no-${i}`}>
+                          {row.drg_no || <span className="text-gray-400">—</span>}
+                        </div>
                       </td>
                       <td className="px-2 py-1.5">
                         <input type="number" value={row.qty} onChange={e => updateRow(row._key, "qty", e.target.value)}
