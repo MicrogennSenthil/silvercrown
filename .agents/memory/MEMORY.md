@@ -1,5 +1,5 @@
 - [Auto-deploy preference](auto-deploy.md) — always deploy to production after every change, no need to ask the user first.
 - [TDZ blank-page pattern](tdz-blank-page.md) — const declared after a useEffect that uses it in the dependency array causes a Temporal Dead Zone ReferenceError → blank white React page.
 - [Schema-first rule](schema-first-rule.md) — before any new feature/report/modification, read shared/schema.ts and the DB fully first; reuse or extend existing tables with conditions rather than creating new ones.
-- [DB + deploy pattern](db-deploy-pattern.md) — production DB is Replit PostgreSQL (use executeSql); VPS SSH from Replit times out so push via GITHUB_PAT inline URL then user runs git pull+build+pm2 restart on VPS manually.
+- [DB + deploy pattern](db-deploy-pattern.md) — prod DB is Replit PostgreSQL (executeSql); VPS SSH now works via VPS_SSH_KEY_B64 (re-decode each session) so agent can run full pull+build+pm2 deploy itself.
 - [Pointer-based drag-drop](dnd-pointer-based.md) — native HTML5 DnD is unreliable here; use pointer events + elementFromPoint + data-dnd attrs, with pointercancel cleanup.
