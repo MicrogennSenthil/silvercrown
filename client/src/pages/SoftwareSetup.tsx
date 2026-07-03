@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bot, Building2, Hash, Plug, CheckCircle2, Eye, EyeOff,
   Save, RefreshCw, AlertCircle, ExternalLink, Trash2, ShieldAlert, X,
-  Upload, ImageOff, Wrench
+  Upload, ImageOff, Wrench, ShoppingCart
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -26,6 +26,7 @@ const CATEGORY_ICONS: Record<string, any> = {
   "Tally Integration": Plug,
   "Data Purging": Trash2,
   "Engineering": Wrench,
+  "Purchasing": ShoppingCart,
 };
 
 const JW_INVOICE_FLOW_OPTIONS = [

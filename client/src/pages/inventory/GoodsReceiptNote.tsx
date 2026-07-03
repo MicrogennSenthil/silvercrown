@@ -14,7 +14,7 @@ type GrnItem = {
   id?: string; sno: number;
   item_code: string; item_name: string; batch_no: string; expiry_date: string;
   expiry_required: boolean; batch_required: boolean;
-  qty: number; unit: string; rate: number; taxable_amt: number;
+  qty: number; unit: string; rate: number; discount_pct: number; taxable_amt: number;
   cgst_pct: number; cgst_amt: number; sgst_pct: number; sgst_amt: number;
   igst_pct: number; igst_amt: number; total: number;
   _poId?: string; // which PO this item came from (for multi-PO untick support)
@@ -32,7 +32,7 @@ type GrnForm = {
 const blankItem = (): GrnItem => ({
   sno:1, item_code:"", item_name:"", batch_no:"", expiry_date:"",
   expiry_required: false, batch_required: false,
-  qty:0, unit:"Nos", rate:0, taxable_amt:0,
+  qty:0, unit:"Nos", rate:0, discount_pct:0, taxable_amt:0,
   cgst_pct:6, cgst_amt:0, sgst_pct:6, sgst_amt:0, igst_pct:0, igst_amt:0, total:0,
 });
 const blankForm = (): GrnForm => ({
@@ -50,7 +50,8 @@ const newTerm    = (): GrnTerm   => ({ _key: grnKey(), term_type:"", terms:"" })
 const newCharge  = (): GrnCharge => ({ _key: grnKey(), charge_type:"", amount:"" });
 
 function calcItem(it: GrnItem): GrnItem {
-  const taxable_amt = p2(it.qty) * p2(it.rate);
+  const discountedRate = p2(it.rate) * (1 - p2(it.discount_pct) / 100);
+  const taxable_amt = p2(it.qty) * discountedRate;
   const cgst_amt    = taxable_amt * p2(it.cgst_pct) / 100;
   const sgst_amt    = taxable_amt * p2(it.sgst_pct) / 100;
   const igst_amt    = taxable_amt * p2(it.igst_pct) / 100;
@@ -240,6 +241,8 @@ export default function GoodsReceiptNote() {
   const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
+  const { data: appSettings = [] }    = useQuery<any[]>({ queryKey: ["/api/settings"] });
+  const grnDiscountEnabled = (appSettings as any[]).find((s: any) => s.key === "grn_item_discount")?.value === "true";
   const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
 
   // Merge inventory items + engineering products for GRN item search
@@ -358,7 +361,7 @@ export default function GoodsReceiptNote() {
       po_id: grn.po_id||"", po_no: grn.po_no||"", round_off: p2(grn.round_off), remark: grn.remark||"",
       grand_total: p2(grn.grand_total),
       items: (grn.items||[]).map((it: any) => ({
-        ...it, qty: p2(it.qty), rate: p2(it.rate), taxable_amt: p2(it.taxable_amt),
+        ...it, qty: p2(it.qty), rate: p2(it.rate), discount_pct: p2(it.discount_pct), taxable_amt: p2(it.taxable_amt),
         cgst_pct: p2(it.cgst_pct), cgst_amt: p2(it.cgst_amt), sgst_pct: p2(it.sgst_pct),
         sgst_amt: p2(it.sgst_amt), igst_pct: p2(it.igst_pct), igst_amt: p2(it.igst_amt), total: p2(it.total),
       })),
@@ -370,7 +373,7 @@ export default function GoodsReceiptNote() {
     fetch(`/api/goods-receipt-notes/${grn.id}`, { credentials:"include" })
       .then(r => r.json()).then(full => {
         setForm(f => ({ ...f, items: (full.items||[]).map((it: any) => ({
-          ...it, qty: p2(it.qty), rate: p2(it.rate), taxable_amt: p2(it.taxable_amt),
+          ...it, qty: p2(it.qty), rate: p2(it.rate), discount_pct: p2(it.discount_pct), taxable_amt: p2(it.taxable_amt),
           cgst_pct: p2(it.cgst_pct), cgst_amt: p2(it.cgst_amt), sgst_pct: p2(it.sgst_pct),
           sgst_amt: p2(it.sgst_amt), igst_pct: p2(it.igst_pct), igst_amt: p2(it.igst_amt), total: p2(it.total),
           expiry_date: it.expiry_date ? String(it.expiry_date).slice(0,10) : "",
@@ -835,7 +838,9 @@ export default function GoodsReceiptNote() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b" style={{ background:"#e8f6fb" }}>
-                    {["S.no","Item Code","Item Name","Batch No","Expiry Date","Qty","Unit","Rate ₹","Taxable ₹","CGST %","CGST ₹","SGST %","SGST ₹","IGST %","IGST ₹","Total ₹",""].map(h => (
+                    {["S.no","Item Code","Item Name","Batch No","Expiry Date","Qty","Unit","Rate ₹",...(grnDiscountEnabled?["Disc %"]:[])]
+                      .concat(["Taxable ₹","CGST %","CGST ₹","SGST %","SGST ₹","IGST %","IGST ₹","Total ₹",""])
+                      .map(h => (
                       <th key={h} className="px-2 py-2.5 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -910,6 +915,13 @@ export default function GoodsReceiptNote() {
                         <input type="number" value={it.rate||""} onChange={e => updItem(i,"rate",parseFloat(e.target.value)||0)}
                           className="border border-gray-200 rounded px-2 py-1.5 w-16 outline-none focus:border-[#027fa5] text-xs text-right"/>
                       </td>
+                      {grnDiscountEnabled && (
+                        <td className="px-1 py-1">
+                          <input type="number" value={it.discount_pct||""} onChange={e => updItem(i,"discount_pct",parseFloat(e.target.value)||0)}
+                            className="border border-orange-300 rounded px-2 py-1.5 w-14 outline-none focus:border-[#d74700] text-xs text-right"
+                            placeholder="%" min="0" max="100" data-testid={`input-disc-${i}`}/>
+                        </td>
+                      )}
                       <td className="px-2 py-1 text-right text-gray-700 font-medium w-20">{n2(it.taxable_amt)}</td>
                       <td className="px-1 py-1 w-14">
                         <input type="number" value={grnInterState ? "" : (it.cgst_pct||"")}

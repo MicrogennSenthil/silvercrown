@@ -59,6 +59,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('signature_image','','Digital Signature','Company','image','Upload company authorised signature image for invoice print') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('company_timezone','Asia/Kolkata','Timezone','Company','select','Timezone used for all dates and timestamps in the system') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
     await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('jobwork_invoice_flow','inward_despatch_invoice','Job Work Invoice Flow','Engineering','select','Controls the invoice creation flow: via Inward+Despatch, Inward only (direct), or fully manual (no inward/despatch)') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
+    await _pool.query(`INSERT INTO app_settings (key,value,label,category,input_type,description) VALUES ('grn_item_discount','false','Enable Item-Level Discount in GRN','Purchasing','boolean','When enabled, a Discount % column appears on each GRN line item. GST is calculated on (Rate after discount) × Qty.') ON CONFLICT (key) DO NOTHING`).catch(()=>{});
+    await _pool.query(`ALTER TABLE goods_receipt_note_items ADD COLUMN IF NOT EXISTS discount_pct DECIMAL(5,2) DEFAULT 0`).catch(()=>{});
     // Add suffix column to voucher_series if missing (format: IN/0001/26-27)
     await _pool.query(`ALTER TABLE voucher_series ADD COLUMN IF NOT EXISTS suffix TEXT DEFAULT ''`).catch(() => {});
 
@@ -6581,11 +6583,11 @@ Return ONLY valid JSON (no markdown, no explanation):
         const it = items[i];
         await client.query(`
           INSERT INTO goods_receipt_note_items
-            (grn_id, sno, item_code, item_name, batch_no, expiry_date, qty, unit, rate,
+            (grn_id, sno, item_code, item_name, batch_no, expiry_date, qty, unit, rate, discount_pct,
              taxable_amt, cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt, total)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
         `, [hdr.id, i+1, it.item_code||"", it.item_name||"", it.batch_no||"",
-            it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0,
+            it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0, +it.discount_pct||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
         // Update live stock + batch-level stock on GRN receipt
@@ -6699,11 +6701,11 @@ Return ONLY valid JSON (no markdown, no explanation):
         const it = items[i];
         await client.query(`
           INSERT INTO goods_receipt_note_items
-            (grn_id, sno, item_code, item_name, batch_no, expiry_date, qty, unit, rate,
+            (grn_id, sno, item_code, item_name, batch_no, expiry_date, qty, unit, rate, discount_pct,
              taxable_amt, cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt, total)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
         `, [hdr.id, i+1, it.item_code||"", it.item_name||"", it.batch_no||"",
-            it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0,
+            it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0, +it.discount_pct||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
         // Re-apply updated qty to live stock + batch stock
