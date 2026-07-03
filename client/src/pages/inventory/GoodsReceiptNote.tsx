@@ -331,9 +331,12 @@ export default function GoodsReceiptNote() {
   const taxTotal      = grnInterState ? igstTotal : cgstTotal + sgstTotal;
   const rowTotal      = (it: GrnItem) => p2(it.taxable_amt) + (grnInterState ? p2(it.igst_amt) : p2(it.cgst_amt) + p2(it.sgst_amt));
   const chargesTotal  = charges.reduce((s, c) => (c.charge_type && p2(c.amount) > 0) ? s + p2(c.amount) : s, 0);
-  const grandTotal    = taxableTotal + taxTotal + chargesTotal + p2(form.round_off);
-  const grandRounded  = Math.round(grandTotal);
-  const computedRoundOff = +(grandRounded - grandTotal).toFixed(2);
+  const subTotal         = taxableTotal + taxTotal + chargesTotal;
+  const naturalRoundOff  = +(Math.round(subTotal) - subTotal).toFixed(2);
+  const grandFinal       = +(subTotal + p2(form.round_off)).toFixed(2);
+  // keep legacy aliases so existing code that uses them still compiles
+  const grandRounded     = grandFinal;
+  const computedRoundOff = p2(form.round_off);
 
   function openNew() {
     setForm(blankForm()); setEditId(null); setErr(""); setGrnNo("");
@@ -552,8 +555,8 @@ export default function GoodsReceiptNote() {
     setSaving(true);
     const payload = {
       ...form,
-      round_off: computedRoundOff,
-      grand_total: grandRounded,
+      round_off: p2(form.round_off),
+      grand_total: grandFinal,
       our_ref_no: ourRef,
       your_ref_no: yourRef,
       delivery_location: delivLoc,
@@ -1150,12 +1153,34 @@ export default function GoodsReceiptNote() {
                       {grnInterState  && <span className="text-right text-gray-800">{n2(igstTotal)}</span>}
                     </div>
                     {/* Grand total row */}
-                    <div className="px-3 py-2 border-t space-y-1 text-sm">
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>Round Off</span><span>₹ {n2(computedRoundOff)}</span>
+                    <div className="px-3 py-2 border-t space-y-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-gray-500 whitespace-nowrap">Round Off</span>
+                          {naturalRoundOff !== p2(form.round_off) && (
+                            <button
+                              type="button"
+                              onClick={() => setForm(f => ({ ...f, round_off: naturalRoundOff }))}
+                              className="text-[10px] text-[#027fa5] hover:underline whitespace-nowrap"
+                              title={`Reset to system default (₹${n2(naturalRoundOff)})`}
+                            >↺ auto ({n2(naturalRoundOff)})</button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">₹</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={form.round_off === 0 ? "" : form.round_off}
+                            placeholder={n2(naturalRoundOff)}
+                            onChange={e => setForm(f => ({ ...f, round_off: parseFloat(e.target.value) || 0 }))}
+                            className="border border-gray-300 rounded px-2 py-0.5 w-20 text-xs text-right outline-none focus:border-[#027fa5]"
+                            data-testid="input-roundoff"
+                          />
+                        </div>
                       </div>
                       <div className="flex justify-between font-bold text-gray-900">
-                        <span>Grand Total</span><span>₹ {n2(grandRounded)}</span>
+                        <span>Grand Total</span><span>₹ {n2(grandFinal)}</span>
                       </div>
                     </div>
                   </div>
