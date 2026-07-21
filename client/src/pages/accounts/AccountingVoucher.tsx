@@ -18,7 +18,7 @@ function parseAmt(v: string) { return parseFloat(v.replace(/,/g, "")) || 0; }
 function uuid() { return crypto.randomUUID(); }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Nature     = "payment" | "receipt" | "contra" | "journal";
+type Nature     = "payment" | "receipt" | "contra" | "purchase" | "sales" | "journal";
 type FilterType = "bank" | "cash" | "bank_cash" | "sundry_creditors" | "sundry_debtors" | "party" | "all";
 
 type VLine = {
@@ -235,6 +235,8 @@ function getNature(name: string): Nature {
   if (n.includes("payment")) return "payment";
   if (n.includes("receipt")) return "receipt";
   if (n.includes("contra"))  return "contra";
+  if (n.includes("purchase")) return "purchase";
+  if (n.includes("sales") || n.includes("sale")) return "sales";
   return "journal";
 }
 
@@ -244,9 +246,11 @@ function drCrLabel(drCr: "DR" | "CR") {
 }
 
 function getMainDrCr(nature: Nature): "DR" | "CR" {
-  // Payment → Party Debited first (To = DR)
-  // Receipt → Party Credited first (By = CR) — party who paid comes first
-  if (nature === "receipt") return "CR";
+  // Receipt  → CR first (party who paid us)
+  // Purchase → CR first (supplier we owe)
+  if (nature === "receipt")  return "CR";
+  if (nature === "purchase") return "CR";
+  // Payment / Sales / Contra / Journal → DR first
   return "DR";
 }
 
@@ -458,7 +462,7 @@ function VoucherForm({ editData, onBack }: { editData?: any; onBack: () => void 
         };
       });
     }
-    return [mkLine(true, "DR"), mkLine(false, "CR")];
+    return buildDefaultLines(editData?.voucher_type_name || editData?.voucher_type || "");
   });
 
   // Bill Adjustment state
