@@ -92,8 +92,9 @@ export default function StockReport() {
         </div>
       )}
 
+      <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 260px)" }}>
       <table className="w-full text-sm">
-        <thead className="sticky top-0">
+        <thead className="sticky top-0 z-10">
           <tr>
             <RTh>S.no</RTh>
             <RTh>Item Code</RTh>
@@ -182,6 +183,7 @@ export default function StockReport() {
           </tfoot>
         )}
       </table>
+      </div>
     </ReportShell>
   );
 }
