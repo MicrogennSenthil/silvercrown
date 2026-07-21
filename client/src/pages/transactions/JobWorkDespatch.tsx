@@ -377,7 +377,7 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
             </h2>
             {isInvoiced && (
               <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                <Lock size={11}/> Invoiced — Read Only
+                <Lock size={11}/> To be Invoice — Read Only
               </span>
             )}
           </div>
@@ -899,7 +899,7 @@ export default function JobWorkDespatch() {
                 <td className="px-5 py-2.5">
                   {r.is_invoiced ? (
                     <span className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 w-fit">
-                      <Lock size={10}/> Invoiced
+                      <Lock size={10}/> To be Invoice
                     </span>
                   ) : (
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.status === "Saved" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
@@ -911,7 +911,7 @@ export default function JobWorkDespatch() {
                   {r.is_invoiced ? (
                     <button onClick={() => { setEditId(r.id); setView("form"); }}
                       className="p-1.5 rounded text-amber-500 hover:bg-amber-50 transition-colors"
-                      title="Invoiced — view only"
+                      title="To be Invoice — view only"
                       data-testid={`btn-view-${r.id}`}>
                       <Lock size={14} />
                     </button>
