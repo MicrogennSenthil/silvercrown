@@ -2737,14 +2737,17 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
                 { type: "text", text: prompt }
               ]
             }],
-            max_tokens: 2000,
+            max_tokens: 4000,
             temperature: 0.1,
+            reasoning_effort: "none",
           }),
         });
         const jResp = await resp.json() as any;
         if (jResp.error) throw new Error(jResp.error.message || JSON.stringify(jResp.error));
-        const rawText = jResp.choices?.[0]?.message?.content || "{}";
-        const text = rawText.trim().replace(/^```json\n?/, "").replace(/\n?```$/, "").replace(/^```\n?/, "").replace(/\n?```$/, "");
+        let rawText = jResp.choices?.[0]?.message?.content || "{}";
+        rawText = rawText.replace(/<think>[\s\S]*?<\/think>/g, "");
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        const text = (jsonMatch ? jsonMatch[0] : rawText).trim().replace(/^```json\n?/, "").replace(/\n?```$/, "").replace(/^```\n?/, "").replace(/\n?```$/, "");
         extracted = JSON.parse(text);
       }
 
@@ -6157,13 +6160,15 @@ Return ONLY valid JSON (no markdown, no explanation):
               { type:"image_url", image_url:{ url:`data:${groqMime};base64,${base64}` } },
               { type:"text", text:prompt }
             ]}],
-            max_tokens: 2000, temperature: 0.1,
+            max_tokens: 4000, temperature: 0.1, reasoning_effort: "none",
           }),
         });
         const jResp = await resp.json() as any;
         if (jResp.error) throw new Error(jResp.error.message || JSON.stringify(jResp.error));
-        const rawText = jResp.choices?.[0]?.message?.content || "{}";
-        extracted = JSON.parse(rawText.trim().replace(/^```json\n?/,"").replace(/\n?```$/,"").replace(/^```\n?/,"").replace(/\n?```$/,""));
+        let rawText = jResp.choices?.[0]?.message?.content || "{}";
+        rawText = rawText.replace(/<think>[\s\S]*?<\/think>/g, "");
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        extracted = JSON.parse((jsonMatch ? jsonMatch[0] : rawText).trim().replace(/^```json\n?/,"").replace(/\n?```$/,"").replace(/^```\n?/,"").replace(/\n?```$/,""));
       }
       try { fs.unlinkSync(filePath); } catch {}
       res.json({ ok: true, data: extracted });
