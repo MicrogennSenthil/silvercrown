@@ -79,14 +79,11 @@ const TIMEZONE_OPTIONS = [
 
 const AI_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
   gemini: [
-    { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash (Fast, Free)" },
-    { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro (Accurate)" },
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (Latest)" },
+    { value: "gemini-flash-latest", label: "Gemini Flash (Latest)" },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
   ],
   groq: [
-    { value: "meta-llama/llama-4-maverick-17b-128e-instruct", label: "Llama 4 Maverick 17B Vision (Latest)" },
-    { value: "llama-3.2-90b-vision-preview", label: "Llama 3.2 90B Vision" },
-    { value: "llama-3.2-11b-vision-preview", label: "Llama 3.2 11B Vision (Fast)" },
+    { value: "qwen/qwen3.6-27b", label: "Qwen 3.6 27B Vision (Latest)" },
   ],
 };
 
