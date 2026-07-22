@@ -6,4 +6,6 @@ As of July 2026, Groq removed ALL Llama vision models (llama-4-scout, llama-4-ma
 
 **Why:** Scan feature broke with "model does not exist" — verify against `GET https://api.groq.com/openai/v1/models` (check `input_modalities`) before picking a model, don't trust remembered model names.
 
+Groq free tier is 8000 tokens/min and one image scan uses ~5000 — repeat scans rate-limit. Primary provider is now Gemini with `gemini-flash-latest` (works with images on this key); Qwen/Groq is the fallback choice.
+
 **How to apply:** The active model lives in `app_settings` (category 'AI Configuration', key `ai_model`) — on the VPS production DB, not just Replit dev DB; both must be updated. Gemini key in DB is free-tier and quota-limited; `gemini-1.5-*`/`gemini-2.5-flash*` return 404 for this key — use `gemini-flash-latest`.
