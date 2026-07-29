@@ -61,6 +61,8 @@ export function buildTaxInvoiceHTML(
   const firstItem = items[0] || {};
   // Delivery Note: use despatch voucher (despatch mode) or inward voucher (direct invoice mode)
   const deliveryNoteNo = firstItem.despatch_voucher_no || firstItem.inward_voucher_no || "";
+  // Delivery Note Date: despatch date (despatch mode) or inward entry date (direct invoice mode)
+  const deliveryNoteDate = firstItem.despatch_date || firstItem.inward_entry_date || "";
   // Customer DC No. (party_dc stored on items from inward)
   const dcNo = firstItem.party_dc || "";
   const poNo = firstItem.po_no || firstItem.work_order_no || "";
@@ -214,7 +216,7 @@ export function buildTaxInvoiceHTML(
           </tr>
           <tr>
             <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${dcNo || (poNo ? "PO: " + poNo : "&nbsp;")}</td>
-            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${fmtDate(doc.invoice_date)}</td>
+            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${fmtDate(deliveryNoteDate) || "&nbsp;"}</td>
           </tr>
           <tr>
             <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Dispatched through</td>

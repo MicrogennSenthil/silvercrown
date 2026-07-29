@@ -3458,10 +3458,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             COALESCE(jwi.party_dc_no, ii.party_dc, '')  AS dc_no_from_inward,
             jwi.party_dc_date                           AS dc_date,
             jwi.inward_date                             AS inward_entry_date,
-            COALESCE(jwi.party_po_no, ii.po_no, '')     AS po_no_from_inward
+            COALESCE(jwi.party_po_no, ii.po_no, '')     AS po_no_from_inward,
+            jwd.despatch_date                           AS despatch_date
           FROM job_work_invoice_items ii
           LEFT JOIN products p ON p.id = ii.item_id
           LEFT JOIN job_work_inward jwi ON jwi.id = ii.inward_id
+          LEFT JOIN job_work_despatch jwd ON jwd.id = ii.despatch_id
           WHERE ii.invoice_id=$1 ORDER BY ii.seq_no
         `, [id, isEway])).rows;
         const charges = (await pool.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1 ORDER BY seq_no`, [id])).rows;
