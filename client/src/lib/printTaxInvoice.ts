@@ -87,33 +87,10 @@ export function buildTaxInvoiceHTML(
       const amt = parseFloat(it.amount || "0");
       const desc = it.item_code ? `${it.item_code} - ${it.item_name || ""}` : (it.item_name || "");
 
-      // ── Sub-detail sections (shown below item name) ──────────────────
-      const sections: string[] = [];
-
-      // Section 1: DC No + PO No + WO No with dates
-      const dcNo   = (it.party_dc || it.dc_no_from_inward || "").trim();
-      const dcDate = it.dc_date ? fmtDate(it.dc_date) : "";
-      const poNo   = (it.po_no || it.po_no_from_inward || "").trim();
-      const poDate = it.po_date ? fmtDate(it.po_date) : "";
-      const woNo   = (it.work_order_no || "").trim();
-      const dcPoLines: string[] = [];
-      if (dcNo) dcPoLines.push(`DC.NO.: ${dcNo}${dcDate ? " &ndash; " + dcDate : ""}`);
-      if (poNo) dcPoLines.push(`PO.NO.: ${poNo}${poDate ? " &ndash; " + poDate : ""}`);
-      if (woNo) dcPoLines.push(`WO.NO.: ${woNo}`);
-      if (dcPoLines.length) sections.push(dcPoLines.join("<br>"));
-
-      // Section 2: process name
-      const process = (it.process || "").trim();
-      if (process) sections.push(process);
-
-      // Section 3: packing details / remark (always last)
-      const packing = (it.packing_details || it.remark || "").trim();
-      if (packing) sections.push(packing);
-
-      const subHTML = sections.length
-        ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6">
-             ${sections.join(`<div style="color:#aaa;margin:1px 0">&ndash;</div>`)}
-           </div>`
+      // ── Reference No (only what the user typed) ──────────────────────
+      const refNo = (it.packing_details || "").trim();
+      const subHTML = refNo
+        ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6">${refNo}</div>`
         : "";
 
       const tdB = "border-left:1px solid #000;border-right:1px solid #000;padding:4px 6px;vertical-align:top";
