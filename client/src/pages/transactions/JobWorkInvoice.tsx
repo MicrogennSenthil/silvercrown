@@ -282,18 +282,27 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     !partySearch || c.name?.toLowerCase().includes(partySearch.toLowerCase())
   );
 
-  // Despatch Notes mode: despatches for party that are finalised and not yet fully invoiced
-  const partyDespatches = (despatchList as any[]).filter((d: any) =>
-    d.party_id === partyId &&
-    !invoicedDespatchIds.has(d.id) &&
-    d.status !== "Draft" && d.status !== "Cancelled" && d.status !== "Invoiced" && d.status != null
-  );
-  // Direct Invoice mode: inwards for party with NO despatch and NOT yet directly invoiced
-  const partyDirectInwards = (inwardList as any[]).filter((r: any) =>
-    r.party_id === partyId &&
-    (!r.despatch_status || r.despatch_status === "Pending") &&
-    !invoicedDirectInwIds.has(r.id)
-  );
+  // Despatch Notes mode: despatches for party that are finalised and not yet fully invoiced.
+  // During edit mode, also include despatches already used in THIS invoice (checkedIds) — they
+  // may have status "Invoiced" but must still appear pre-checked in the panel.
+  const partyDespatches = (despatchList as any[]).filter((d: any) => {
+    if (d.party_id !== partyId) return false;
+    if (invoicedDespatchIds.has(d.id)) return false; // invoiced by a DIFFERENT invoice
+    if (d.status === "Cancelled") return false;
+    if (d.status === "Draft" || d.status == null) return false;
+    // Always show if it belongs to the invoice being edited (even if status = "Invoiced")
+    if (checkedIds.has(d.id)) return true;
+    // For new/pending despatches, exclude already-invoiced ones
+    return d.status !== "Invoiced";
+  });
+  // Direct Invoice mode: inwards for party with NO despatch and NOT yet directly invoiced.
+  // Same logic: include already-checked inwards when editing.
+  const partyDirectInwards = (inwardList as any[]).filter((r: any) => {
+    if (r.party_id !== partyId) return false;
+    if (invoicedDirectInwIds.has(r.id)) return false;
+    if (checkedIds.has(r.id)) return true;
+    return !r.despatch_status || r.despatch_status === "Pending";
+  });
   // Combined panel (inward_despatch_invoice): despatches + inwards-without-despatch, each tagged with _type
   const partyDespatchPanel = [
     ...partyDespatches.map((d: any) => ({ ...d, _type: "despatch" as const })),
