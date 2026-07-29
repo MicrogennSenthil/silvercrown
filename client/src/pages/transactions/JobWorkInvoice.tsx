@@ -926,12 +926,13 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                     {activeFlow === "inward_despatch_invoice" && (
                       <>
                         <div className="grid text-xs font-semibold text-gray-500 bg-gray-50 border-b"
-                          style={{ gridTemplateColumns: "110px 90px 100px 1fr 90px 44px" }}>
+                          style={{ gridTemplateColumns: "110px 80px 100px 1fr 80px 110px 44px" }}>
                           <div className="px-2 py-1.5">Desp No</div>
                           <div className="px-2 py-1.5">Date</div>
                           <div className="px-2 py-1.5">Inward No</div>
                           <div className="px-2 py-1.5">Inward Ref</div>
                           <div className="px-2 py-1.5">Vehicle</div>
+                          <div className="px-2 py-1.5">Invoice No</div>
                           <div className="px-2 py-1.5 text-center">✓</div>
                         </div>
                         <div className="max-h-28 overflow-y-auto">
@@ -949,7 +950,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                             return (
                               <div key={rowId}
                                 className={`grid items-center border-b last:border-0 transition-colors ${isDesp ? "hover:bg-blue-50" : "hover:bg-amber-50 bg-amber-50/30"}`}
-                                style={{ gridTemplateColumns: "110px 90px 100px 1fr 90px 44px" }}>
+                                style={{ gridTemplateColumns: "110px 80px 100px 1fr 80px 110px 44px" }}>
                                 <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: SC.primary }}>
                                   {isDesp ? row.voucher_no : <span className="text-gray-300 italic text-xs">No Despatch</span>}
                                 </div>
@@ -964,6 +965,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                                 </div>
                                 <div className="px-2 py-1.5 text-xs font-mono text-gray-600">
                                   {isDesp ? (row.vehicle_no || "—") : "—"}
+                                </div>
+                                <div className="px-2 py-1.5 text-xs font-semibold" style={{ color: row.invoice_voucher_no ? SC.orange : undefined }}>
+                                  {row.invoice_voucher_no || <span className="text-gray-300">—</span>}
                                 </div>
                                 <div className="px-2 py-1.5 flex justify-center">
                                   {loadingId === rowId

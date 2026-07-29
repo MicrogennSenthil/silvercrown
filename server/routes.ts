@@ -4179,7 +4179,14 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const partyId = req.query.party_id as string | undefined;
       const r = await pool.query(
-        `SELECT j.*, c.name as party_name_db
+        `SELECT j.*, c.name as party_name_db,
+                (
+                  SELECT inv.voucher_no
+                  FROM job_work_invoice_items ii
+                  JOIN job_work_invoices inv ON inv.id = ii.invoice_id
+                  WHERE ii.inward_id = j.id AND ii.despatch_id IS NULL AND inv.status <> 'Cancelled'
+                  ORDER BY inv.created_at DESC LIMIT 1
+                ) AS invoice_voucher_no
          FROM job_work_inward j
          LEFT JOIN customers c ON c.id = j.party_id
          ${partyId ? "WHERE j.party_id = $1" : ""}
@@ -4589,7 +4596,14 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const partyId = req.query.party_id as string | undefined;
       const r = await pool.query(
         `SELECT d.*, c.name AS party_name_db,
-                j.voucher_no AS inward_voucher_no, j.party_dc_no
+                j.voucher_no AS inward_voucher_no, j.party_dc_no,
+                (
+                  SELECT inv.voucher_no
+                  FROM job_work_invoice_items ii
+                  JOIN job_work_invoices inv ON inv.id = ii.invoice_id
+                  WHERE ii.despatch_id = d.id AND inv.status <> 'Cancelled'
+                  ORDER BY inv.created_at DESC LIMIT 1
+                ) AS invoice_voucher_no
          FROM job_work_despatch d
          LEFT JOIN customers c ON c.id = d.party_id
          LEFT JOIN job_work_inward j ON j.id = d.inward_id
