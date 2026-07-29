@@ -1298,15 +1298,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { pool } = await import("./db");
       const { item_code } = req.query as { item_code?: string };
       if (!item_code) return res.json([]);
+      // Union of SOP (opening) batches and GRN-received batches from item_batch_stock,
+      // deduped by batch_no. Qty is informational only — issue validation is against live item stock.
       const r = await pool.query(`
-        SELECT soi.id, soi.sop_id, soi.batch_no, soi.expiry_date,
-               soi.opening_qty::numeric AS opening_qty,
-               soi.rate::numeric AS rate,
-               so.voucher_no, so.opening_date
-        FROM store_opening_items soi
-        JOIN store_openings so ON so.id = soi.sop_id
-        WHERE so.status = 'Posted' AND soi.item_code = $1
-        ORDER BY so.opening_date ASC, soi.sno ASC
+        WITH sop_batches AS (
+          SELECT soi.id, soi.batch_no, soi.expiry_date,
+                 soi.opening_qty::numeric AS opening_qty,
+                 soi.rate::numeric AS rate,
+                 so.voucher_no, so.opening_date, 0 AS pref
+          FROM store_opening_items soi
+          JOIN store_openings so ON so.id = soi.sop_id
+          WHERE so.status = 'Posted' AND soi.item_code = $1
+        ),
+        grn_batches AS (
+          SELECT 'ibs-' || md5(ibs.item_code || '|' || ibs.batch_no || '|' || ibs.expiry_date_key) AS id,
+                 ibs.batch_no, ibs.expiry_date,
+                 SUM(ibs.closing_qty)::numeric AS opening_qty,
+                 MAX(ibs.rate)::numeric AS rate,
+                 '' AS voucher_no, NULL::date AS opening_date, 1 AS pref
+          FROM item_batch_stock ibs
+          WHERE ibs.item_code = $1 AND ibs.closing_qty > 0 AND COALESCE(ibs.batch_no,'') <> ''
+          GROUP BY ibs.item_code, ibs.batch_no, ibs.expiry_date, ibs.expiry_date_key
+        ),
+        merged AS (
+          SELECT DISTINCT ON (batch_no, expiry_date) *
+          FROM (SELECT * FROM sop_batches UNION ALL SELECT * FROM grn_batches) u
+          ORDER BY batch_no, expiry_date, pref ASC, opening_qty DESC, id
+        )
+        SELECT id, batch_no, expiry_date, opening_qty, rate, voucher_no, opening_date
+        FROM merged
+        ORDER BY opening_date ASC NULLS LAST, batch_no ASC
       `, [item_code]);
       res.json(r.rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }

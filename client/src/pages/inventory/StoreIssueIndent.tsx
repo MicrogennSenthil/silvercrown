@@ -678,10 +678,10 @@ export default function StoreIssueIndent() {
                     <input type="number" value={it.issued_qty || ""}
                       onChange={e => {
                         let val = parseFloat(e.target.value) || 0;
-                        if (it.batch_qty !== undefined && val > it.batch_qty) val = it.batch_qty;
+                        if (it.stock > 0 && val > it.stock) val = it.stock;
                         updItem(i, "issued_qty", val);
                       }}
-                      max={it.batch_qty !== undefined ? it.batch_qty : undefined}
+                      max={it.stock > 0 ? it.stock : undefined}
                       className={`border rounded px-2 py-1.5 w-16 outline-none text-xs text-right ${it.issued_qty > it.stock && it.issued_qty > 0 ? "border-red-400 bg-red-50 focus:border-red-500" : "border-gray-300 focus:border-[#027fa5]"}`}
                       data-testid={`input-qty-${i}`}/>
                   </td>
