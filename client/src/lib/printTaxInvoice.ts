@@ -162,7 +162,7 @@ export function buildTaxInvoiceHTML(
     <tr>
       <td style="width:55%;border-right:1px solid #000;padding:6px 8px;vertical-align:top">
         <div style="font-weight:700;font-size:15px;letter-spacing:0.3px;line-height:1.3">SILVER CROWN METAL COATINGS</div>
-        <div style="font-size:9.5px;margin-top:4px;line-height:1.7">
+        <div style="font-size:10.5px;margin-top:4px;line-height:1.7">
           646, Easwaran Chettiar Layout, Cross Cut Road,<br>
           Coimbatore - 641012<br>
           GSTIN/UIN : 33AANFS5823J1ZW<br>
