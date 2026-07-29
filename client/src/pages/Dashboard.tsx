@@ -102,7 +102,10 @@ function invTypeLabel(t: string) {
   return t || "—";
 }
 
-function StatCard({ label, value, lastPct, lastUp }: { label: string; value: number; lastPct: string; lastUp: boolean }) {
+function StatCard({ label, value, lastPct, lastUp, lastDate }: { label: string; value: number; lastPct: string; lastUp: boolean; lastDate?: string | null }) {
+  const formattedDate = lastDate
+    ? new Date(lastDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    : null;
   return (
     <div className="bg-white rounded-xl p-4 flex items-start gap-3 flex-1" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.12)" }}>
       <div className="flex-shrink-0 mt-1">
@@ -130,6 +133,12 @@ function StatCard({ label, value, lastPct, lastUp }: { label: string; value: num
             {lastPct} {lastUp ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
           </span>
         </div>
+        {formattedDate && (
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-xs text-gray-400">Last:</span>
+            <span className="text-xs font-semibold" style={{ color: SC.primary }}>{formattedDate}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -173,7 +182,7 @@ export default function Dashboard() {
     refetchInterval: 60000,
   });
 
-  const { data: counts = {} } = useQuery<Record<string, number>>({
+  const { data: counts = {} } = useQuery<Record<string, any>>({
     queryKey: ["/api/dashboard/counts"],
     queryFn: () => fetch("/api/dashboard/counts", { credentials: "include" }).then(r => r.json()),
     refetchInterval: 30000,
@@ -219,9 +228,9 @@ export default function Dashboard() {
 
       {/* ── Top Stat Cards ── */}
       <div className="flex gap-4">
-        <StatCard label="Inward"   value={tabCounts.inward}   lastPct="02%" lastUp={false} />
-        <StatCard label="Despatch" value={tabCounts.despatch}  lastPct="08%" lastUp={true} />
-        <StatCard label="Invoice"  value={tabCounts.invoice}   lastPct="12%" lastUp={true} />
+        <StatCard label="Inward"   value={tabCounts.inward}   lastPct="02%" lastUp={false} lastDate={counts.lastInwardDate} />
+        <StatCard label="Despatch" value={tabCounts.despatch}  lastPct="08%" lastUp={true}  lastDate={counts.lastDespatchDate} />
+        <StatCard label="Invoice"  value={tabCounts.invoice}   lastPct="12%" lastUp={true}  lastDate={counts.lastInvoiceDate} />
       </div>
 
       {/* ── Main Two-Column Grid ── */}

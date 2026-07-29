@@ -8212,18 +8212,21 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       const { pool } = await import("./db");
       const [inward, despatch, invoice, po, payments] = await Promise.all([
-        pool.query(`SELECT COUNT(*) FROM job_work_inward`),
-        pool.query(`SELECT COUNT(*) FROM job_work_despatch`),
-        pool.query(`SELECT COUNT(*) FROM job_work_invoices`),
+        pool.query(`SELECT COUNT(*) AS count, MAX(inward_date)::text AS last_date FROM job_work_inward`),
+        pool.query(`SELECT COUNT(*) AS count, MAX(despatch_date)::text AS last_date FROM job_work_despatch`),
+        pool.query(`SELECT COUNT(*) AS count, MAX(invoice_date)::text AS last_date FROM job_work_invoices`),
         pool.query(`SELECT COUNT(*) FROM purchase_orders`),
         pool.query(`SELECT COUNT(*) FROM voucher_mas WHERE voucher_type IN ('Payment','Receipt')`),
       ]);
       res.json({
-        inward:        parseInt(inward.rows[0].count),
-        despatch:      parseInt(despatch.rows[0].count),
-        invoice:       parseInt(invoice.rows[0].count),
-        purchaseOrder: parseInt(po.rows[0].count),
-        payments:      parseInt(payments.rows[0].count),
+        inward:            parseInt(inward.rows[0].count),
+        despatch:          parseInt(despatch.rows[0].count),
+        invoice:           parseInt(invoice.rows[0].count),
+        purchaseOrder:     parseInt(po.rows[0].count),
+        payments:          parseInt(payments.rows[0].count),
+        lastInwardDate:    inward.rows[0].last_date   || null,
+        lastDespatchDate:  despatch.rows[0].last_date || null,
+        lastInvoiceDate:   invoice.rows[0].last_date  || null,
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
