@@ -287,20 +287,23 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   // may have status "Invoiced" but must still appear pre-checked in the panel.
   const partyDespatches = (despatchList as any[]).filter((d: any) => {
     if (d.party_id !== partyId) return false;
-    if (invoicedDespatchIds.has(d.id)) return false; // invoiced by a DIFFERENT invoice
     if (d.status === "Cancelled") return false;
     if (d.status === "Draft" || d.status == null) return false;
-    // Always show if it belongs to the invoice being edited (even if status = "Invoiced")
+    // Always show if it belongs to the invoice being edited — check BEFORE invoicedDespatchIds
+    // so a race-condition stale cache on invoicedDespatchIds never hides it.
     if (checkedIds.has(d.id)) return true;
-    // For new/pending despatches, exclude already-invoiced ones
+    // Block if already fully invoiced by a DIFFERENT invoice
+    if (invoicedDespatchIds.has(d.id)) return false;
     return d.status !== "Invoiced";
   });
   // Direct Invoice mode: inwards for party with NO despatch and NOT yet directly invoiced.
-  // Same logic: include already-checked inwards when editing.
+  // checkedIds checked FIRST — so a stale invoicedDirectInwIds never hides the current invoice's inwards.
   const partyDirectInwards = (inwardList as any[]).filter((r: any) => {
     if (r.party_id !== partyId) return false;
-    if (invoicedDirectInwIds.has(r.id)) return false;
+    // Always include if part of the invoice being edited
     if (checkedIds.has(r.id)) return true;
+    // Block if fully invoiced by a different invoice
+    if (invoicedDirectInwIds.has(r.id)) return false;
     return !r.despatch_status || r.despatch_status === "Pending";
   });
   // Combined panel (inward_despatch_invoice): despatches + inwards-without-despatch, each tagged with _type
