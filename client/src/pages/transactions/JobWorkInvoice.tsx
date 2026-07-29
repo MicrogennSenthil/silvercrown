@@ -604,7 +604,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     },
   });
   const deleteMut = useMutation({
-    mutationFn: (id: string) => apiRequest("DELETE", `/api/job-work-invoice/${id}`),
+    mutationFn: (id: string) => apiRequest("PATCH", `/api/job-work-invoice/${id}/cancel`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/job-work-invoice"] });
       qc.invalidateQueries({ queryKey: ["/api/job-work-invoice/invoiced-ids"] });
@@ -1534,9 +1534,13 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           {editingId && (
             <button
               data-testid="btn-delete"
-              onClick={() => deleteMut.mutate(editingId)}
+              onClick={() => {
+                if (window.confirm("Cancel this invoice? This will reverse the ledger entries and mark the invoice as Cancelled.")) {
+                  deleteMut.mutate(editingId);
+                }
+              }}
               className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
-              Delete
+              Cancel Invoice
             </button>
           )}
           <button data-testid="btn-cancel" onClick={resetForm}
@@ -1691,7 +1695,11 @@ export default function JobWorkInvoice() {
                   </span>
                 </td>
                 <td className="px-5 py-2.5">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${r.status === "Saved" ? "bg-green-50 text-green-700" : "bg-yellow-50 text-yellow-700"}`}>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                    r.status === "Saved"      ? "bg-green-50 text-green-700"  :
+                    r.status === "Cancelled"  ? "bg-red-50 text-red-600"      :
+                                               "bg-yellow-50 text-yellow-700"
+                  }`}>
                     {r.status || "Draft"}
                   </span>
                 </td>

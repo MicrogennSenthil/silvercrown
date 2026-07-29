@@ -5351,12 +5351,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   });
 
   // DELETE /api/job-work-invoice/:id
-  app.delete("/api/job-work-invoice/:id", requireAuth, async (req, res) => {
+  // PATCH /api/job-work-invoice/:id/cancel — soft-cancel: reverses ledger but keeps the record
+  app.patch("/api/job-work-invoice/:id/cancel", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      // Capture despatch + inward IDs BEFORE deleting items (needed to refresh status after)
+      const existing = (await client.query(`SELECT status FROM job_work_invoices WHERE id=$1`, [req.params.id])).rows[0];
+      if (!existing) return res.status(404).json({ message: "Invoice not found" });
+      if (existing.status === "Cancelled") return res.status(400).json({ message: "Invoice is already cancelled" });
+      // Capture despatch + inward IDs to refresh their status afterwards
       const despIdRows = await client.query(
         `SELECT DISTINCT despatch_id, inward_id FROM job_work_invoice_items WHERE invoice_id=$1 AND despatch_id IS NOT NULL`,
         [req.params.id]
@@ -5367,7 +5371,50 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         [req.params.id]
       );
       const inwIdsD = inwIdDRows.rows.map((r: any) => r.inward_id);
-      // Reverse ledger entries before deleting the invoice
+      // Reverse ledger entries
+      const invRow = (await client.query(
+        `SELECT jwi.*, COALESCE(c.sub_ledger_id,'') AS customer_sl_id
+         FROM job_work_invoices jwi
+         LEFT JOIN customers c ON c.id = jwi.party_id
+         WHERE jwi.id=$1`, [req.params.id]
+      )).rows[0];
+      if (invRow) {
+        await client.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN
+          (SELECT id FROM voucher_mas WHERE source_type='job_work_invoice' AND source_id=$1)`, [req.params.id]);
+        await client.query(`DELETE FROM voucher_mas WHERE source_type='job_work_invoice' AND source_id=$1`, [req.params.id]);
+        if (invRow.customer_sl_id) {
+          await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1 AND sub_ledger_id=$2`,
+            [invRow.voucher_no, invRow.customer_sl_id]);
+        }
+      }
+      // Mark as Cancelled — keep the record and its items intact
+      await client.query(`UPDATE job_work_invoices SET status='Cancelled', updated_at=NOW() WHERE id=$1`, [req.params.id]);
+      // Refresh despatch + inward invoiced status
+      await refreshDespatchInvoicedStatus(client, despIdsD);
+      await refreshInwardDirectInvoiceStatus(client, inwIdsD);
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (e: any) {
+      await client.query("ROLLBACK");
+      res.status(400).json({ message: e.message });
+    } finally { client.release(); }
+  });
+
+  app.delete("/api/job-work-invoice/:id", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const despIdRows = await client.query(
+        `SELECT DISTINCT despatch_id, inward_id FROM job_work_invoice_items WHERE invoice_id=$1 AND despatch_id IS NOT NULL`,
+        [req.params.id]
+      );
+      const despIdsD = despIdRows.rows.map((r: any) => r.despatch_id);
+      const inwIdDRows = await client.query(
+        `SELECT DISTINCT inward_id FROM job_work_invoice_items WHERE invoice_id=$1 AND despatch_id IS NULL AND inward_id IS NOT NULL`,
+        [req.params.id]
+      );
+      const inwIdsD = inwIdDRows.rows.map((r: any) => r.inward_id);
       const invRow = (await client.query(
         `SELECT jwi.*, COALESCE(c.sub_ledger_id,'') AS customer_sl_id
          FROM job_work_invoices jwi
@@ -5386,7 +5433,6 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query(`DELETE FROM job_work_invoice_items   WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoice_charges WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoices WHERE id=$1`, [req.params.id]);
-      // After deletion, refresh despatch + inward status (may no longer be fully invoiced)
       await refreshDespatchInvoicedStatus(client, despIdsD);
       await refreshInwardDirectInvoiceStatus(client, inwIdsD);
       await client.query("COMMIT");
