@@ -59,13 +59,12 @@ export function buildTaxInvoiceHTML(
   const totalQty = items.reduce((s, it) => s + parseFloat(it.qty_despatched || "0"), 0);
 
   const firstItem = items[0] || {};
-  // Delivery Note: use despatch voucher (despatch mode) or inward voucher (direct invoice mode)
-  const deliveryNoteNo = firstItem.despatch_voucher_no || firstItem.inward_voucher_no || "";
-  // Delivery Note Date: despatch date (despatch mode) or inward entry date (direct invoice mode)
-  const deliveryNoteDate = firstItem.despatch_date || firstItem.inward_entry_date || "";
-  // Customer DC No. (party_dc stored on items from inward)
-  const dcNo = firstItem.party_dc || "";
-  const poNo = firstItem.po_no || firstItem.work_order_no || "";
+  // Party DC No. — from inward's party_dc_no field
+  const dcNo = firstItem.dc_no_from_inward || firstItem.party_dc || "";
+  // Party DC Date — from inward's party_dc_date field
+  const dcDate = firstItem.dc_date || "";
+  // Party PO No. — from inward's party_po_no field
+  const poNo = firstItem.po_no_from_inward || firstItem.po_no || firstItem.work_order_no || "";
   const irn = eInvData?.irn || doc.irn || "";
   const ackNo = eInvData?.ack_no || doc.ack_no || "";
   const ackDateRaw = eInvData?.ack_date || doc.ack_date || "";
@@ -182,18 +181,18 @@ export function buildTaxInvoiceHTML(
             <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${fmtDate(doc.invoice_date)}</td>
           </tr>
           <tr>
-            <td colspan="2" style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Delivery Note</td>
+            <td colspan="2" style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Party PO No.</td>
           </tr>
           <tr>
-            <td colspan="2" style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">&nbsp;</td>
+            <td colspan="2" style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${poNo || "&nbsp;"}</td>
           </tr>
           <tr>
-            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Dispatch Doc No.</td>
-            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Delivery Note Date</td>
+            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Party DC No.</td>
+            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Party DC Date</td>
           </tr>
           <tr>
-            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${dcNo || (poNo ? "PO: " + poNo : "&nbsp;")}</td>
-            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${fmtDate(deliveryNoteDate) || "&nbsp;"}</td>
+            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${dcNo || "&nbsp;"}</td>
+            <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px;font-weight:600">${fmtDate(dcDate) || "&nbsp;"}</td>
           </tr>
           <tr>
             <td style="border-bottom:1px solid #000;border-right:1px solid #000;padding:3px 6px">Dispatched through</td>
