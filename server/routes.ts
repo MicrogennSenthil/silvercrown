@@ -2924,6 +2924,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM goods_receipt_note_items grni
           JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
           WHERE grn.grn_date < $1
+            AND COALESCE(grn.status,'Saved') NOT IN ('Draft','Cancelled','cancelled')
           GROUP BY grni.item_code
         ),
         before_issue AS (
@@ -2931,6 +2932,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM store_issue_indent_items sii
           JOIN store_issue_indents si ON si.id = sii.sii_id
           WHERE si.issue_date < $1
+            AND si.status NOT IN ('Cancelled','cancelled','Rejected','rejected')
           GROUP BY sii.item_code
         ),
         period_receipt AS (
@@ -2938,6 +2940,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM goods_receipt_note_items grni
           JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
           WHERE grn.grn_date BETWEEN $1 AND $2
+            AND COALESCE(grn.status,'Saved') NOT IN ('Draft','Cancelled','cancelled')
           GROUP BY grni.item_code
         ),
         period_issue AS (
@@ -2945,6 +2948,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM store_issue_indent_items sii
           JOIN store_issue_indents si ON si.id = sii.sii_id
           WHERE si.issue_date BETWEEN $1 AND $2
+            AND si.status NOT IN ('Cancelled','cancelled','Rejected','rejected')
           GROUP BY sii.item_code
         )
         SELECT
@@ -2987,7 +2991,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         bgn AS (
           SELECT grni.item_code, SUM(grni.qty) AS qty, SUM(grni.total) AS val
           FROM goods_receipt_note_items grni JOIN goods_receipt_notes grn ON grn.id=grni.grn_id
-          WHERE grn.grn_date < $1 GROUP BY grni.item_code
+          WHERE grn.grn_date < $1
+            AND COALESCE(grn.status,'Saved') NOT IN ('Draft','Cancelled','cancelled')
+          GROUP BY grni.item_code
         ),
         bgr AS (
           SELECT grri.item_code, SUM(grri.return_qty) AS qty, SUM(grri.total) AS val
@@ -3029,6 +3035,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             grni.rate, grni.qty AS receipt_qty, 0 AS issue_qty, grni.total AS amount
           FROM goods_receipt_note_items grni JOIN goods_receipt_notes grn ON grn.id=grni.grn_id
           WHERE grn.grn_date BETWEEN $1 AND $2
+            AND COALESCE(grn.status,'Saved') NOT IN ('Draft','Cancelled','cancelled')
           ${itemCode ? "AND grni.item_code=$3" : ""}
 
           UNION ALL
@@ -3050,6 +3057,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM store_issue_indent_items sii JOIN store_issue_indents si ON si.id=sii.sii_id
           LEFT JOIN departments d ON d.id=si.department_id
           WHERE si.issue_date BETWEEN $1 AND $2
+            AND si.status NOT IN ('Cancelled','cancelled','Rejected','rejected')
           ${itemCode ? "AND sii.item_code=$3" : ""}
 
           UNION ALL
@@ -3957,6 +3965,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM goods_receipt_notes grn
           JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
           WHERE grn.po_id IS NOT NULL
+            AND COALESCE(grn.status,'Saved') NOT IN ('Draft','Cancelled','cancelled')
           GROUP BY grn.po_id, grni.item_code
         ) rec ON rec.po_id = po.id AND rec.item_code = poi.item_code
         WHERE po.po_date BETWEEN $1 AND $2
@@ -5789,7 +5798,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         SELECT po.*, s.name AS supplier_name_db,
           COALESCE((
             SELECT COUNT(*) FROM goods_receipt_notes grn
-            WHERE grn.po_id = po.id AND COALESCE(grn.status,'Draft') != 'Cancelled'
+            WHERE grn.po_id = po.id AND COALESCE(grn.status,'Saved') != 'Cancelled'
           ), 0)::int AS grn_count
         FROM purchase_orders po
         LEFT JOIN suppliers s ON s.id = po.supplier_id
@@ -6014,7 +6023,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           ) AS item_rates,
           COALESCE((
             SELECT COUNT(*) FROM goods_receipt_notes grn
-            WHERE grn.po_id = po.id AND COALESCE(grn.status,'Draft') != 'Cancelled'
+            WHERE grn.po_id = po.id AND COALESCE(grn.status,'Saved') != 'Cancelled'
           ), 0)::int AS grn_count
         FROM purchase_orders po
         LEFT JOIN suppliers s ON s.id = po.supplier_id
@@ -6751,11 +6760,8 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Update GRN
   app.patch("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
-    // Block edit if GRN has been issued against (status is not Draft)
+    // Load current GRN status — both Draft and Saved GRNs can be edited
     const statusCheck = await pool.query(`SELECT status FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
-    if (statusCheck.rows[0] && statusCheck.rows[0].status !== "Draft") {
-      return res.status(400).json({ message: `GRN cannot be edited — it has been ${statusCheck.rows[0].status.toLowerCase()} against. Only Draft GRNs can be modified.` });
-    }
     // Validate PO approval before acquiring transaction client
     if (req.body.purchase_type === "PO") {
       if (!req.body.po_id) {
@@ -6823,9 +6829,23 @@ Return ONLY valid JSON (no markdown, no explanation):
       }
 
       // Stock handling:
-      // - Draft → Draft: no stock was applied before, none now — just replace items
-      // - Draft → Saved (finalising): apply new stock only (was never stocked as Draft)
-      // - Saved → Saved: blocked above (PATCH not allowed on Saved GRNs)
+      // - Draft → Draft: no stock applied before, none now — replace items only
+      // - Draft → Saved (finalising): apply new stock (was never stocked as Draft)
+      // - Saved → Saved (editing): reverse old stock, apply new stock
+      const wasAlreadySaved = (currentGrnStatus === "Saved");
+      if (wasAlreadySaved) {
+        // Reverse old stock before replacing items
+        const oldItems = (await client.query(
+          `SELECT item_code, item_name, batch_no, expiry_date, qty AS qty, unit, rate FROM goods_receipt_note_items WHERE grn_id=$1`,
+          [hdr.id]
+        )).rows;
+        for (const oi of oldItems) {
+          if (oi.item_code && +oi.qty > 0) {
+            await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+oi.qty, oi.item_code]);
+          }
+        }
+        await upsertBatchStock(client, oldItems, -1);
+      }
       await client.query(`DELETE FROM goods_receipt_note_items WHERE grn_id=$1`, [hdr.id]);
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
@@ -6838,8 +6858,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0, +it.discount_pct||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
-        // Apply stock only when finalising (Draft → Saved)
-        if (isFinalisingNow && it.item_code && +it.qty > 0) {
+        // Apply stock when finalising (Draft→Saved) or when editing a Saved GRN
+        if ((isFinalisingNow || wasAlreadySaved) && it.item_code && +it.qty > 0) {
           await client.query(`UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`, [+it.qty, it.item_code]);
           await upsertBatchStock(client, [it], +1);
         }
@@ -6865,28 +6885,27 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Delete GRN
   app.delete("/api/goods-receipt-notes/:id", requireAuth, async (req, res) => {
     const { pool } = await import("./db");
-    // Block delete if GRN has been issued against (status is not Draft)
     const statusCheck = await pool.query(`SELECT status FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
-    if (statusCheck.rows[0] && statusCheck.rows[0].status !== "Draft") {
-      return res.status(400).json({ message: `GRN cannot be deleted — it has been ${statusCheck.rows[0].status.toLowerCase()} against. Only Draft GRNs can be deleted.` });
-    }
+    const grnStatus = statusCheck.rows[0]?.status || "Saved";
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       const hRes = await client.query(`SELECT voucher_no FROM goods_receipt_notes WHERE id=$1`, [req.params.id]);
       if (!hRes.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "GRN not found" }); }
       const vno = hRes.rows[0].voucher_no;
-      // Reverse stock + batch stock before deleting
+      // Reverse stock + batch stock before deleting (only if GRN was Saved — Draft never applied stock)
       const itemsRes = await client.query(
         `SELECT item_code, item_name, batch_no, expiry_date, qty, unit, rate FROM goods_receipt_note_items WHERE grn_id=$1`,
         [req.params.id]
       );
-      for (const oi of itemsRes.rows) {
-        if (oi.item_code && +oi.qty > 0) {
-          await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+oi.qty, oi.item_code]);
+      if (grnStatus === "Saved") {
+        for (const oi of itemsRes.rows) {
+          if (oi.item_code && +oi.qty > 0) {
+            await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+oi.qty, oi.item_code]);
+          }
         }
+        await upsertBatchStock(client, itemsRes.rows, -1);
       }
-      await upsertBatchStock(client, itemsRes.rows, -1);
       await client.query(`DELETE FROM voucher_det WHERE voucher_mas_id IN (SELECT id FROM voucher_mas WHERE source_type='grn' AND source_id=$1)`, [req.params.id]);
       await client.query(`DELETE FROM voucher_mas WHERE source_type='grn' AND source_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM sub_ledger_bills WHERE ref_no=$1`, [vno]);
