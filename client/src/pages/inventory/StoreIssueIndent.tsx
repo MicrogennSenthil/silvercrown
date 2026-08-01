@@ -694,9 +694,8 @@ export default function StoreIssueIndent() {
 
                   {/* Rate */}
                   <td className="px-1 py-1">
-                    <input type="number" value={it.rate || ""}
-                      onChange={e => updItem(i, "rate", parseFloat(e.target.value) || 0)}
-                      className="border border-gray-300 rounded px-2 py-1.5 w-20 outline-none focus:border-[#027fa5] text-xs text-right"/>
+                    <input type="number" value={it.rate || ""} readOnly disabled
+                      className="border border-gray-200 rounded px-2 py-1.5 w-20 bg-gray-100 text-gray-500 cursor-not-allowed text-xs text-right"/>
                   </td>
 
                   {/* Amount */}
