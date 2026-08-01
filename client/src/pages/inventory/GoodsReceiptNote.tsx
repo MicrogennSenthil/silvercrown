@@ -349,13 +349,10 @@ export default function GoodsReceiptNote() {
   function openEdit(grn: any) {
     setGrnNo(grn.voucher_no || "");
     setSelectedPoIds(grn.po_id ? [grn.po_id] : []);
-    // Derive tax type from loaded items: inter-state when IGST is used and CGST/SGST is not
-    {
-      const its = grn.items || [];
-      const hasIgst = its.some((it: any) => p2(it.igst_pct) > 0 || p2(it.igst_amt) > 0);
-      const hasCgstSgst = its.some((it: any) => p2(it.cgst_pct) > 0 || p2(it.sgst_pct) > 0);
-      setGrnInterState(hasIgst && !hasCgstSgst);
-    }
+    // Note: grnInterState is derived from the FULL item data in the fetch below,
+    // not from the list-row summary (which has no items). Reset to false here;
+    // it will be corrected once the full fetch completes.
+    setGrnInterState(false);
     setForm({
       grn_date: grn.grn_date?.slice(0,10)||"", store_id: grn.store_id||"", store_name: grn.store_name||"",
       supplier_id: grn.supplier_id||"", supplier_name_manual: grn.supplier_name||grn.supplier_name_manual||"",
@@ -375,7 +372,12 @@ export default function GoodsReceiptNote() {
     setOurRef(grn.our_ref_no||""); setYourRef(grn.your_ref_no||""); setDelivLoc(grn.delivery_location||"");
     fetch(`/api/goods-receipt-notes/${grn.id}`, { credentials:"include" })
       .then(r => r.json()).then(full => {
-        setForm(f => ({ ...f, items: (full.items||[]).map((it: any) => ({
+        // Derive tax type from FULL item data (list row has no items)
+        const fullIts = full.items || [];
+        const hasIgst     = fullIts.some((it: any) => p2(it.igst_pct) > 0 || p2(it.igst_amt) > 0);
+        const hasCgstSgst = fullIts.some((it: any) => p2(it.cgst_pct) > 0 || p2(it.sgst_pct) > 0);
+        setGrnInterState(hasIgst && !hasCgstSgst);
+        setForm(f => ({ ...f, items: fullIts.map((it: any) => ({
           ...it, qty: p2(it.qty), rate: p2(it.rate), discount_pct: p2(it.discount_pct), taxable_amt: p2(it.taxable_amt),
           cgst_pct: p2(it.cgst_pct), cgst_amt: p2(it.cgst_amt), sgst_pct: p2(it.sgst_pct),
           sgst_amt: p2(it.sgst_amt), igst_pct: p2(it.igst_pct), igst_amt: p2(it.igst_amt), total: p2(it.total),
