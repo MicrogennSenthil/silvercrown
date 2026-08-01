@@ -1397,12 +1397,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/products/:id", requireAuth, async (req, res) => { await storage.deleteProduct(req.params.id); res.json({ ok: true }); });
 
   // POST /api/products/recalculate-stock — recompute current_stock for all products from transactions
+  // Also scales item_batch_stock.closing_qty proportionally to match the corrected totals.
   app.post("/api/products/recalculate-stock", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
+
+      // ── Step 1: Recompute products.current_stock from all transaction sources ──
       await pool.query(`
         UPDATE products p
         SET current_stock = GREATEST(0,
+          -- Opening stock (posted SOPs only)
           COALESCE((
             SELECT SUM(soi.opening_qty)
             FROM store_opening_items soi
@@ -1410,29 +1414,65 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             WHERE so.status = 'Posted' AND LOWER(soi.item_code) = LOWER(p.code)
           ), 0)
           +
+          -- GRN receipts (exclude Draft and Cancelled)
           COALESCE((
             SELECT SUM(grni.qty::numeric)
             FROM goods_receipt_note_items grni
             JOIN goods_receipt_notes grn ON grn.id = grni.grn_id
-            WHERE COALESCE(grn.status,'') <> 'Cancelled'
+            WHERE COALESCE(grn.status,'Saved') NOT IN ('Draft','Cancelled','cancelled')
               AND LOWER(grni.item_code) = LOWER(p.code)
           ), 0)
           -
+          -- GRN returns
+          COALESCE((
+            SELECT SUM(grri.return_qty::numeric)
+            FROM goods_receipt_return_items grri
+            WHERE LOWER(grri.item_code) = LOWER(p.code)
+          ), 0)
+          -
+          -- Store issue indents (all except Cancelled/Rejected)
           COALESCE((
             SELECT SUM(sii.issued_qty::numeric)
             FROM store_issue_indent_items sii
             JOIN store_issue_indents si ON si.id = sii.sii_id
-            WHERE si.status = 'Posted' AND LOWER(sii.item_code) = LOWER(p.code)
+            WHERE si.status NOT IN ('Cancelled','cancelled','Rejected','rejected')
+              AND LOWER(sii.item_code) = LOWER(p.code)
           ), 0)
-          -
+          +
+          -- Issue indent returns (all except Cancelled/Rejected)
           COALESCE((
-            SELECT SUM(grri.return_qty::numeric)
-            FROM goods_receipt_return_items grri
-            JOIN goods_receipt_returns grr ON grr.id = grri.grr_id
-            WHERE grr.status = 'Posted' AND LOWER(grri.item_code) = LOWER(p.code)
+            SELECT SUM(iri.return_qty::numeric)
+            FROM issue_indent_return_items iri
+            JOIN issue_indent_returns ir ON ir.id = iri.irr_id
+            WHERE ir.status NOT IN ('Cancelled','cancelled','Rejected','rejected')
+              AND LOWER(iri.item_code) = LOWER(p.code)
           ), 0)
         )
       `);
+
+      // ── Step 2: Scale item_batch_stock.closing_qty proportionally ────────────
+      // Each batch's qty is scaled so the per-item SUM matches products.current_stock
+      await pool.query(`
+        UPDATE item_batch_stock ibs
+        SET closing_qty = ROUND(
+          CASE
+            WHEN batch_totals.batch_sum > 0
+            THEN ibs.closing_qty * (p.current_stock / batch_totals.batch_sum)
+            ELSE 0
+          END::numeric, 3
+        ),
+        updated_at = NOW()
+        FROM products p
+        JOIN (
+          SELECT item_code, SUM(closing_qty) AS batch_sum
+          FROM item_batch_stock
+          GROUP BY item_code
+        ) batch_totals ON batch_totals.item_code = p.code
+        WHERE ibs.item_code = p.code
+          AND batch_totals.batch_sum > 0
+          AND ABS(batch_totals.batch_sum - p.current_stock) > 0.001
+      `);
+
       const counts = await pool.query(`SELECT COUNT(*) AS total, SUM(current_stock) AS total_stock FROM products`);
       res.json({ ok: true, products_updated: counts.rows[0].total, total_stock: counts.rows[0].total_stock });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -7212,7 +7252,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // Helper: adjust current_stock on products by delta (negative = reduce), with validation
+  // Helper: adjust current_stock on products AND item_batch_stock by delta (negative = reduce)
   async function adjustSiiStock(client: any, items: any[], delta: number) {
     for (const it of items) {
       if (it.item_code && +(it.issued_qty || 0) !== 0) {
@@ -7230,10 +7270,20 @@ Return ONLY valid JSON (no markdown, no explanation):
             );
           }
         }
+        // Update item-level running stock
         await client.query(
           `UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) + $1) WHERE code = $2`,
           [delta * +(it.issued_qty || 0), it.item_code]
         );
+        // ── KEY FIX: also keep item_batch_stock in sync per batch ──────────
+        if (it.batch_no) {
+          await client.query(
+            `UPDATE item_batch_stock
+             SET closing_qty = GREATEST(0, closing_qty + $1), updated_at = NOW()
+             WHERE item_code = $2 AND batch_no = $3`,
+            [delta * +(it.issued_qty || 0), it.item_code, it.batch_no]
+          );
+        }
       }
     }
   }
@@ -7311,8 +7361,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-        // Restore stock before deleting
-        const oldItems = await client.query(`SELECT item_code, issued_qty FROM store_issue_indent_items WHERE sii_id=$1`, [req.params.id]);
+        // Restore stock before deleting (fetch batch_no so item_batch_stock is also reversed)
+        const oldItems = await client.query(`SELECT item_code, item_name, batch_no, issued_qty FROM store_issue_indent_items WHERE sii_id=$1`, [req.params.id]);
         await adjustSiiStock(client, oldItems.rows, +1);
         await client.query(`DELETE FROM store_issue_indents WHERE id=$1`, [req.params.id]);
         await client.query("COMMIT");
