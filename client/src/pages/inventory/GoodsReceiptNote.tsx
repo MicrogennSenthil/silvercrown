@@ -225,7 +225,8 @@ export default function GoodsReceiptNote() {
   const portalDropRef = useRef<HTMLDivElement|null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
   const [valErrs, setValErrs] = useState<{ store?: boolean; supplier?: boolean; rows?: Set<number> }>({});
-  const [savedGrn, setSavedGrn] = useState<{ id: string; voucher_no: string } | null>(null);
+  const [savedGrn, setSavedGrn] = useState<{ id: string; voucher_no: string; status: string } | null>(null);
+  const [grnStatus, setGrnStatus] = useState<"Draft"|"Saved">("Draft"); // tracks status of GRN being edited
   const [tab, setTab] = useState<"items"|"terms">("items");
   const [terms, setTerms] = useState<GrnTerm[]>([newTerm()]);
   const [charges, setCharges] = useState<GrnCharge[]>([newCharge()]);
@@ -340,7 +341,7 @@ export default function GoodsReceiptNote() {
 
   function openNew() {
     setForm(blankForm()); setEditId(null); setErr(""); setGrnNo("");
-    setSelectedPoIds([]); setMode("form");
+    setSelectedPoIds([]); setMode("form"); setGrnStatus("Draft");
     setTab("items"); setTerms([newTerm()]); setCharges([newCharge()]);
     setOurRef(""); setYourRef(""); setDelivLoc("");
     fetch("/api/voucher-series/next/purchase_receipt", { credentials: "include" })
@@ -366,6 +367,7 @@ export default function GoodsReceiptNote() {
         sgst_amt: p2(it.sgst_amt), igst_pct: p2(it.igst_pct), igst_amt: p2(it.igst_amt), total: p2(it.total),
       })),
     });
+    setGrnStatus((grn.status as "Draft"|"Saved") || "Draft");
     setEditId(grn.id); setErr(""); setMode("form");
     setTab("items");
     setTerms([newTerm()]); setCharges([newCharge()]);
@@ -526,37 +528,39 @@ export default function GoodsReceiptNote() {
     setItemDropOpen(null);
   }
 
-  async function handleSave() {
+  async function handleSave(saveStatus: "Draft" | "Saved") {
     setErr("");
-    // ── Validation ──────────────────────────────────────────────────────────
-    const errStore    = !form.store_id;
-    const errSupplier = !form.supplier_id && !form.supplier_name_manual;
-    const errPO       = form.purchase_type === "PO" && !form.po_id;
-    const badRows     = new Set<number>();
-    form.items.forEach((it, i) => {
-      if (!it.item_code || it.qty <= 0 || it.rate <= 0) badRows.add(i);
-      if (it.batch_required  && !it.batch_no)   badRows.add(i);
-      if (it.expiry_required && !it.expiry_date) badRows.add(i);
-    });
-    // Each Other Charge row must have both a type and a positive amount (or be left fully blank)
-    const errCharge = charges.some(c =>
-      (c.charge_type && !(p2(c.amount) > 0)) || (!c.charge_type && c.amount !== "" && p2(c.amount) !== 0)
-    );
-    if (errStore || errSupplier || errPO || badRows.size > 0 || errCharge) {
-      setValErrs({ store: errStore, supplier: errSupplier, rows: badRows });
-      const msgs: string[] = [];
-      if (errStore)    msgs.push("Store is required");
-      if (errSupplier) msgs.push("Supplier is required");
-      if (errPO)       msgs.push("An approved Purchase Order must be selected before creating a GRN");
-      if (badRows.size > 0) msgs.push(`Row${badRows.size > 1 ? "s" : ""} ${[...badRows].map(r => r + 1).join(", ")}: check Item, Qty, Rate, Batch No and Expiry Date`);
-      if (errCharge) msgs.push("Terms tab: each Other Charge needs both a type and a positive amount");
-      setErr(msgs.join(" · "));
-      return;
+    if (saveStatus === "Saved") {
+      // ── Full validation for finalisation ──────────────────────────────────
+      const errStore    = !form.store_id;
+      const errSupplier = !form.supplier_id && !form.supplier_name_manual;
+      const errPO       = form.purchase_type === "PO" && !form.po_id;
+      const badRows     = new Set<number>();
+      form.items.forEach((it, i) => {
+        if (!it.item_code || it.qty <= 0 || it.rate <= 0) badRows.add(i);
+        if (it.batch_required  && !it.batch_no)   badRows.add(i);
+        if (it.expiry_required && !it.expiry_date) badRows.add(i);
+      });
+      const errCharge = charges.some(c =>
+        (c.charge_type && !(p2(c.amount) > 0)) || (!c.charge_type && c.amount !== "" && p2(c.amount) !== 0)
+      );
+      if (errStore || errSupplier || errPO || badRows.size > 0 || errCharge) {
+        setValErrs({ store: errStore, supplier: errSupplier, rows: badRows });
+        const msgs: string[] = [];
+        if (errStore)    msgs.push("Store is required");
+        if (errSupplier) msgs.push("Supplier is required");
+        if (errPO)       msgs.push("An approved Purchase Order must be selected before creating a GRN");
+        if (badRows.size > 0) msgs.push(`Row${badRows.size > 1 ? "s" : ""} ${[...badRows].map(r => r + 1).join(", ")}: check Item, Qty, Rate, Batch No and Expiry Date`);
+        if (errCharge) msgs.push("Terms tab: each Other Charge needs both a type and a positive amount");
+        setErr(msgs.join(" · "));
+        return;
+      }
     }
     setValErrs({});
     setSaving(true);
     const payload = {
       ...form,
+      status: saveStatus,
       round_off: p2(form.round_off),
       grand_total: grandFinal,
       our_ref_no: ourRef,
@@ -568,8 +572,6 @@ export default function GoodsReceiptNote() {
       charges: charges
         .filter(c => c.charge_type && p2(c.amount) > 0)
         .map(c => ({ charge_type: c.charge_type, amount: p2(c.amount) })),
-      // strip internal tracking field + normalize tax to the selected tax type so
-      // stored amounts never carry both CGST/SGST and IGST (keeps print/reports consistent)
       items: form.items.map(({ _poId, ...rest }) => {
         const it = grnInterState
           ? { ...rest, cgst_pct: 0, cgst_amt: 0, sgst_pct: 0, sgst_amt: 0 }
@@ -588,7 +590,7 @@ export default function GoodsReceiptNote() {
       const j = await r.json();
       if (!r.ok) { setErr(j.message || "Save failed"); setSaving(false); return; }
       qc.invalidateQueries({ queryKey: ["/api/goods-receipt-notes"] });
-      setSavedGrn({ id: j.id, voucher_no: j.voucher_no || "" });
+      setSavedGrn({ id: j.id, voucher_no: j.voucher_no || "", status: saveStatus });
     } catch (e: any) { setErr(e.message); }
     setSaving(false);
   }
@@ -638,7 +640,13 @@ export default function GoodsReceiptNote() {
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{g.purchase_type==="PO"?"Purchase Order":"Direct Purchase"}</span>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-gray-800">₹ {n2(p2(g.grand_total))}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-800">
+                      ₹ {n2(p2(g.grand_total))}
+                      {g.status === "Draft" && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded text-xs font-semibold"
+                          style={{ background:"#fff3cd", color:"#856404", border:"1px solid #ffc107" }}>Draft</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {g.status === "Draft" ? (
                         <div className="flex gap-2">
@@ -1223,10 +1231,18 @@ export default function GoodsReceiptNote() {
               data-testid="btn-cancel">
               Cancel
             </button>
-            <button onClick={handleSave} disabled={saving}
-              className="px-12 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
-              style={{ background: SC.orange }} data-testid="btn-save">
-              {saving ? "Saving…" : "Save"}
+            {/* Save as Draft — minimal validation, no stock update */}
+            <button onClick={() => handleSave("Draft")} disabled={saving}
+              className="px-6 py-2 rounded text-sm font-semibold border disabled:opacity-50"
+              style={{ borderColor: "#856404", color: "#856404", background: "#fff9e6" }}
+              data-testid="btn-save-draft">
+              {saving ? "Saving…" : "Save as Draft"}
+            </button>
+            {/* Save & Finalise — full validation, updates stock + GL */}
+            <button onClick={() => handleSave("Saved")} disabled={saving}
+              className="px-8 py-2 rounded text-sm font-semibold text-white disabled:opacity-50"
+              style={{ background: SC.orange }} data-testid="btn-save-finalise">
+              {saving ? "Saving…" : (grnStatus === "Draft" && editId ? "Finalise" : "Save & Finalise")}
             </button>
           </div>
         </div>
@@ -1241,12 +1257,17 @@ export default function GoodsReceiptNote() {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.45)" }}>
           <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-sm mx-4 text-center">
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
-              style={{ background: "#d1fae5" }}>
-              <CheckCircle size={28} style={{ color: "#059669" }} />
+              style={{ background: savedGrn.status === "Draft" ? "#fff3cd" : "#d1fae5" }}>
+              <CheckCircle size={28} style={{ color: savedGrn.status === "Draft" ? "#856404" : "#059669" }} />
             </div>
-            <h2 className="text-lg font-bold text-gray-800 mb-1">GRN Saved!</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-1">
+              {savedGrn.status === "Draft" ? "Draft Saved!" : "GRN Finalised!"}
+            </h2>
             <p className="text-sm text-gray-500 mb-6">
-              <span className="font-semibold" style={{ color: SC.primary }}>{savedGrn.voucher_no}</span> has been saved successfully.
+              <span className="font-semibold" style={{ color: SC.primary }}>{savedGrn.voucher_no}</span>{" "}
+              {savedGrn.status === "Draft"
+                ? "saved as Draft — stock not updated yet. Open and Finalise when ready."
+                : "has been finalised and stock updated."}
               <br/>What would you like to do next?
             </p>
             <div className="flex flex-col gap-3">

@@ -6637,13 +6637,16 @@ Return ONLY valid JSON (no markdown, no explanation):
       const charges_total  = charges.reduce((s: number, c: any) => (c.charge_type && +c.amount > 0) ? s + (+c.amount) : s, 0);
       const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + charges_total + round_off);
 
+      // Accept status from client — only 'Draft' or 'Saved' allowed
+      const status = (b.status === "Saved") ? "Saved" : "Draft";
+
       const hdrRes = await client.query(`
         INSERT INTO goods_receipt_notes
           (voucher_no, grn_date, store_id, store_name, supplier_id, supplier_name_manual, sl_id,
            dc_no, bill_no, bill_date, payment_mode, purchase_type, po_id, po_no,
            total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
            remark, our_ref_no, your_ref_no, delivery_location, status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'Draft')
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
         RETURNING *
       `, [voucher_no, b.grn_date||new Date().toISOString().slice(0,10),
           b.store_id||null, b.store_name||"", b.supplier_id||null, b.supplier_name_manual||"",
@@ -6651,7 +6654,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           b.dc_no||"", b.bill_no||"", b.bill_date||null, b.payment_mode||"Cash",
           b.purchase_type||"PO", b.po_id||null, b.po_no||"",
           total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
-          b.remark||"", b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||""]);
+          b.remark||"", b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"", status]);
       const hdr = hdrRes.rows[0];
 
       for (let i = 0; i < terms.length; i++) {
@@ -6678,8 +6681,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0, +it.discount_pct||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
-        // Update live stock + batch-level stock on GRN receipt
-        if (it.item_code && +it.qty > 0) {
+        // Update live stock + batch-level stock only when finalising (not for Draft)
+        if (status === "Saved" && it.item_code && +it.qty > 0) {
           await client.query(
             `UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`,
             [+it.qty, it.item_code]
@@ -6688,14 +6691,16 @@ Return ONLY valid JSON (no markdown, no explanation):
         }
       }
 
-      // Wrap GL voucher posting in a SAVEPOINT — failure here must never abort the GRN save
-      try {
-        await client.query("SAVEPOINT grn_voucher");
-        await postGrnVoucher(client, hdr, { ...b, items, grand_total });
-        await client.query("RELEASE SAVEPOINT grn_voucher");
-      } catch (ve: any) {
-        await client.query("ROLLBACK TO SAVEPOINT grn_voucher");
-        console.error("[GRN] Voucher posting failed (GRN saved):", ve.message);
+      // Post GL voucher only when finalising
+      if (status === "Saved") {
+        try {
+          await client.query("SAVEPOINT grn_voucher");
+          await postGrnVoucher(client, hdr, { ...b, items, grand_total });
+          await client.query("RELEASE SAVEPOINT grn_voucher");
+        } catch (ve: any) {
+          await client.query("ROLLBACK TO SAVEPOINT grn_voucher");
+          console.error("[GRN] Voucher posting failed (GRN saved):", ve.message);
+        }
       }
       await client.query("COMMIT");
       res.json(hdr);
@@ -6740,20 +6745,25 @@ Return ONLY valid JSON (no markdown, no explanation):
       const charges_total  = charges.reduce((s: number, c: any) => (c.charge_type && +c.amount > 0) ? s + (+c.amount) : s, 0);
       const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + charges_total + round_off);
 
+      // Accept new status from client. Draft GRNs can be upgraded to Saved; never downgraded.
+      const currentGrnStatus = statusCheck.rows[0]?.status || "Draft";
+      const newStatus = (b.status === "Saved") ? "Saved" : "Draft";
+      const isFinalisingNow = (currentGrnStatus === "Draft" && newStatus === "Saved");
+
       const hdrRes = await client.query(`
         UPDATE goods_receipt_notes SET
           grn_date=$1, store_id=$2, store_name=$3, supplier_id=$4, supplier_name_manual=$5,
           sl_id=$6, dc_no=$7, bill_no=$8, bill_date=$9, payment_mode=$10, purchase_type=$11,
           po_id=$12, po_no=$13, total_qty=$14, taxable_amount=$15, cgst_amount=$16,
           sgst_amount=$17, igst_amount=$18, round_off=$19, grand_total=$20, remark=$21,
-          our_ref_no=$22, your_ref_no=$23, delivery_location=$24
-        WHERE id=$25 RETURNING *
+          our_ref_no=$22, your_ref_no=$23, delivery_location=$24, status=$25
+        WHERE id=$26 RETURNING *
       `, [b.grn_date, b.store_id||null, b.store_name||"", b.supplier_id||null, b.supplier_name_manual||"",
           b.sl_id||null,
           b.dc_no||"", b.bill_no||"", b.bill_date||null, b.payment_mode||"Cash",
           b.purchase_type||"PO", b.po_id||null, b.po_no||"",
           total_qty, taxable_amount, cgst_amount, sgst_amount, igst_amount, round_off, grand_total,
-          b.remark||"", b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"", req.params.id]);
+          b.remark||"", b.our_ref_no||"", b.your_ref_no||"", b.delivery_location||"", newStatus, req.params.id]);
       if (!hdrRes.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ message: "GRN not found" }); }
       const hdr = hdrRes.rows[0];
 
@@ -6772,18 +6782,10 @@ Return ONLY valid JSON (no markdown, no explanation):
           [hdr.id, i+1, c.charge_type||"", +c.amount||0]);
       }
 
-      // Reverse old stock + batch stock before updating items
-      const oldGrnItems = await client.query(
-        `SELECT item_code, item_name, batch_no, expiry_date, qty, unit, rate FROM goods_receipt_note_items WHERE grn_id=$1`,
-        [hdr.id]
-      );
-      for (const oi of oldGrnItems.rows) {
-        if (oi.item_code && +oi.qty > 0) {
-          await client.query(`UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) - $1) WHERE code=$2`, [+oi.qty, oi.item_code]);
-        }
-      }
-      await upsertBatchStock(client, oldGrnItems.rows, -1);
-
+      // Stock handling:
+      // - Draft → Draft: no stock was applied before, none now — just replace items
+      // - Draft → Saved (finalising): apply new stock only (was never stocked as Draft)
+      // - Saved → Saved: blocked above (PATCH not allowed on Saved GRNs)
       await client.query(`DELETE FROM goods_receipt_note_items WHERE grn_id=$1`, [hdr.id]);
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
@@ -6796,21 +6798,23 @@ Return ONLY valid JSON (no markdown, no explanation):
             it.expiry_date||null, +it.qty||0, it.unit||"", +it.rate||0, +it.discount_pct||0,
             +it.taxable_amt||0, +it.cgst_pct||0, +it.cgst_amt||0,
             +it.sgst_pct||0, +it.sgst_amt||0, +it.igst_pct||0, +it.igst_amt||0, +it.total||0]);
-        // Re-apply updated qty to live stock + batch stock
-        if (it.item_code && +it.qty > 0) {
+        // Apply stock only when finalising (Draft → Saved)
+        if (isFinalisingNow && it.item_code && +it.qty > 0) {
           await client.query(`UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code=$2`, [+it.qty, it.item_code]);
           await upsertBatchStock(client, [it], +1);
         }
       }
 
-      // Wrap GL voucher posting in a SAVEPOINT — failure must never abort the GRN update
-      try {
-        await client.query("SAVEPOINT grn_voucher");
-        await postGrnVoucher(client, hdr, { ...b, items, grand_total });
-        await client.query("RELEASE SAVEPOINT grn_voucher");
-      } catch (ve: any) {
-        await client.query("ROLLBACK TO SAVEPOINT grn_voucher");
-        console.error("[GRN PATCH] Voucher posting failed (GRN saved):", ve.message);
+      // Post GL voucher only when finalising
+      if (isFinalisingNow) {
+        try {
+          await client.query("SAVEPOINT grn_voucher");
+          await postGrnVoucher(client, hdr, { ...b, items, grand_total });
+          await client.query("RELEASE SAVEPOINT grn_voucher");
+        } catch (ve: any) {
+          await client.query("ROLLBACK TO SAVEPOINT grn_voucher");
+          console.error("[GRN PATCH] Voucher posting failed (GRN saved):", ve.message);
+        }
       }
       await client.query("COMMIT");
       res.json(hdr);
