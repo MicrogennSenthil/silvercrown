@@ -3911,8 +3911,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   app.get("/api/reports/material-register", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");
-      const from = (req.query.from as string) || "2000-01-01";
-      const to   = (req.query.to   as string) || "2099-12-31";
+      const from     = (req.query.from      as string) || "2000-01-01";
+      const to       = (req.query.to        as string) || "2099-12-31";
+      const itemType = (req.query.item_type as string) || "";
+      const catFilter = itemType
+        ? `AND p_rm.category_id = (SELECT id FROM categories WHERE code = $3 LIMIT 1)`
+        : "";
+      const params: any[] = itemType ? [from, to, itemType] : [from, to];
       const rows = (await pool.query(`
         SELECT
           grn.voucher_no                                   AS inw_no,
@@ -3921,18 +3926,22 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           po.po_date                                       AS po_date,
           COALESCE(grn.bill_no, '-')                       AS bill_no,
           grn.bill_date                                    AS bill_date,
-          COALESCE(c.name, grn.supplier_name_manual, '')   AS party_name,
+          COALESCE(s.name, grn.supplier_name_manual, '')   AS party_name,
           grni.item_name                                   AS product_name,
+          COALESCE(cat.name, '')                           AS item_type,
           COALESCE(grni.unit, '')                          AS unit,
           COALESCE(grni.qty::numeric, 0)                   AS qty
         FROM goods_receipt_notes grn
         JOIN goods_receipt_note_items grni ON grni.grn_id = grn.id
-        JOIN products p_rm ON p_rm.code = grni.item_code AND p_rm.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
-        LEFT JOIN customers c ON c.id = grn.supplier_id
+        JOIN products p_rm ON p_rm.code = grni.item_code
+        JOIN categories cat ON cat.id = p_rm.category_id
+        LEFT JOIN suppliers s ON s.id = grn.supplier_id
         LEFT JOIN purchase_orders po ON po.id = grn.po_id
         WHERE grn.grn_date BETWEEN $1 AND $2
+          AND COALESCE(grn.status,'Saved') NOT IN ('Draft','Cancelled','cancelled')
+          ${catFilter}
         ORDER BY grn.grn_date DESC, grn.voucher_no, grni.sno
-      `, [from, to])).rows;
+      `, params)).rows;
       res.json(rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
