@@ -63,8 +63,8 @@ export function buildTaxInvoiceHTML(
   const dcNo = firstItem.dc_no_from_inward || firstItem.party_dc || "";
   // Party DC Date — from inward's party_dc_date field
   const dcDate = firstItem.dc_date || "";
-  // Party PO No. — from inward's party_po_no field
-  const poNo = firstItem.po_no_from_inward || firstItem.po_no || firstItem.work_order_no || "";
+  // Party PO No. — strictly from inward's party_po_no field; never fall back to item po_no/packing details
+  const poNo = firstItem.po_no_from_inward || "";
   const irn = eInvData?.irn || doc.irn || "";
   const ackNo = eInvData?.ack_no || doc.ack_no || "";
   const ackDateRaw = eInvData?.ack_date || doc.ack_date || "";

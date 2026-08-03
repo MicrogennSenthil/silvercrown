@@ -3506,7 +3506,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             COALESCE(jwi.party_dc_no, ii.party_dc, '')  AS dc_no_from_inward,
             jwi.party_dc_date                           AS dc_date,
             jwi.inward_date                             AS inward_entry_date,
-            COALESCE(jwi.party_po_no, ii.po_no, '')     AS po_no_from_inward,
+            COALESCE(jwi.party_po_no, '')                AS po_no_from_inward,
             jwd.despatch_date                           AS despatch_date
           FROM job_work_invoice_items ii
           LEFT JOIN products p ON p.id = ii.item_id
