@@ -95,6 +95,7 @@ const MODULES: ModuleEntry[] = [
   { type: "item",   key: "report_inv_material_register",        label: "Material Register" },
   { type: "item",   key: "report_inv_issue_register",           label: "Issue Register" },
   { type: "item",   key: "report_inv_receipt_list",             label: "Receipt List" },
+  { type: "item",   key: "report_inv_purchase_statement",       label: "Purchase Statement" },
   { type: "item",   key: "report_inv_expiry_item_list",         label: "Expiry Item List" },
 
   // ── Reports — Accounts ──

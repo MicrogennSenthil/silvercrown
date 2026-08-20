@@ -122,6 +122,7 @@ const NAV: any[] = [
           { label: "Material Register",      href: "/reports/inventory/material-register",  moduleKey: "report_inv_material_register" },
           { label: "Issue Register",         href: "/reports/inventory/issue-register",     moduleKey: "report_inv_issue_register" },
           { label: "Receipt List",           href: "/reports/inventory/receipt-list",       moduleKey: "report_inv_receipt_list" },
+          { label: "Purchase Statement",     href: "/reports/inventory/purchase-statement", moduleKey: "report_inv_purchase_statement" },
           { label: "Expiry Item List",       href: "/reports/inventory/expiry-item-list",   moduleKey: "report_inv_expiry_item_list" },
         ],
       },
@@ -151,7 +152,7 @@ const NAV: any[] = [
 // ─── Rights filtering ──────────────────────────────────────────────────────────
 // Newly added sensitive reports must not be exposed to existing custom roles until
 // an administrator has explicitly granted access in Role Rights.
-const DEFAULT_DENY_MODULES = new Set(["report_eng_sales_statement"]);
+const DEFAULT_DENY_MODULES = new Set(["report_eng_sales_statement", "report_inv_purchase_statement"]);
 
 function buildCanView(fullAccess: boolean, rights: { module: string; canView: boolean }[]) {
   if (fullAccess) return (_key: string) => true;
@@ -302,7 +303,7 @@ function Sidebar({ collapsed, mobile, onClose, companyName }: { collapsed: boole
   });
 
   const visibleNav = useMemo(() => {
-    if (!myRights) return NAV;
+    if (!myRights) return filterNav(NAV, buildCanView(false, []));
     const canView = buildCanView(myRights.fullAccess, myRights.rights);
     return filterNav(NAV, canView);
   }, [myRights]);

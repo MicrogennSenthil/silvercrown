@@ -67,6 +67,7 @@ import POPending               from "@/pages/reports/POPending";
 import MaterialRegister        from "@/pages/reports/MaterialRegister";
 import IssueRegister           from "@/pages/reports/IssueRegister";
 import ReceiptList             from "@/pages/reports/ReceiptList";
+import ConsolidatedPurchaseStatement from "@/pages/reports/ConsolidatedPurchaseStatement";
 import ExpiryItemList          from "@/pages/reports/ExpiryItemList";
 import CustomerReceivable      from "@/pages/reports/CustomerReceivable";
 import SupplierPayables        from "@/pages/reports/SupplierPayables";
@@ -201,6 +202,7 @@ function Router() {
       <Route path="/reports/inventory/material-register"><ProtectedRoute component={MaterialRegister} /></Route>
       <Route path="/reports/inventory/issue-register"><ProtectedRoute component={IssueRegister} /></Route>
       <Route path="/reports/inventory/receipt-list"><ProtectedRoute component={ReceiptList} /></Route>
+      <Route path="/reports/inventory/purchase-statement"><ProtectedRoute component={ConsolidatedPurchaseStatement} moduleKey="report_inv_purchase_statement" /></Route>
       <Route path="/reports/inventory/expiry-item-list"><ProtectedRoute component={ExpiryItemList} /></Route>
       <Route path="/reports/accounts/customer-receivable"><ProtectedRoute component={CustomerReceivable} /></Route>
       <Route path="/reports/accounts/supplier-payables"><ProtectedRoute component={SupplierPayables} /></Route>

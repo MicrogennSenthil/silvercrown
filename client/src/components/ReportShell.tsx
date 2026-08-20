@@ -30,6 +30,7 @@ export interface ReportShellProps {
   onPdfExport?: () => void;
   recordCount?: number;
   extraFilters?: React.ReactNode;
+  allowExport?: boolean;
   children: React.ReactNode;
 }
 
@@ -59,7 +60,7 @@ function DateField({ label, value, onChange }: {
 export function ReportShell({
   title, search, onSearch,
   fromDate = "", toDate = "", onFromDate, onToDate,
-  onExcelExport, recordCount, extraFilters, children,
+  onExcelExport, recordCount, extraFilters, allowExport = true, children,
 }: ReportShellProps) {
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
@@ -121,40 +122,44 @@ export function ReportShell({
 
           <div className="flex-1" />
 
-          {/* Export dropdown */}
-          <div ref={exportRef} className="relative">
-            <button onClick={() => setExportOpen(o => !o)}
-              className="flex items-center gap-1.5 h-[36px] px-3 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 font-medium"
-              data-testid="btn-report-export">
-              <Download size={14} /> Export <ChevronDown size={11} />
-            </button>
-            {exportOpen && (
-              <div className="absolute right-0 top-full mt-1 z-[100] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden w-44">
-                <button onClick={() => { onExcelExport(); setExportOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-[#d2f1fa] text-left"
-                  data-testid="btn-export-excel">
-                  <FileText size={14} className="text-green-600" /> Excel / CSV
+          {allowExport && (
+            <>
+              {/* Export dropdown */}
+              <div ref={exportRef} className="relative">
+                <button onClick={() => setExportOpen(o => !o)}
+                  className="flex items-center gap-1.5 h-[36px] px-3 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 font-medium"
+                  data-testid="btn-report-export">
+                  <Download size={14} /> Export <ChevronDown size={11} />
                 </button>
-                <button onClick={() => { handlePrint(); setExportOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-[#d2f1fa] text-left"
-                  data-testid="btn-export-pdf">
-                  <FileText size={14} className="text-red-600" /> PDF
-                </button>
-                <button onClick={() => { handlePrint(); setExportOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-[#d2f1fa] text-left"
-                  data-testid="btn-view-screen">
-                  <Monitor size={14} className="text-blue-500" /> View on Screen
-                </button>
+                {exportOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-[100] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden w-44">
+                    <button onClick={() => { onExcelExport(); setExportOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-[#d2f1fa] text-left"
+                      data-testid="btn-export-excel">
+                      <FileText size={14} className="text-green-600" /> Excel / CSV
+                    </button>
+                    <button onClick={() => { handlePrint(); setExportOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-[#d2f1fa] text-left"
+                      data-testid="btn-export-pdf">
+                      <FileText size={14} className="text-red-600" /> PDF
+                    </button>
+                    <button onClick={() => { handlePrint(); setExportOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-[#d2f1fa] text-left"
+                      data-testid="btn-view-screen">
+                      <Monitor size={14} className="text-blue-500" /> View on Screen
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Print */}
-          <button onClick={handlePrint}
-            className="flex items-center gap-1.5 h-[36px] px-3 rounded-lg text-white text-sm font-semibold shadow-sm hover:opacity-90"
-            style={{ background: SC.primary }} data-testid="btn-report-print">
-            <Printer size={14} /> Print
-          </button>
+              {/* Print */}
+              <button onClick={handlePrint}
+                className="flex items-center gap-1.5 h-[36px] px-3 rounded-lg text-white text-sm font-semibold shadow-sm hover:opacity-90"
+                style={{ background: SC.primary }} data-testid="btn-report-print">
+                <Printer size={14} /> Print
+              </button>
+            </>
+          )}
         </div>
 
         {/* Secondary filter bar */}

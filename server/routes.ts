@@ -3203,6 +3203,165 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/reports/consolidated-purchase-statement — finalized GRN purchases in summary or item-detail form
+  app.get("/api/reports/consolidated-purchase-statement", requireAuth, requireModuleView("report_inv_purchase_statement"), async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from         = (req.query.from          as string) || "2000-01-01";
+      const to           = (req.query.to            as string) || "2099-12-31";
+      const supplierId   = (req.query.supplier_id   as string) || "";
+      const supplierName = (req.query.supplier_name as string) || "";
+      const itemCode     = (req.query.item_code     as string) || "";
+      const itemName     = (req.query.item_name     as string) || "";
+      const taxMode      = req.query.tax_mode === "without_tax" ? "without_tax" : "with_tax";
+      const mode         = req.query.mode === "detailed" ? "detailed" : "summary";
+      const params       = [from, to, supplierId, supplierName, itemCode, itemName, taxMode];
+
+      const baseWhere = `
+        WHERE COALESCE(grn.bill_date, grn.grn_date) BETWEEN $1 AND $2
+          AND LOWER(TRIM(COALESCE(grn.status, 'saved'))) NOT IN ('draft', 'cancelled', 'canceled')
+          AND EXISTS (SELECT 1 FROM goods_receipt_note_items present_item WHERE present_item.grn_id = grn.id)
+          AND ($3 = '' OR grn.supplier_id = $3)
+          AND ($4 = '' OR COALESCE(NULLIF(s.name, ''), NULLIF(c.name, ''), NULLIF(grn.supplier_name_manual, ''), '') = $4)
+          AND (
+            ($5 = '' AND $6 = '')
+            OR EXISTS (
+              SELECT 1
+              FROM goods_receipt_note_items matched_item
+              WHERE matched_item.grn_id = grn.id
+                AND ($5 = '' OR matched_item.item_code = $5)
+                AND ($6 = '' OR matched_item.item_name = $6)
+            )
+          )
+      `;
+
+      const summarySql = `
+        WITH grn_charges AS (
+          SELECT grn_id, COALESCE(SUM(amount), 0) AS charge_amount
+          FROM goods_receipt_charges
+          GROUP BY grn_id
+        )
+        SELECT
+          grn.id AS invoice_id,
+          COALESCE(grn.bill_date, grn.grn_date) AS invoice_date,
+          COALESCE(NULLIF(grn.bill_no, ''), grn.voucher_no) AS invoice_no,
+          grn.voucher_no AS grn_no,
+          grn.supplier_id,
+          COALESCE(NULLIF(s.name, ''), NULLIF(c.name, ''), NULLIF(grn.supplier_name_manual, ''), '') AS supplier_name,
+          (
+            SELECT STRING_AGG(CONCAT_WS(' ', NULLIF(search_item.item_code, ''), search_item.item_name), ' ')
+            FROM goods_receipt_note_items search_item
+            WHERE search_item.grn_id = grn.id
+          ) AS item_search_text,
+          COALESCE(grn.taxable_amount, 0) AS taxable_amount,
+          CASE WHEN $7 = 'without_tax' THEN 0
+               ELSE COALESCE(grn.cgst_amount, 0) + COALESCE(grn.sgst_amount, 0) + COALESCE(grn.igst_amount, 0)
+          END AS tax_amount,
+          COALESCE(gc.charge_amount, 0) AS charge_amount,
+          COALESCE(grn.grand_total, 0)
+            - COALESCE(grn.taxable_amount, 0)
+            - COALESCE(grn.cgst_amount, 0) - COALESCE(grn.sgst_amount, 0) - COALESCE(grn.igst_amount, 0)
+            AS adjustment_amount,
+          CASE WHEN $7 = 'without_tax'
+               THEN COALESCE(grn.grand_total, 0)
+                    - COALESCE(grn.cgst_amount, 0) - COALESCE(grn.sgst_amount, 0) - COALESCE(grn.igst_amount, 0)
+               ELSE COALESCE(grn.grand_total, 0)
+          END AS invoice_total
+        FROM goods_receipt_notes grn
+        LEFT JOIN suppliers s ON s.id = grn.supplier_id
+        LEFT JOIN customers c ON c.id = grn.supplier_id
+        LEFT JOIN grn_charges gc ON gc.grn_id = grn.id
+        ${baseWhere}
+        ORDER BY COALESCE(grn.bill_date, grn.grn_date) DESC, grn.created_at DESC, grn.voucher_no DESC
+      `;
+
+      const detailSql = `
+        WITH grn_charges AS (
+          SELECT grn_id, COALESCE(SUM(amount), 0) AS charge_amount
+          FROM goods_receipt_charges
+          GROUP BY grn_id
+        ),
+        grn_line_totals AS (
+          SELECT
+            grn_id,
+            COALESCE(SUM(taxable_amt), 0) AS taxable_amount,
+            COALESCE(SUM(COALESCE(cgst_amt, 0) + COALESCE(sgst_amt, 0) + COALESCE(igst_amt, 0)), 0) AS tax_amount
+          FROM goods_receipt_note_items
+          GROUP BY grn_id
+        )
+        SELECT
+          grn.id AS invoice_id,
+          COALESCE(grn.bill_date, grn.grn_date) AS invoice_date,
+          COALESCE(NULLIF(grn.bill_no, ''), grn.voucher_no) AS invoice_no,
+          grn.voucher_no AS grn_no,
+          grn.supplier_id,
+          COALESCE(NULLIF(s.name, ''), NULLIF(c.name, ''), NULLIF(grn.supplier_name_manual, ''), '') AS supplier_name,
+          item.id AS invoice_item_id,
+          NULLIF(item.item_code, '') AS item_code,
+          item.item_name,
+          item.unit,
+          item.qty,
+          item.rate,
+          COALESCE(item.taxable_amt, 0) AS taxable_amount,
+          CASE WHEN $7 = 'without_tax' THEN 0
+               ELSE COALESCE(item.cgst_amt, 0) + COALESCE(item.sgst_amt, 0) + COALESCE(item.igst_amt, 0)
+          END AS tax_amount,
+          COALESCE(gc.charge_amount, 0) AS charge_amount,
+          CASE WHEN $7 = 'without_tax'
+               THEN COALESCE(grn.grand_total, 0)
+                    - COALESCE(grn.cgst_amount, 0) - COALESCE(grn.sgst_amount, 0) - COALESCE(grn.igst_amount, 0)
+                    - COALESCE(line_totals.taxable_amount, 0)
+               ELSE COALESCE(grn.grand_total, 0)
+                    - COALESCE(line_totals.taxable_amount, 0) - COALESCE(line_totals.tax_amount, 0)
+          END AS adjustment_amount,
+          CASE WHEN $7 = 'without_tax'
+               THEN COALESCE(grn.grand_total, 0)
+                    - COALESCE(grn.cgst_amount, 0) - COALESCE(grn.sgst_amount, 0) - COALESCE(grn.igst_amount, 0)
+               ELSE COALESCE(grn.grand_total, 0)
+          END AS invoice_total
+        FROM goods_receipt_notes grn
+        JOIN goods_receipt_note_items item ON item.grn_id = grn.id
+        LEFT JOIN suppliers s ON s.id = grn.supplier_id
+        LEFT JOIN customers c ON c.id = grn.supplier_id
+        LEFT JOIN grn_charges gc ON gc.grn_id = grn.id
+        JOIN grn_line_totals line_totals ON line_totals.grn_id = grn.id
+        ${baseWhere}
+        ORDER BY COALESCE(grn.bill_date, grn.grn_date) DESC, grn.created_at DESC, grn.voucher_no DESC, item.sno
+      `;
+
+      const eligibleWhere = `
+        WHERE COALESCE(grn.bill_date, grn.grn_date) BETWEEN $1 AND $2
+          AND LOWER(TRIM(COALESCE(grn.status, 'saved'))) NOT IN ('draft', 'cancelled', 'canceled')
+          AND EXISTS (SELECT 1 FROM goods_receipt_note_items present_item WHERE present_item.grn_id = grn.id)
+      `;
+
+      const [report, suppliers, items] = await Promise.all([
+        pool.query(mode === "detailed" ? detailSql : summarySql, params),
+        pool.query(`
+          SELECT DISTINCT
+            grn.supplier_id,
+            COALESCE(NULLIF(s.name, ''), NULLIF(c.name, ''), NULLIF(grn.supplier_name_manual, ''), '') AS supplier_name
+          FROM goods_receipt_notes grn
+          LEFT JOIN suppliers s ON s.id = grn.supplier_id
+          LEFT JOIN customers c ON c.id = grn.supplier_id
+          ${eligibleWhere}
+            AND COALESCE(NULLIF(s.name, ''), NULLIF(c.name, ''), NULLIF(grn.supplier_name_manual, ''), '') <> ''
+          ORDER BY supplier_name
+        `, [from, to]),
+        pool.query(`
+          SELECT DISTINCT NULLIF(item.item_code, '') AS item_code, item.item_name
+          FROM goods_receipt_note_items item
+          JOIN goods_receipt_notes grn ON grn.id = item.grn_id
+          ${eligibleWhere}
+            AND COALESCE(item.item_name, '') <> ''
+          ORDER BY item.item_name
+        `, [from, to]),
+      ]);
+
+      res.json({ rows: report.rows, suppliers: suppliers.rows, items: items.rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/expiry-item-list — items with expiry dates in a date range
   app.get("/api/reports/expiry-item-list", requireAuth, async (req, res) => {
     try {
