@@ -182,16 +182,21 @@ export function ReportShell({
 }
 
 // ── ReportFilterSelect ────────────────────────────────────────────────────────
+export type ReportFilterOption = string | { value: string; label: string };
+
 export function ReportFilterSelect({
   label, value, onChange, options, allLabel = "All",
 }: {
   label: string; value: string; onChange: (v: string) => void;
-  options: string[]; allLabel?: string;
+  options: ReportFilterOption[]; allLabel?: string;
 }) {
   const [open, setOpen]     = useState(false);
   const [q, setQ]           = useState("");
   const ref                 = useRef<HTMLDivElement>(null);
   const inputRef            = useRef<HTMLInputElement>(null);
+  const normalizedOptions   = options.map(option =>
+    typeof option === "string" ? { value: option, label: option } : option
+  );
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -201,8 +206,11 @@ export function ReportFilterSelect({
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const filtered = options.filter(o => !q || o.toLowerCase().includes(q.toLowerCase()));
+  const filtered = normalizedOptions.filter(option =>
+    !q || option.label.toLowerCase().includes(q.toLowerCase())
+  );
   const isActive = !!value;
+  const selectedLabel = normalizedOptions.find(option => option.value === value)?.label || value;
 
   function openMenu() {
     setQ(""); setOpen(true);
@@ -219,7 +227,7 @@ export function ReportFilterSelect({
         }`}
         data-testid={`filter-${label.toLowerCase().replace(/\s/g, "-")}`}>
         <span className={isActive ? "text-white/70" : "text-gray-400"}>{label}:</span>
-        <span className="max-w-[140px] truncate">{value || allLabel}</span>
+        <span className="max-w-[140px] truncate">{selectedLabel || allLabel}</span>
         {!isActive && <ChevronDown size={11} />}
       </button>
       {isActive && (
@@ -244,10 +252,10 @@ export function ReportFilterSelect({
               className={`w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] ${!value ? "font-bold text-[#027fa5]" : "text-gray-600"}`}>
               {allLabel}
             </button>
-            {filtered.map(o => (
-              <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] truncate ${value === o ? "font-bold text-[#027fa5] bg-[#d2f1fa]" : "text-gray-700"}`}>
-                {o}
+            {filtered.map(option => (
+              <button key={option.value} type="button" onClick={() => { onChange(option.value); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-[#d2f1fa] truncate ${value === option.value ? "font-bold text-[#027fa5] bg-[#d2f1fa]" : "text-gray-700"}`}>
+                {option.label}
               </button>
             ))}
             {filtered.length === 0 && <div className="px-3 py-3 text-xs text-gray-400 text-center">No matches</div>}

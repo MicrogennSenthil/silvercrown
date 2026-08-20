@@ -3063,6 +3063,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const from = (req.query.from as string) || "2000-01-01";
       const to   = (req.query.to   as string) || new Date().toISOString().slice(0, 10);
+      const categoryId = ((req.query.category_id as string) || "").trim();
+      const subCategoryId = ((req.query.sub_category_id as string) || "").trim();
+      const includeZero = !["false", "0", "no", "exclude"].includes(
+        String(req.query.include_zero || "true").toLowerCase()
+      );
       const rows = (await pool.query(`
         WITH op_stock AS (
           -- ALL posted store openings up to the TO date are always Opening stock
@@ -3118,9 +3123,15 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN before_issue   bi  ON bi.item_code  = ii.code
         LEFT JOIN period_receipt pr  ON pr.item_code  = ii.code
         LEFT JOIN period_issue   pi  ON pi.item_code  = ii.code
-        WHERE ii.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
+        WHERE ($3::varchar = '' OR ii.category_id = $3::varchar)
+          AND ($4::varchar = '' OR ii.sub_category_id = $4::varchar)
+          AND (
+            $5::boolean
+            OR COALESCE(ops.qty,0)+COALESCE(br.qty,0)-COALESCE(bi.qty,0)
+               +COALESCE(pr.qty,0)-COALESCE(pi.qty,0) <> 0
+          )
         ORDER BY ii.name
-      `, [from, to])).rows;
+      `, [from, to, categoryId, subCategoryId, includeZero])).rows;
       res.json(rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -4342,6 +4353,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { pool } = await import("./db");
       const from = (req.query.from as string) || "2000-01-01";
       const to   = (req.query.to   as string) || new Date().toISOString().slice(0, 10);
+      const categoryId = ((req.query.category_id as string) || "").trim();
+      const subCategoryId = ((req.query.sub_category_id as string) || "").trim();
+      const includeZero = !["false", "0", "no", "exclude"].includes(
+        String(req.query.include_zero || "true").toLowerCase()
+      );
       const rows = (await pool.query(`
         WITH op_stock AS (
           -- ALL posted store openings up to the TO date are always Opening stock
@@ -4459,9 +4475,17 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         LEFT JOIN period_issue   pi   ON pi.item_code   = ii.code
         LEFT JOIN period_issue_ret pir ON pir.item_code = ii.code
         LEFT JOIN period_adj     padj ON padj.item_code = ii.code
-        WHERE ii.category_id = (SELECT id FROM categories WHERE code = 'RAW_MATERIALS' LIMIT 1)
+        WHERE ($3::varchar = '' OR ii.category_id = $3::varchar)
+          AND ($4::varchar = '' OR ii.sub_category_id = $4::varchar)
+          AND (
+            $5::boolean
+            OR COALESCE(ops.qty,0)+COALESCE(bgn.qty,0)-COALESCE(bgr.qty,0)
+               -COALESCE(bi.qty,0)+COALESCE(bir.qty,0)+COALESCE(badj.qty,0)
+               +COALESCE(pgn.qty,0)-COALESCE(pgr.qty,0)-COALESCE(pi.qty,0)
+               +COALESCE(pir.qty,0)+COALESCE(padj.qty,0) <> 0
+          )
         ORDER BY ii.name
-      `, [from, to])).rows;
+      `, [from, to, categoryId, subCategoryId, includeZero])).rows;
       res.json(rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

@@ -34,6 +34,9 @@ type ReportRow = {
   closing_val: string;
 };
 
+type Category = { id: string; name: string };
+type SubCategory = { id: string; name: string; categoryId: string | null };
+
 type Totals = {
   opening_qty: number; opening_val: number;
   purchase_qty: number; purchase_val: number;
@@ -51,16 +54,38 @@ export default function StockReportValue() {
   const [fromDate,   setFromDate]   = useState(monthAgo());
   const [toDate,     setToDate]     = useState(today());
   const [itemFilter, setItemFilter] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [subCategoryId, setSubCategoryId] = useState("");
+  const [zeroQtyMode, setZeroQtyMode] = useState<"" | "exclude">("");
+
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ["/api/categories"],
+    queryFn: () => fetch("/api/categories", { credentials: "include" }).then(r => r.json()),
+  });
+  const { data: subCategories = [] } = useQuery<SubCategory[]>({
+    queryKey: ["/api/sub-categories"],
+    queryFn: () => fetch("/api/sub-categories", { credentials: "include" }).then(r => r.json()),
+  });
 
   const { data: rawRows = [], isLoading } = useQuery<ReportRow[]>({
-    queryKey: ["/api/reports/stock-report-value", fromDate, toDate],
-    queryFn: () =>
-      fetch(`/api/reports/stock-report-value?from=${fromDate}&to=${toDate}`, { credentials: "include" })
-        .then(r => r.json()),
+    queryKey: ["/api/reports/stock-report-value", fromDate, toDate, categoryId, subCategoryId, zeroQtyMode],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        from: fromDate,
+        to: toDate,
+        include_zero: zeroQtyMode === "exclude" ? "false" : "true",
+      });
+      if (categoryId) params.set("category_id", categoryId);
+      if (subCategoryId) params.set("sub_category_id", subCategoryId);
+      return fetch(`/api/reports/stock-report-value?${params}`, { credentials: "include" }).then(r => r.json());
+    },
   });
 
   const allItems = useMemo(() =>
     [...new Set(rawRows.map(r => r.item_name).filter(Boolean))].sort(), [rawRows]);
+  const filteredSubCategories = useMemo(() =>
+    subCategories.filter(sub => !categoryId || sub.categoryId === categoryId),
+  [subCategories, categoryId]);
 
   const filtered: ReportRow[] = useMemo(() =>
     rawRows.filter(r => {
@@ -123,9 +148,26 @@ export default function StockReportValue() {
       onExcelExport={handleExcel}
       recordCount={filtered.length}
       extraFilters={
-        <ReportFilterSelect
-          label="Item" value={itemFilter} onChange={setItemFilter}
-          options={allItems} allLabel="All Items" />
+        <>
+          <ReportFilterSelect
+            label="Category" value={categoryId}
+            onChange={value => { setCategoryId(value); setSubCategoryId(""); setItemFilter(""); }}
+            options={categories.map(category => ({ value: category.id, label: category.name }))}
+            allLabel="All Categories" />
+          <ReportFilterSelect
+            label="Subcategory" value={subCategoryId}
+            onChange={value => { setSubCategoryId(value); setItemFilter(""); }}
+            options={filteredSubCategories.map(sub => ({ value: sub.id, label: sub.name }))}
+            allLabel="All Subcategories" />
+          <ReportFilterSelect
+            label="Zero Qty" value={zeroQtyMode}
+            onChange={value => { setZeroQtyMode(value as "" | "exclude"); setItemFilter(""); }}
+            options={[{ value: "exclude", label: "Exclude zero qty" }]}
+            allLabel="Include zero qty" />
+          <ReportFilterSelect
+            label="Item" value={itemFilter} onChange={setItemFilter}
+            options={allItems} allLabel="All Items" />
+        </>
       }
     >
       {/* Summary strip */}
@@ -182,7 +224,9 @@ export default function StockReportValue() {
                 <div className="flex flex-col items-center gap-2 text-gray-400">
                   <AlertCircle size={28} className="text-gray-300" />
                   <span className="text-sm">
-                    {search || itemFilter ? "No items match the filters." : "No inventory items found."}
+                    {search || itemFilter || categoryId || subCategoryId || zeroQtyMode
+                      ? "No items match the filters."
+                      : "No inventory items found."}
                   </span>
                 </div>
               </td></tr>
