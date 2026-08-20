@@ -3730,7 +3730,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           LEFT JOIN job_work_invoice_items ii ON ii.invoice_id = jwi.id
           WHERE jwi.invoice_date BETWEEN $1 AND $2
           GROUP BY jwi.id, jwi.voucher_no, jwi.invoice_date, c.name, jwi.party_name_manual, c.email
-          ORDER BY CAST(NULLIF(REGEXP_REPLACE(SPLIT_PART(jwi.voucher_no, '/', 2), '[^0-9]', '', 'g'), '') AS BIGINT) ASC NULLS LAST, jwi.voucher_no ASC
+           ORDER BY CAST(NULLIF(REGEXP_REPLACE(SPLIT_PART(jwi.voucher_no, '/', 2), '[^0-9]', '', 'g'), '') AS BIGINT) DESC NULLS LAST, jwi.voucher_no DESC
         `, [from, to])).rows;
 
       } else if (type === "despatch_note") {

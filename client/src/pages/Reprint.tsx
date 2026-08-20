@@ -41,6 +41,11 @@ function toInput(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
+function invoiceNumberValue(value: string | null | undefined) {
+  const groups = (value || "").match(/\d+/g);
+  return groups?.length ? Number(groups[groups.length - 1]) : -1;
+}
+
 /* ── Print helper: opens a new window with formatted doc ──────────── */
 async function openPrint(type: DocType, row: ListRow, isEInvoice = false, eInvData?: { irn?: string; ack_no?: string; ack_date?: string }) {
   const res = await fetch(`/api/reprint/${type}/${row.id}`, { credentials: "include" });
@@ -524,7 +529,14 @@ export default function Reprint() {
         r.txn_date?.includes(q)
       );
     })
-    .sort((a, b) => new Date(b.txn_date).getTime() - new Date(a.txn_date).getTime());
+    .sort((a, b) => {
+      if (docType === "invoice") {
+        const numberDifference = invoiceNumberValue(b.txn_no) - invoiceNumberValue(a.txn_no);
+        if (numberDifference !== 0) return numberDifference;
+        return (b.txn_no || "").localeCompare(a.txn_no || "", undefined, { numeric: true });
+      }
+      return new Date(b.txn_date).getTime() - new Date(a.txn_date).getTime();
+    });
 
   const totalPages  = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage    = Math.min(page, totalPages);

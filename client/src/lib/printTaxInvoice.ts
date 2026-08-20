@@ -78,7 +78,7 @@ export function buildTaxInvoiceHTML(
 
   function buildItemRows() {
     if (!items.length) {
-      return `<tr><td colspan="7" style="text-align:center;padding:10px;color:#999;font-size:10px">No items</td></tr>`;
+      return `<tr><td colspan="8" style="text-align:center;padding:10px;color:#999;font-size:10px">No items</td></tr>`;
     }
     return items.map((it: any, idx: number) => {
       const qty = parseFloat(it.qty_despatched || "0");
@@ -89,19 +89,15 @@ export function buildTaxInvoiceHTML(
 
       // ── Reference No (only what the user typed) ──────────────────────
       const refNo = (it.packing_details || "").trim();
-      const subHTML = [
-        drawingNo
-          ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6;white-space:normal;word-break:break-all"><strong>Drawing No:</strong> ${drawingNo}</div>`
-          : "",
-        refNo
-          ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6;white-space:normal;word-break:break-word">${refNo}</div>`
-          : "",
-      ].join("");
+      const subHTML = refNo
+        ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6;white-space:normal;word-break:break-word">${refNo}</div>`
+        : "";
 
       const tdB = "border-left:1px solid #000;border-right:1px solid #000;padding:4px 6px;vertical-align:top";
       return `<tr>
         <td style="${tdB};text-align:center;width:4%">${idx + 1}</td>
-        <td style="${tdB}"><strong>${desc}</strong>${subHTML}</td>
+        <td style="${tdB};width:28%"><strong>${desc}</strong>${subHTML}</td>
+        <td style="${tdB};width:18%;font-size:10px;line-height:1.35;overflow-wrap:anywhere;word-break:break-word">${drawingNo || "&nbsp;"}</td>
         <td style="${tdB};text-align:center;width:9%">${it.resolved_hsn || it.hsn || ""}</td>
         <td style="${tdB};text-align:right;width:10%">${qty > 0 ? qty.toFixed(2) + " " + (it.unit || "") : "&nbsp;"}</td>
         <td style="${tdB};text-align:right;width:9%">${rate > 0 ? rate.toFixed(2) : "&nbsp;"}</td>
@@ -116,28 +112,28 @@ export function buildTaxInvoiceHTML(
   const taxRows = [
     ...[...cgstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
-        <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
+        <td colspan="5" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
         <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left">CGST Output ${r}%</td>
         <td style="border:1px solid #000;padding:2px 5px;text-align:right">${fmtAmt(a)}</td>
       </tr>`
     ),
     ...[...sgstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
-        <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
+        <td colspan="5" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
         <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left">SGST Output ${r}%</td>
         <td style="border:1px solid #000;padding:2px 5px;text-align:right">${fmtAmt(a)}</td>
       </tr>`
     ),
     ...[...igstRates.entries()].filter(([, a]) => a > 0).map(([r, a]) =>
       `<tr>
-        <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
+        <td colspan="5" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
         <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left">IGST Output ${r}%</td>
         <td style="border:1px solid #000;padding:2px 5px;text-align:right">${r} %&nbsp;&nbsp;&nbsp;&nbsp;${fmtAmt(a)}</td>
       </tr>`
     ),
     ...(chargesAmt > 0 ? charges.map(ch =>
       `<tr>
-        <td colspan="4" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
+        <td colspan="5" style="border-left:1px solid #000;border-right:1px solid #000;padding:2px 5px">&nbsp;</td>
         <td colspan="2" style="border:1px solid #000;padding:2px 5px;text-align:left">${ch.charge_name || "Other Charges"}</td>
         <td style="border:1px solid #000;padding:2px 5px;text-align:right">${fmtAmt(parseFloat(ch.amount || "0"))}</td>
       </tr>`
@@ -226,7 +222,8 @@ export function buildTaxInvoiceHTML(
     <thead>
       <tr style="background:#f0f0f0">
         <th style="border:1px solid #000;padding:3px 5px;text-align:center;width:4%">Sl<br>No.</th>
-        <th style="border:1px solid #000;padding:3px 5px;text-align:left">Description of<br>Services</th>
+        <th style="border:1px solid #000;padding:3px 5px;text-align:left;width:28%">Description of<br>Services</th>
+        <th style="border:1px solid #000;padding:3px 5px;text-align:left;width:18%">Drawing No.<br>(DRG)</th>
         <th style="border:1px solid #000;padding:3px 5px;text-align:center;width:9%">HSN/SAC</th>
         <th style="border:1px solid #000;padding:3px 5px;text-align:right;width:10%">Quantity</th>
         <th style="border:1px solid #000;padding:3px 5px;text-align:right;width:9%">Rate</th>
@@ -243,12 +240,13 @@ export function buildTaxInvoiceHTML(
         <td style="border-right:1px solid #000;padding:0"></td>
         <td style="border-right:1px solid #000;padding:0"></td>
         <td style="border-right:1px solid #000;padding:0"></td>
+         <td style="border-right:1px solid #000;padding:0"></td>
         <td style="border-right:1px solid #000;padding:0"></td>
         <td style="border-right:1px solid #000;padding:0"></td>
       </tr>
       <!-- taxable sub-total -->
       <tr>
-        <td colspan="6" style="border-left:1px solid #000;border-right:1px solid #000;border-top:1px solid #000;padding:2px 5px;text-align:right">
+        <td colspan="7" style="border-left:1px solid #000;border-right:1px solid #000;border-top:1px solid #000;padding:2px 5px;text-align:right">
           ${doc.remark ? `<div style="font-size:10px;text-align:left">${doc.remark}</div>` : ""}
         </td>
         <td style="border:1px solid #000;padding:3px 5px;text-align:right;font-weight:600">${fmtAmt(taxable)}</td>
@@ -257,7 +255,7 @@ export function buildTaxInvoiceHTML(
     </tbody>
     <tfoot>
       <tr style="font-weight:700">
-        <td colspan="2" style="border:1px solid #000;padding:4px 6px;text-align:left">Total</td>
+        <td colspan="3" style="border:1px solid #000;padding:4px 6px;text-align:left">Total</td>
         <td style="border:1px solid #000;padding:4px 6px;text-align:center">&nbsp;</td>
         <td style="border:1px solid #000;padding:4px 6px;text-align:right">${totalQty > 0 ? totalQty.toFixed(2) + " " + unitLabel : "&nbsp;"}</td>
         <td colspan="2" style="border:1px solid #000;padding:4px 6px">&nbsp;</td>
