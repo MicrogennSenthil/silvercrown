@@ -4,7 +4,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid
 } from "recharts";
-import { TrendingUp, TrendingDown, Bell, Eye } from "lucide-react";
+import { TrendingUp, TrendingDown, Bell } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed", accent: "#f96a0b" };
 
@@ -147,21 +147,6 @@ function StatCard({ label, value, amount, lastDate }: { label: string; value: nu
   );
 }
 
-function WipCircle({ pct }: { pct: number }) {
-  const r = 42, circ = 2 * Math.PI * r;
-  const dash = (pct / 100) * circ;
-  return (
-    <svg width="110" height="110" viewBox="0 0 110 110">
-      <circle cx="55" cy="55" r={r} fill="none" stroke="#e5e7eb" strokeWidth="10" />
-      <circle cx="55" cy="55" r={r} fill="none" stroke={SC.primary} strokeWidth="10"
-        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-        transform="rotate(-90 55 55)" />
-      <text x="55" y="50" textAnchor="middle" fontSize="20" fontWeight="bold" fill={SC.primary}>{pct}%</text>
-      <text x="55" y="66" textAnchor="middle" fontSize="10" fill="#6b7280">Onprocess</text>
-    </svg>
-  );
-}
-
 const SCROLL_Y = { overflowY: "auto" as const };
 const SCROLL_XY = { overflowX: "auto" as const, overflowY: "auto" as const };
 
@@ -169,7 +154,7 @@ export default function Dashboard() {
   const [chartFilter, setChartFilter]  = useState("Last 10-days");
   const [activeTab,   setActiveTab]    = useState<TabKey>("inward");
   const [ageingType,  setAgeingType]   = useState<"receivable" | "payable">("receivable");
-  const [ageingUnit,  setAgeingUnit]   = useState<"thousands" | "lakhs" | "crores">("lakhs");
+  const [ageingUnit,  setAgeingUnit]   = useState<"thousands" | "lakhs" | "crores">("thousands");
 
   const { data: overdueTasks = [] } = useQuery<any[]>({
     queryKey: ["/api/tasks/overdue"],
@@ -500,17 +485,6 @@ export default function Dashboard() {
                 </tbody>
               </table>
             </div>
-          </div>
-
-          {/* Work In Process */}
-          <div className="bg-white rounded-xl p-4 flex flex-col items-center gap-2" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
-            <div className="w-full flex items-center justify-between mb-1">
-              <span className="font-semibold text-gray-700 text-sm">Work In Process (WIP)</span>
-            </div>
-            <WipCircle pct={64} />
-            <button className="flex items-center gap-2 px-6 py-2 rounded text-white text-sm font-semibold" style={{ background: SC.orange }} data-testid="button-wip-view">
-              <Eye size={14} /> View
-            </button>
           </div>
 
         </div>
