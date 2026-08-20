@@ -400,6 +400,27 @@ export default function GoodsReceiptNote() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/goods-receipt-notes"] }),
   });
 
+  async function previewGrn(grn: any) {
+    // Open synchronously from the click so browser popup blockers do not
+    // prevent the preview while the full GRN details are being fetched.
+    const win = window.open("", "_blank", "width=1000,height=750");
+    if (!win) return;
+    win.document.write("<p style=\"font-family:Arial;padding:24px\">Loading GRN preview…</p>");
+    try {
+      const res = await fetch(`/api/goods-receipt-notes/${grn.id}`, { credentials:"include" });
+      if (!res.ok) throw new Error("Unable to load GRN");
+      const doc = await res.json();
+      const html = buildGRNHTML(doc);
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+    } catch (_) {
+      win.document.open();
+      win.document.write("<p style=\"font-family:Arial;padding:24px;color:#b91c1c\">Unable to load this GRN preview.</p>");
+      win.document.close();
+    }
+  }
+
   // Handle PO selection — multi-select, preserves existing supplier
   async function handlePoSelect(po: any) {
     const alreadySelected = selectedPoIds.includes(po.id);
@@ -648,20 +669,25 @@ export default function GoodsReceiptNote() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {g.status === "Draft" ? (
-                        <div className="flex gap-2">
+                      <div className="flex gap-2">
+                        <button onClick={() => previewGrn(g)}
+                          className="p-1.5 rounded hover:bg-[#d2f1fa] text-gray-400 hover:text-[#027fa5]"
+                          title="Preview GRN" data-testid={`btn-preview-${g.id}`}><Eye size={13}/></button>
+                        {g.status === "Draft" ? (
+                          <>
                           <button onClick={() => openEdit(g)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#027fa5]"
                             title="Edit GRN" data-testid={`btn-edit-${g.id}`}><Edit2 size={13}/></button>
                           <button onClick={() => { if (confirm("Delete this GRN?")) deleteMut.mutate(g.id); }}
                             className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
                             title="Delete GRN" data-testid={`btn-delete-${g.id}`}><Trash2 size={13}/></button>
-                        </div>
-                      ) : (
-                        <div className="flex gap-2" title={`GRN is ${g.status} — cannot edit or delete`}>
+                          </>
+                        ) : (
+                          <span className="flex gap-2" title={`GRN is ${g.status} — cannot edit or delete`}>
                           <span className="p-1.5 rounded text-gray-200 cursor-not-allowed"><Edit2 size={13}/></span>
                           <span className="p-1.5 rounded text-gray-200 cursor-not-allowed"><Trash2 size={13}/></span>
-                        </div>
-                      )}
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
