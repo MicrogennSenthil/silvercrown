@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend
 } from "recharts";
-import { TrendingUp, TrendingDown, Bell, Eye } from "lucide-react";
+import { TrendingUp, Bell, Eye } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed", accent: "#f96a0b" };
 
@@ -102,7 +102,11 @@ function invTypeLabel(t: string) {
   return t || "—";
 }
 
-function StatCard({ label, value, lastPct, lastUp, lastDate }: { label: string; value: number; lastPct: string; lastUp: boolean; lastDate?: string | null }) {
+function formatMonthlyValue(value: number) {
+  return `₹ ${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function StatCard({ label, value, amount, lastDate }: { label: string; value: number; amount: number; lastDate?: string | null }) {
   const formattedDate = lastDate
     ? new Date(lastDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
     : null;
@@ -127,10 +131,15 @@ function StatCard({ label, value, lastPct, lastUp, lastDate }: { label: string; 
           </div>
           <TrendingUp size={20} className="text-green-500 mt-1 flex-shrink-0" />
         </div>
-        <div className="flex items-center gap-1 mt-2">
-          <span className="text-xs text-gray-400">Last Month</span>
-          <span className={`text-xs font-semibold flex items-center gap-0.5 ${lastUp ? "text-green-600" : "text-red-500"}`}>
-            {lastPct} {lastUp ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+        <div className="flex items-center gap-1 mt-2 min-w-0">
+          <span className="text-xs text-gray-400 shrink-0">Value:</span>
+          <span
+            className="text-xs font-semibold truncate"
+            style={{ color: SC.primary }}
+            title={formatMonthlyValue(amount)}
+            data-testid={`dashboard-${label.toLowerCase()}-monthly-value`}
+          >
+            {formatMonthlyValue(amount)}
           </span>
         </div>
         {formattedDate && (
@@ -228,9 +237,9 @@ export default function Dashboard() {
 
       {/* ── Top Stat Cards ── */}
       <div className="flex gap-4">
-        <StatCard label="Inward"   value={tabCounts.inward}   lastPct="02%" lastUp={false} lastDate={counts.lastInwardDate} />
-        <StatCard label="Despatch" value={tabCounts.despatch}  lastPct="08%" lastUp={true}  lastDate={counts.lastDespatchDate} />
-        <StatCard label="Invoice"  value={tabCounts.invoice}   lastPct="12%" lastUp={true}  lastDate={counts.lastInvoiceDate} />
+        <StatCard label="Inward"   value={tabCounts.inward}   amount={Number(counts.inwardValue) || 0}   lastDate={counts.lastInwardDate} />
+        <StatCard label="Despatch" value={tabCounts.despatch} amount={Number(counts.despatchValue) || 0} lastDate={counts.lastDespatchDate} />
+        <StatCard label="Invoice"  value={tabCounts.invoice}  amount={Number(counts.invoiceValue) || 0}  lastDate={counts.lastInvoiceDate} />
       </div>
 
       {/* ── Main Two-Column Grid ── */}

@@ -8369,14 +8369,60 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   // ── Dashboard API ─────────────────────────────────────────────────────────
 
-  // GET /api/dashboard/counts — real counts for the 5 Overall Chart tabs
+  // GET /api/dashboard/counts — calendar-month totals for the dashboard cards,
+  // plus the existing Overall Chart tab counts. Date filtering makes each total
+  // start fresh automatically on the first day of a new month.
   app.get("/api/dashboard/counts", requireAuth, async (_req, res) => {
     try {
       const { pool } = await import("./db");
       const [inward, despatch, invoice, po, payments] = await Promise.all([
-        pool.query(`SELECT COUNT(*) AS count, MAX(inward_date)::text AS last_date FROM job_work_inward`),
-        pool.query(`SELECT COUNT(*) AS count, MAX(despatch_date)::text AS last_date FROM job_work_despatch`),
-        pool.query(`SELECT COUNT(*) AS count, MAX(invoice_date)::text AS last_date FROM job_work_invoices`),
+        pool.query(`
+          SELECT
+            COUNT(DISTINCT j.id) AS count,
+            COALESCE(SUM(COALESCE(i.qty, 0) * COALESCE(i.rate, 0)), 0) AS value,
+            MAX(j.inward_date)::text AS last_date
+          FROM job_work_inward j
+          LEFT JOIN job_work_inward_items i ON i.inward_id = j.id
+          WHERE j.inward_date >= date_trunc('month', CURRENT_DATE)::date
+            AND j.inward_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            AND COALESCE(j.status, 'Saved') <> 'Cancelled'
+        `),
+        pool.query(`
+          SELECT
+            COUNT(DISTINCT d.id) AS count,
+            COALESCE(SUM(COALESCE(i.qty_despatched, 0) * COALESCE(i.rate, 0)), 0) AS value,
+            MAX(d.despatch_date)::text AS last_date
+          FROM job_work_despatch d
+          LEFT JOIN job_work_despatch_items i ON i.despatch_id = d.id
+          WHERE d.despatch_date >= date_trunc('month', CURRENT_DATE)::date
+            AND d.despatch_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            AND COALESCE(d.status, 'Saved') <> 'Cancelled'
+        `),
+        pool.query(`
+          SELECT
+            COUNT(*) AS count,
+            COALESCE(SUM(COALESCE(lines.amount, 0) + COALESCE(charges.amount, 0)), 0) AS value,
+            MAX(inv.invoice_date)::text AS last_date
+          FROM job_work_invoices inv
+          LEFT JOIN LATERAL (
+            SELECT SUM(
+              COALESCE(ii.amount, 0)
+              + COALESCE(ii.cgst_amt, 0)
+              + COALESCE(ii.sgst_amt, 0)
+              + COALESCE(ii.igst_amt, 0)
+            ) AS amount
+            FROM job_work_invoice_items ii
+            WHERE ii.invoice_id = inv.id
+          ) lines ON true
+          LEFT JOIN LATERAL (
+            SELECT SUM(COALESCE(ch.amount, 0)) AS amount
+            FROM job_work_invoice_charges ch
+            WHERE ch.invoice_id = inv.id
+          ) charges ON true
+          WHERE inv.invoice_date >= date_trunc('month', CURRENT_DATE)::date
+            AND inv.invoice_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            AND COALESCE(inv.status, 'Saved') <> 'Cancelled'
+        `),
         pool.query(`SELECT COUNT(*) FROM purchase_orders`),
         pool.query(`SELECT COUNT(*) FROM voucher_mas WHERE voucher_type IN ('Payment','Receipt')`),
       ]);
@@ -8384,6 +8430,9 @@ Return ONLY valid JSON (no markdown, no explanation):
         inward:            parseInt(inward.rows[0].count),
         despatch:          parseInt(despatch.rows[0].count),
         invoice:           parseInt(invoice.rows[0].count),
+        inwardValue:       parseFloat(inward.rows[0].value) || 0,
+        despatchValue:     parseFloat(despatch.rows[0].value) || 0,
+        invoiceValue:      parseFloat(invoice.rows[0].value) || 0,
         purchaseOrder:     parseInt(po.rows[0].count),
         payments:          parseInt(payments.rows[0].count),
         lastInwardDate:    inward.rows[0].last_date   || null,
