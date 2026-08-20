@@ -409,6 +409,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             item_id:             r.item_id || null,
             item_code:           r.item_code || "",
             item_name:           r.item_name || "",
+            drawing_no:          r.drawing_no || r.drg_no || "",
             unit:                r.unit || "",
             process:             r.process || "",
             hsn:                 r.hsn || "",
@@ -1126,13 +1127,14 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             {/* Items grid */}
             <div className="border rounded-lg overflow-hidden mb-3">
               <div className="overflow-x-auto">
-                <table className="w-full text-xs" style={{ minWidth: 1440 }}>
+                <table className="w-full text-xs" style={{ minWidth: 1560 }}>
                   <thead>
                     <tr style={{ background: SC.primary, color: "#fff" }}>
                       <th className="px-2 py-2 text-left w-8">S.No</th>
                       <th className="px-2 py-2 text-left">PO No</th>
                       <th className="px-2 py-2 text-left">Item Code</th>
                       <th className="px-2 py-2 text-left">Item Name</th>
+                      <th className="px-2 py-2 text-left min-w-40">Drawing No</th>
                       <th className="px-2 py-2 text-left w-20">HSN</th>
                       <th className="px-2 py-2 text-left">Desp No</th>
                       <th className="px-2 py-2 text-left">Party DC</th>
@@ -1159,7 +1161,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                   <tbody>
                     {filteredItems.length === 0 && (
                       <tr>
-                        <td colSpan={isInterState ? 19 : 20} className="text-center py-8 text-gray-400 text-sm">
+                          <td colSpan={isInterState ? 20 : 21} className="text-center py-8 text-gray-400 text-sm">
                           {activeFlow === "direct_only"
                             ? "Click \"+ Add Row\" below to add items manually"
                             : activeFlow === "inward_direct"
@@ -1221,6 +1223,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                                   onBlur={() => setTimeout(() => { setDirectDrop(null); setDropPos(null); }, 200)}
                                 />
                               : it.item_name}
+                          </td>
+                          <td className="px-2 py-1 text-gray-700 whitespace-normal break-all max-w-48" title={it.drawing_no || ""}>
+                            {it.drawing_no || "—"}
                           </td>
                           <td className="px-2 py-1">
                             <input type="text"

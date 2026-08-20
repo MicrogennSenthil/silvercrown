@@ -85,12 +85,18 @@ export function buildTaxInvoiceHTML(
       const rate = parseFloat(it.rate || "0");
       const amt = parseFloat(it.amount || "0");
       const desc = it.item_code ? `${it.item_code} - ${it.item_name || ""}` : (it.item_name || "");
+      const drawingNo = (it.drawing_no || "").trim();
 
       // ── Reference No (only what the user typed) ──────────────────────
       const refNo = (it.packing_details || "").trim();
-      const subHTML = refNo
-        ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6">${refNo}</div>`
-        : "";
+      const subHTML = [
+        drawingNo
+          ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6;white-space:normal;word-break:break-all"><strong>Drawing No:</strong> ${drawingNo}</div>`
+          : "",
+        refNo
+          ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6;white-space:normal;word-break:break-word">${refNo}</div>`
+          : "",
+      ].join("");
 
       const tdB = "border-left:1px solid #000;border-right:1px solid #000;padding:4px 6px;vertical-align:top";
       return `<tr>

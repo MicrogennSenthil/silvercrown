@@ -3396,7 +3396,12 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           SELECT jwi.id, jwi.voucher_no AS txn_no, jwi.invoice_date AS txn_date,
             COALESCE(c.name, jwi.party_name_manual, '') AS party_name,
             COALESCE(c.email, '') AS party_email,
-            COALESCE(SUM(ii.amount + COALESCE(ii.cgst_amt,0) + COALESCE(ii.sgst_amt,0) + COALESCE(ii.igst_amt,0)), 0) AS amount
+             COALESCE(SUM(ii.amount + COALESCE(ii.cgst_amt,0) + COALESCE(ii.sgst_amt,0) + COALESCE(ii.igst_amt,0)), 0)
+               + COALESCE((
+                   SELECT SUM(ch.amount)
+                   FROM job_work_invoice_charges ch
+                   WHERE ch.invoice_id = jwi.id
+                 ), 0) AS amount
           FROM job_work_invoices jwi
           LEFT JOIN customers c ON c.id = jwi.party_id
           LEFT JOIN job_work_invoice_items ii ON ii.invoice_id = jwi.id
@@ -3503,6 +3508,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
               WHEN $2 = true THEN COALESCE(NULLIF(ii.hsn,''), NULLIF(p.hsn_code_eway,''), p.hsn_code, '')
               ELSE                 COALESCE(NULLIF(ii.hsn,''), p.hsn_code, '')
             END                                         AS resolved_hsn,
+             COALESCE(NULLIF(jwii.drg_no,''), NULLIF(p.drg_no,''), '') AS drawing_no,
             COALESCE(jwi.party_dc_no, ii.party_dc, '')  AS dc_no_from_inward,
             jwi.party_dc_date                           AS dc_date,
             jwi.inward_date                             AS inward_entry_date,
@@ -3511,6 +3517,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           FROM job_work_invoice_items ii
           LEFT JOIN products p ON p.id = ii.item_id
           LEFT JOIN job_work_inward jwi ON jwi.id = ii.inward_id
+           LEFT JOIN job_work_inward_items jwii ON jwii.id = ii.inward_item_id
           LEFT JOIN job_work_despatch jwd ON jwd.id = ii.despatch_id
           WHERE ii.invoice_id=$1 ORDER BY ii.seq_no
         `, [id, isEway])).rows;
@@ -4876,6 +4883,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         )
         SELECT di.id, di.despatch_id, di.inward_id, di.inward_item_id, di.item_id,
                di.item_code, di.item_name, di.unit, di.process,
+                COALESCE(NULLIF(jwii.drg_no,''), NULLIF(prod.drg_no,''), '') AS drawing_no,
                COALESCE(NULLIF(di.hsn,''), prod.hsn_code, '') AS hsn,
                GREATEST(0, di.qty_despatched - COALESCE(inv.invoiced_qty, 0)) AS qty_despatched,
                COALESCE(prod.selling_price, 0) AS rate,
@@ -4920,6 +4928,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         )
         SELECT di.id, di.despatch_id, di.inward_id, di.inward_item_id, di.item_id,
                di.item_code, di.item_name, di.unit, di.process,
+                COALESCE(NULLIF(jwii.drg_no,''), NULLIF(prod.drg_no,''), '') AS drawing_no,
                COALESCE(NULLIF(di.hsn,''), prod.hsn_code, '') AS hsn,
                GREATEST(0, di.qty_despatched - COALESCE(inv.invoiced_qty, 0)) AS qty_despatched,
                COALESCE(prod.selling_price, 0) AS rate,
@@ -4959,6 +4968,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           GROUP BY inward_item_id
         )
         SELECT i.id AS inward_item_id, i.inward_id, i.item_id, i.item_code, i.item_name,
+               COALESCE(NULLIF(i.drg_no,''), NULLIF(prod.drg_no,''), '') AS drawing_no,
                GREATEST(0, i.qty - COALESCE(inv.invoiced_qty, 0)) AS qty_despatched,
                i.unit, i.remark,
                COALESCE(NULLIF(i.hsn,''), prod.hsn_code, '') AS hsn,
@@ -5250,7 +5260,15 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         WHERE inv.id = $1
       `, [req.params.id])).rows[0];
       if (!h) return res.status(404).json({ message: "Not found" });
-      const items = (await pool.query(`SELECT * FROM job_work_invoice_items WHERE invoice_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
+       const items = (await pool.query(`
+         SELECT ii.*,
+           COALESCE(NULLIF(i.drg_no,''), NULLIF(p.drg_no,''), '') AS drawing_no
+         FROM job_work_invoice_items ii
+         LEFT JOIN job_work_inward_items i ON i.id = ii.inward_item_id
+         LEFT JOIN products p ON p.id = ii.item_id
+         WHERE ii.invoice_id=$1
+         ORDER BY ii.seq_no
+       `, [req.params.id])).rows;
       const charges = (await pool.query(`SELECT * FROM job_work_invoice_charges WHERE invoice_id=$1 ORDER BY seq_no`, [req.params.id])).rows;
       res.json({ ...h, items, charges });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

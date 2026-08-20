@@ -15,6 +15,7 @@ function FField({ label, value, onChange, onKeyDown, type = "text", placeholder 
     <div className={`relative ${className}`}>
       <label className={`absolute -top-2 left-3 bg-white px-1 text-xs z-10 leading-none ${error ? "text-red-500 font-semibold" : "text-gray-500"}`}>{label}{error && " *"}</label>
       <input type={type} value={value ?? ""} onChange={onChange} onKeyDown={onKeyDown} placeholder={placeholder}
+        title={String(value ?? "")}
         className={`w-full rounded px-3 pt-3.5 pb-2 text-sm text-gray-800 focus:outline-none bg-white border ${error ? "border-red-400 focus:border-red-500 bg-red-50/30" : "border-gray-300 focus:border-blue-400"}`}
         data-testid={`input-${label.toLowerCase().replace(/\s+/g, "-")}`} />
     </div>
@@ -537,8 +538,8 @@ function ProductModal({ initial, categories, subCategories, uomList, allProducts
           </div>
 
           {/* Row 3: DRG No, SAP No, Location */}
-          <div className="grid grid-cols-3 gap-3">
-            <FField label="DRG No"   value={form.drgNo}    onChange={f("drgNo")}    placeholder="e.g. A1B2-XZ75" />
+          <div className="grid grid-cols-4 gap-3">
+            <FField label="DRG No"   value={form.drgNo}    onChange={f("drgNo")}    placeholder="e.g. A1B2-XZ75" className="col-span-2" />
             <FField label="SAP No"   value={form.sapNo}    onChange={f("sapNo")}    placeholder="e.g. Z5SAEXTZ4B" />
             <FField label="Location" value={form.location} onChange={f("location")} placeholder="x-00-00" />
           </div>
@@ -678,7 +679,7 @@ export function Products() {
                 <tr key={r.id} className="hover:bg-gray-50" data-testid={`row-product-${r.id}`}>
                   <td className="px-3 py-2.5 text-gray-500">{String(i + 1).padStart(2, "0")}</td>
                   <td className="px-3 py-2.5 font-mono text-xs font-semibold" style={{ color: SC.primary }}>{r.sapNo || "—"}</td>
-                  <td className="px-3 py-2.5 text-gray-600">{r.drgNo || "—"}</td>
+                  <td className="px-3 py-2.5 text-gray-600 whitespace-normal break-all min-w-[180px] max-w-[280px]" title={r.drgNo || ""}>{r.drgNo || "—"}</td>
                   <td className="px-3 py-2.5">
                     <div className="text-gray-700 font-mono text-xs leading-tight">
                       <div>{r.hsnCode || "—"}</div>
