@@ -8899,7 +8899,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   app.get("/api/dashboard/counts", requireAuth, async (_req, res) => {
     try {
       const { pool } = await import("./db");
-      const [inward, despatch, invoice, po, payments, salesTrend] = await Promise.all([
+      const [inward, despatch, invoice, po, payments, salesTrend, grn] = await Promise.all([
         pool.query(`
           SELECT
             COUNT(DISTINCT j.id) AS count,
@@ -8990,6 +8990,16 @@ Return ONLY valid JSON (no markdown, no explanation):
           LEFT JOIN invoice_totals it ON it.month_start = m.month_start::date
           ORDER BY m.month_start
         `),
+        pool.query(`
+          SELECT
+            COUNT(*) AS count,
+            COALESCE(SUM(COALESCE(g.grand_total, 0)), 0) AS value,
+            MAX(g.grn_date)::text AS last_date
+          FROM goods_receipt_notes g
+          WHERE g.grn_date >= date_trunc('month', CURRENT_DATE)::date
+            AND g.grn_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            AND COALESCE(g.status, 'Saved') <> 'Cancelled'
+        `),
       ]);
       res.json({
         inward:            parseInt(inward.rows[0].count),
@@ -9003,6 +9013,9 @@ Return ONLY valid JSON (no markdown, no explanation):
         lastInwardDate:    inward.rows[0].last_date   || null,
         lastDespatchDate:  despatch.rows[0].last_date || null,
         lastInvoiceDate:   invoice.rows[0].last_date  || null,
+        grnCount:          parseInt(grn.rows[0].count),
+        grnValue:          parseFloat(grn.rows[0].value) || 0,
+        lastGrnDate:       grn.rows[0].last_date || null,
         salesTrend: salesTrend.rows.map((row: any) => ({
           month: row.month,
           label: row.label,

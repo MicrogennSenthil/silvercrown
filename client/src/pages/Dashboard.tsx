@@ -231,7 +231,7 @@ export default function Dashboard() {
       {/* ── Top Stat Cards ── */}
       <div className="flex gap-4">
         <StatCard label="Inward"   value={tabCounts.inward}   amount={Number(counts.inwardValue) || 0}   lastDate={counts.lastInwardDate} />
-        <StatCard label="Despatch" value={tabCounts.despatch} amount={Number(counts.despatchValue) || 0} lastDate={counts.lastDespatchDate} />
+        <StatCard label="GRN"      value={Number(counts.grnCount) || 0} amount={Number(counts.grnValue) || 0} lastDate={counts.lastGrnDate} />
         <StatCard label="Invoice"  value={tabCounts.invoice}  amount={Number(counts.invoiceValue) || 0}  lastDate={counts.lastInvoiceDate} />
       </div>
 
@@ -382,15 +382,21 @@ export default function Dashboard() {
                   <option value="payable">Payable</option>
                 </select>
               </div>
-              <select
-                value={ageingUnit}
-                onChange={e => setAgeingUnit(e.target.value as "thousands" | "lakhs" | "crores")}
-                className="text-xs border border-gray-200 rounded-md px-2 py-0.5 bg-white font-medium focus:outline-none"
-                style={{ color: SC.primary }}>
-                <option value="thousands">Thousands</option>
-                <option value="lakhs">Lakhs</option>
-                <option value="crores">Crores</option>
-              </select>
+              <label className="flex items-center gap-1.5 text-[10px] font-semibold text-gray-500 whitespace-nowrap">
+                <span>Amounts in</span>
+                <select
+                  value={ageingUnit}
+                  onChange={e => setAgeingUnit(e.target.value as "thousands" | "lakhs" | "crores")}
+                  className="text-xs border-2 rounded-md px-2 py-1 bg-[#f0f9ff] font-bold focus:outline-none focus:ring-2 focus:ring-[#027fa5]/20"
+                  style={{ color: SC.primary, borderColor: SC.primary }}
+                  aria-label="Ageing amount unit"
+                  title="Choose the amount unit for the Ageing List"
+                  data-testid="select-ageing-unit">
+                  <option value="thousands">Thousands</option>
+                  <option value="lakhs">Lakhs</option>
+                  <option value="crores">Crores</option>
+                </select>
+              </label>
             </div>
             {/* Ageing table — fixed height, scrolls both axes */}
             <div style={{ ...SCROLL_XY, maxHeight: 220 }}>
