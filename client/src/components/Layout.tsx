@@ -121,7 +121,7 @@ const NAV: any[] = [
           { label: "PO Pending",             href: "/reports/inventory/po-pending",         moduleKey: "report_inv_po_pending" },
           { label: "Material Register",      href: "/reports/inventory/material-register",  moduleKey: "report_inv_material_register" },
           { label: "Issue Register",         href: "/reports/inventory/issue-register",     moduleKey: "report_inv_issue_register" },
-          { label: "Receipt List",           href: "/reports/inventory/receipt-list",       moduleKey: "report_inv_receipt_list" },
+          { label: "Goods Receipt Register", href: "/reports/inventory/receipt-list",       moduleKey: "report_inv_receipt_list" },
           { label: "Purchase Statement",     href: "/reports/inventory/purchase-statement", moduleKey: "report_inv_purchase_statement" },
           { label: "Expiry Item List",       href: "/reports/inventory/expiry-item-list",   moduleKey: "report_inv_expiry_item_list" },
         ],
