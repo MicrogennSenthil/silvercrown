@@ -3,4 +3,5 @@
 - [Schema-first rule](schema-first-rule.md) — before any new feature/report/modification, read shared/schema.ts and the DB fully first; reuse or extend existing tables with conditions rather than creating new ones.
 - [Groq vision models](groq-vision-models.md) — Groq dropped all Llama vision models; only `qwen/qwen3.6-27b` has image input. Model setting lives in app_settings on BOTH dev and VPS DBs.
 - [DB + deploy pattern](db-deploy-pattern.md) — prod DB is Replit PostgreSQL (executeSql); VPS SSH now works via VPS_SSH_KEY_B64 (re-decode each session) so agent can run full pull+build+pm2 deploy itself.
+- [Publishing fallback](publishing-fallback.md) — GitHub credential can fail; SSH can deploy minimal, verified files while the credential is repaired.
 - [Pointer-based drag-drop](dnd-pointer-based.md) — native HTML5 DnD is unreliable here; use pointer events + elementFromPoint + data-dnd attrs, with pointercancel cleanup.
