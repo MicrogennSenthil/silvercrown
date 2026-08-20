@@ -59,6 +59,7 @@ import DespatchRegisterReport from "@/pages/reports/DespatchRegister";
 import ConsolidatedSalesStatement from "@/pages/reports/ConsolidatedSalesStatement";
 import ProcessOutwardRegister from "@/pages/reports/ProcessOutwardRegister";
 import ProcessInwardRegister  from "@/pages/reports/ProcessInwardRegister";
+import CancelInvoiceReport    from "@/pages/reports/CancelInvoiceReport";
 import StockReport             from "@/pages/reports/StockReport";
 import StockReportValue        from "@/pages/reports/StockReportValue";
 import StockLedger             from "@/pages/reports/StockLedger";
@@ -194,6 +195,7 @@ function Router() {
       <Route path="/reports/engineering/sales-statement"><ProtectedRoute component={ConsolidatedSalesStatement} moduleKey="report_eng_sales_statement" /></Route>
       <Route path="/reports/engineering/process-outward-register"><ProtectedRoute component={ProcessOutwardRegister} /></Route>
       <Route path="/reports/engineering/process-inward-register"><ProtectedRoute component={ProcessInwardRegister} /></Route>
+      <Route path="/reports/engineering/cancel-invoice"><ProtectedRoute component={CancelInvoiceReport} moduleKey="report_eng_cancel_invoice" /></Route>
       {/* Inventory Reports */}
       <Route path="/reports/inventory/stock-report"><ProtectedRoute component={StockReport} /></Route>
       <Route path="/reports/inventory/stock-report-value"><ProtectedRoute component={StockReportValue} /></Route>

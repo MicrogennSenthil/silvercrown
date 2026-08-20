@@ -983,7 +983,21 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
 
           {/* Item Grid */}
           <div className="border border-gray-200 rounded-lg overflow-hidden overflow-x-auto" onClick={() => { setPartyDropOpen(false); }}>
-            <table className="w-full text-sm min-w-[800px]">
+            <table className="w-full text-sm min-w-[1360px] table-fixed">
+              <colgroup>
+                <col style={{ width: 48 }} />
+                <col style={{ width: 100 }} />
+                <col style={{ width: 240 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 125 }} />
+                <col style={{ width: 115 }} />
+                <col style={{ width: 100 }} />
+                <col style={{ width: 190 }} />
+                <col style={{ width: 150 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 190 }} />
+                <col style={{ width: 42 }} />
+              </colgroup>
               <thead>
                 <tr style={{ background: SC.tonal }}>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-10">S.no</th>
@@ -992,8 +1006,8 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">SAP No</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">DRG No</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-32">Qty</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-16">Unit</th>
-                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-40">Process</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-24">Unit</th>
+                  <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-48">Process Name</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-28">Reference No</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700 w-20">HSN</th>
                   <th className="px-3 py-2.5 text-left font-semibold text-gray-700">Remark</th>
@@ -1090,7 +1104,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                       </td>
                       <td className="px-2 py-1.5">
                         <select value={row.unit} onChange={e => updateRow(row._key, "unit", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] bg-white"
+                          className="w-full min-w-[76px] border border-gray-200 rounded px-2 py-1 text-sm outline-none focus:border-[#027fa5] bg-white"
                           data-testid={`select-unit-${i}`}>
                           <option value="">—</option>
                           {(uomList as any[]).filter((u: any) => u.isActive !== false).map((u: any) => (
@@ -1106,7 +1120,7 @@ function InwardForm({ editData, onBack }: { editData?: any; onBack: () => void }
                             updateRow(row._key, "process_id", e.target.value);
                             updateRow(row._key, "process", sel?.name || "");
                           }}
-                          className={`w-full border rounded px-2 py-1 text-xs outline-none focus:border-[#027fa5] bg-white ${highlightMissing && !row.process_id ? "border-red-400 bg-red-50" : "border-gray-200"}`}
+                           className={`w-full min-w-[160px] border rounded px-2 py-1 text-sm outline-none focus:border-[#027fa5] bg-white ${highlightMissing && !row.process_id ? "border-red-400 bg-red-50" : "border-gray-200"}`}
                           data-testid={`select-process-${i}`}
                         >
                           <option value="">— Select —</option>

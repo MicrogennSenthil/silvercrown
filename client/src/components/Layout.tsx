@@ -107,6 +107,7 @@ const NAV: any[] = [
           { label: "Invoice Pending",        href: "/reports/engineering/invoice-pending",        moduleKey: "report_eng_invoice_pending" },
           { label: "Despatch Register",      href: "/reports/engineering/despatch-register",      moduleKey: "report_eng_despatch_register" },
           { label: "Sales Statement",        href: "/reports/engineering/sales-statement",        moduleKey: "report_eng_sales_statement" },
+          { label: "Cancel Invoice Report",  href: "/reports/engineering/cancel-invoice",        moduleKey: "report_eng_cancel_invoice" },
           { label: "Process Outward Report", href: "/reports/engineering/process-outward-register", moduleKey: "report_eng_process_outward" },
           { label: "Process Inward Report",  href: "/reports/engineering/process-inward-register",  moduleKey: "report_eng_process_inward" },
         ],
@@ -157,6 +158,7 @@ const NAV: any[] = [
 // an administrator has explicitly granted access in Role Rights.
 const DEFAULT_DENY_MODULES = new Set([
   "report_eng_sales_statement",
+  "report_eng_cancel_invoice",
   "report_inv_purchase_statement",
   "tally_integration",
   "tally_configuration",

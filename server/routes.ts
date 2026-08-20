@@ -3500,6 +3500,46 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   });
 
   // GET /api/reports/customer-receivable — aging report with configurable day buckets
+  // GET /api/reports/engineering/cancel-invoice — cancelled job-work invoices
+  app.get("/api/reports/engineering/cancel-invoice", requireAuth, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from = (req.query.from as string) || "2000-01-01";
+      const to = (req.query.to as string) || "2099-12-31";
+      const rows = (await pool.query(`
+        SELECT
+          jwi.id,
+          jwi.voucher_no,
+          jwi.invoice_date,
+          jwi.updated_at AS cancelled_at,
+          COALESCE(c.name, jwi.party_name_manual, '') AS party_name,
+          COALESCE((
+            SELECT SUM(
+              COALESCE(ii.amount, 0)
+              + COALESCE(ii.cgst_amt, 0)
+              + COALESCE(ii.sgst_amt, 0)
+              + COALESCE(ii.igst_amt, 0)
+            )
+            FROM job_work_invoice_items ii
+            WHERE ii.invoice_id = jwi.id
+          ), 0)
+          + COALESCE((
+            SELECT SUM(COALESCE(ch.amount, 0))
+            FROM job_work_invoice_charges ch
+            WHERE ch.invoice_id = jwi.id
+          ), 0) AS total_amount,
+          COALESCE(jwi.remark, '') AS remark
+        FROM job_work_invoices jwi
+        LEFT JOIN customers c ON c.id = jwi.party_id
+        WHERE LOWER(TRIM(COALESCE(jwi.status, ''))) IN ('cancelled', 'canceled')
+          AND jwi.invoice_date BETWEEN $1 AND $2
+        ORDER BY jwi.invoice_date DESC, jwi.voucher_no DESC
+      `, [from, to])).rows;
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/reports/customer-receivable — aging report with configurable day buckets
   app.get("/api/reports/customer-receivable", requireAuth, async (req, res) => {
     try {
       const { pool } = await import("./db");

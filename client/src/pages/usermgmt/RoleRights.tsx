@@ -84,6 +84,7 @@ const MODULES: ModuleEntry[] = [
   { type: "item",   key: "report_eng_invoice_pending",          label: "Invoice Pending" },
   { type: "item",   key: "report_eng_despatch_register",        label: "Despatch Register" },
   { type: "item",   key: "report_eng_sales_statement",          label: "Sales Statement" },
+  { type: "item",   key: "report_eng_cancel_invoice",           label: "Cancel Invoice Report" },
 
   // ── Reports — Inventory ──
   { type: "header",                                             label: "Reports — Inventory" },
