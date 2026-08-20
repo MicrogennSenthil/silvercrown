@@ -93,6 +93,13 @@ function formatMonthlyValue(value: number) {
   return `₹ ${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatChartValue(value: number) {
+  if (value >= 10000000) return `₹ ${(value / 10000000).toFixed(1)} Cr`;
+  if (value >= 100000) return `₹ ${(value / 100000).toFixed(1)} L`;
+  if (value >= 1000) return `₹ ${(value / 1000).toFixed(1)} K`;
+  return `₹ ${Math.round(value).toLocaleString("en-IN")}`;
+}
+
 function StatCard({ label, value, amount, lastDate }: { label: string; value: number; amount: number; lastDate?: string | null }) {
   const formattedDate = lastDate
     ? new Date(lastDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
@@ -197,6 +204,13 @@ export default function Dashboard() {
   };
 
   const cols = COLS[activeTab];
+  const salesTrend: { month: string; label: string; value: number }[] =
+    Array.isArray(counts.salesTrend) ? counts.salesTrend : [];
+  const currentSales = salesTrend[salesTrend.length - 1]?.value || 0;
+  const previousSales = salesTrend[salesTrend.length - 2]?.value || 0;
+  const salesTrendPct = previousSales > 0
+    ? ((currentSales - previousSales) / previousSales) * 100
+    : null;
 
   function cellValue(row: any, key: string, idx: number): string {
     if (key === "sno") return String(idx + 1).padStart(2, "0");
@@ -227,34 +241,43 @@ export default function Dashboard() {
         {/* ── LEFT column ── */}
         <div className="flex-1 min-w-0 space-y-4">
 
-          {/* Charts row */}
-          <div className="flex gap-4">
-            <div className="flex-1 bg-white rounded-xl p-4" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
-              <div className="text-sm font-semibold text-gray-700 mb-3">Top - 10 Product</div>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={TOP_PRODUCTS} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} />
-                  <Tooltip contentStyle={{ fontSize: 11, borderRadius: 6 }} />
-                  <Bar dataKey="value" radius={[2, 2, 0, 0]}>
-                    {TOP_PRODUCTS.map((_, i) => <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+          {/* Month-wise Sales Value */}
+          <div className="bg-white rounded-xl p-4" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <div className="text-sm font-semibold text-gray-700">Month-wise Sales Value</div>
+                <div className="text-xs text-gray-400 mt-0.5">Last 12 months · excluding cancelled invoices</div>
+              </div>
+              <div className="text-right">
+                <div className="text-base font-bold" style={{ color: SC.primary }}>{formatMonthlyValue(currentSales)}</div>
+                <div className={`flex items-center justify-end gap-1 text-xs font-semibold ${salesTrendPct === null || salesTrendPct >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  {salesTrendPct !== null && (salesTrendPct >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />)}
+                  {salesTrendPct === null ? "No prior month" : `${salesTrendPct >= 0 ? "+" : ""}${salesTrendPct.toFixed(1)}% vs last month`}
+                </div>
+              </div>
             </div>
-
-            <div className="w-52 bg-white rounded-xl p-4 flex flex-col" style={{ boxShadow: "1px 1px 3px 1px rgba(0,0,0,0.1)" }}>
-              <div className="text-sm font-semibold text-gray-700 mb-1">Job Work</div>
-              <ResponsiveContainer width="100%" height={160}>
-                <PieChart>
-                  <Pie data={JOB_WORK_PIE} cx="50%" cy="50%" outerRadius={62} dataKey="value" labelLine={false} label={PieLabel}>
-                    {JOB_WORK_PIE.map((e, i) => <Cell key={i} fill={e.color} />)}
-                  </Pie>
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10 }}
-                    formatter={(v, e: any) => <span style={{ color: e.color }}>{v}</span>} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <ResponsiveContainer width="100%" height={190}>
+              <AreaChart data={salesTrend} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="salesTrendFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={SC.primary} stopOpacity={0.3} />
+                    <stop offset="100%" stopColor={SC.primary} stopOpacity={0.03} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#edf2f4" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false}
+                  tickFormatter={formatChartValue} width={58} />
+                <Tooltip
+                  contentStyle={{ fontSize: 11, borderRadius: 6, border: "1px solid #d2f1fa" }}
+                  formatter={(value: any) => [formatMonthlyValue(Number(value) || 0), "Sales Value"]}
+                  labelFormatter={(label) => `Month: ${label}`}
+                />
+                <Area type="monotone" dataKey="value" name="Sales Value" stroke={SC.primary}
+                  strokeWidth={2.5} fill="url(#salesTrendFill)" dot={{ r: 3, fill: SC.primary, strokeWidth: 0 }}
+                  activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
 
           {/* Over-all Chart card */}
