@@ -152,6 +152,69 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     } catch (_heal) {}
 
+    // ── One-time cleanup: merge duplicate item_batch_stock rows & purge zero/negative qty ─
+    // Duplicates arise when the same batch_no is received with different expiry_date_key values
+    // (e.g. one GRN had no expiry, another had an expiry date for the same physical batch).
+    // Strategy: consolidate all rows sharing (item_code, batch_no) into the one whose
+    // expiry_date_key is most informative (non-empty preferred), summing closing_qty, then
+    // delete all zero/negative leftovers.
+    try {
+      await _pool.query(`
+        WITH dups AS (
+          SELECT item_code, batch_no
+          FROM item_batch_stock
+          GROUP BY item_code, batch_no
+          HAVING COUNT(*) > 1
+        ),
+        consolidated AS (
+          SELECT
+            ibs.item_code,
+            ibs.batch_no,
+            SUM(ibs.closing_qty)  AS total_qty,
+            MAX(ibs.expiry_date)  AS best_expiry,
+            (array_agg(ibs.expiry_date_key ORDER BY
+              CASE WHEN ibs.expiry_date_key <> '' THEN 0 ELSE 1 END,
+              ibs.expiry_date_key))[1]  AS canonical_key,
+            (array_agg(ibs.item_name ORDER BY
+              CASE WHEN ibs.item_name <> '' THEN 0 ELSE 1 END,
+              ibs.item_name))[1]        AS item_name,
+            (array_agg(ibs.unit ORDER BY
+              CASE WHEN ibs.unit <> '' THEN 0 ELSE 1 END,
+              ibs.unit))[1]             AS unit,
+            MAX(ibs.rate)               AS rate
+          FROM item_batch_stock ibs
+          JOIN dups d ON d.item_code = ibs.item_code AND d.batch_no = ibs.batch_no
+          GROUP BY ibs.item_code, ibs.batch_no
+        ),
+        deleted AS (
+          DELETE FROM item_batch_stock
+          WHERE (item_code, batch_no) IN (SELECT item_code, batch_no FROM dups)
+        )
+        INSERT INTO item_batch_stock
+          (item_code, batch_no, expiry_date_key, item_name, expiry_date, closing_qty, unit, rate)
+        SELECT
+          item_code, batch_no,
+          COALESCE(canonical_key, ''),
+          COALESCE(item_name, ''),
+          best_expiry,
+          total_qty,
+          COALESCE(unit, ''),
+          COALESCE(rate, 0)
+        FROM consolidated
+        WHERE total_qty > 0
+        ON CONFLICT (item_code, batch_no, expiry_date_key) DO UPDATE SET
+          closing_qty = EXCLUDED.closing_qty,
+          expiry_date = EXCLUDED.expiry_date,
+          item_name   = COALESCE(NULLIF(EXCLUDED.item_name,''), item_batch_stock.item_name),
+          unit        = COALESCE(NULLIF(EXCLUDED.unit,''),      item_batch_stock.unit),
+          rate        = CASE WHEN EXCLUDED.rate > 0 THEN EXCLUDED.rate ELSE item_batch_stock.rate END,
+          updated_at  = NOW()
+      `).catch(()=>{});
+
+      // Remove any remaining zero or negative qty rows (NICHEM-style leftovers)
+      await _pool.query(`DELETE FROM item_batch_stock WHERE closing_qty <= 0`).catch(()=>{});
+    } catch (_batchCleanup) {}
+
   } catch (_) {}
 
   // Auth routes
@@ -7027,21 +7090,45 @@ Return ONLY valid JSON (no markdown, no explanation):
   async function upsertBatchStock(client: any, items: any[], delta: number) {
     for (const it of items) {
       if (!it.item_code || !(+(it.qty || 0) > 0)) continue;
+      // Normalize batch_no: trim whitespace and uppercase so "nichem-001" and "NICHEM-001 "
+      // resolve to the same key and don't produce duplicate rows.
+      const batchNo   = (it.batch_no || "").trim().toUpperCase();
       const expiryKey = it.expiry_date ? String(it.expiry_date).slice(0, 10) : "";
-      await client.query(`
-        INSERT INTO item_batch_stock
-          (item_code, batch_no, expiry_date_key, item_name, expiry_date, closing_qty, unit, rate)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        ON CONFLICT (item_code, batch_no, expiry_date_key)
-        DO UPDATE SET
-          closing_qty = GREATEST(0, item_batch_stock.closing_qty + EXCLUDED.closing_qty),
-          expiry_date = COALESCE(EXCLUDED.expiry_date, item_batch_stock.expiry_date),
-          item_name   = COALESCE(NULLIF(EXCLUDED.item_name,''), item_batch_stock.item_name),
-          unit        = COALESCE(NULLIF(EXCLUDED.unit,''), item_batch_stock.unit),
-          rate        = CASE WHEN EXCLUDED.rate > 0 THEN EXCLUDED.rate ELSE item_batch_stock.rate END,
-          updated_at  = NOW()
-      `, [it.item_code, it.batch_no || "", expiryKey, it.item_name || "",
-          it.expiry_date || null, delta * +(it.qty || 0), it.unit || "", +(it.rate || 0)]);
+      const qtyDelta  = delta * +(it.qty || 0);
+
+      // UPDATE-first: if a row already exists for this (item_code, batch_no) under ANY
+      // expiry_date_key, update it in-place. This prevents new duplicate rows when the
+      // same batch arrives with a different expiry key.
+      const upd = await client.query(`
+        UPDATE item_batch_stock SET
+          closing_qty     = GREATEST(0, closing_qty + $1),
+          expiry_date     = CASE WHEN $2::date IS NOT NULL THEN $2::date ELSE expiry_date END,
+          expiry_date_key = CASE WHEN $3 <> '' THEN $3 ELSE expiry_date_key END,
+          item_name       = COALESCE(NULLIF($4,''), item_name),
+          unit            = COALESCE(NULLIF($5,''), unit),
+          rate            = CASE WHEN $6::numeric > 0 THEN $6::numeric ELSE rate END,
+          updated_at      = NOW()
+        WHERE item_code = $7 AND batch_no = $8
+      `, [qtyDelta, it.expiry_date || null, expiryKey,
+          it.item_name || "", it.unit || "", +(it.rate || 0),
+          it.item_code, batchNo]);
+
+      if ((upd.rowCount ?? 0) === 0) {
+        // No existing row — insert fresh
+        await client.query(`
+          INSERT INTO item_batch_stock
+            (item_code, batch_no, expiry_date_key, item_name, expiry_date, closing_qty, unit, rate)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+          ON CONFLICT (item_code, batch_no, expiry_date_key) DO UPDATE SET
+            closing_qty = GREATEST(0, item_batch_stock.closing_qty + EXCLUDED.closing_qty),
+            expiry_date = COALESCE(EXCLUDED.expiry_date, item_batch_stock.expiry_date),
+            item_name   = COALESCE(NULLIF(EXCLUDED.item_name,''), item_batch_stock.item_name),
+            unit        = COALESCE(NULLIF(EXCLUDED.unit,''),      item_batch_stock.unit),
+            rate        = CASE WHEN EXCLUDED.rate > 0 THEN EXCLUDED.rate ELSE item_batch_stock.rate END,
+            updated_at  = NOW()
+        `, [it.item_code, batchNo, expiryKey, it.item_name || "",
+            it.expiry_date || null, qtyDelta, it.unit || "", +(it.rate || 0)]);
+      }
     }
   }
 
