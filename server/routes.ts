@@ -8899,7 +8899,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   app.get("/api/dashboard/counts", requireAuth, async (_req, res) => {
     try {
       const { pool } = await import("./db");
-      const [inward, despatch, invoice, po, payments] = await Promise.all([
+      const [inward, despatch, invoice, po, payments, salesTrend] = await Promise.all([
         pool.query(`
           SELECT
             COUNT(DISTINCT j.id) AS count,
@@ -8949,6 +8949,47 @@ Return ONLY valid JSON (no markdown, no explanation):
         `),
         pool.query(`SELECT COUNT(*) FROM purchase_orders`),
         pool.query(`SELECT COUNT(*) FROM voucher_mas WHERE voucher_type IN ('Payment','Receipt')`),
+        pool.query(`
+          WITH months AS (
+            SELECT generate_series(
+              date_trunc('month', CURRENT_DATE) - INTERVAL '11 months',
+              date_trunc('month', CURRENT_DATE),
+              INTERVAL '1 month'
+            ) AS month_start
+          ),
+          invoice_totals AS (
+            SELECT
+              date_trunc('month', inv.invoice_date)::date AS month_start,
+              COALESCE(SUM(COALESCE(lines.amount, 0) + COALESCE(charges.amount, 0)), 0) AS value
+            FROM job_work_invoices inv
+            LEFT JOIN LATERAL (
+              SELECT SUM(
+                COALESCE(ii.amount, 0)
+                + COALESCE(ii.cgst_amt, 0)
+                + COALESCE(ii.sgst_amt, 0)
+                + COALESCE(ii.igst_amt, 0)
+              ) AS amount
+              FROM job_work_invoice_items ii
+              WHERE ii.invoice_id = inv.id
+            ) lines ON true
+            LEFT JOIN LATERAL (
+              SELECT SUM(COALESCE(ch.amount, 0)) AS amount
+              FROM job_work_invoice_charges ch
+              WHERE ch.invoice_id = inv.id
+            ) charges ON true
+            WHERE COALESCE(inv.status, 'Saved') <> 'Cancelled'
+              AND inv.invoice_date >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
+              AND inv.invoice_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
+            GROUP BY date_trunc('month', inv.invoice_date)::date
+          )
+          SELECT
+            to_char(m.month_start, 'YYYY-MM') AS month,
+            to_char(m.month_start, 'Mon') AS label,
+            COALESCE(it.value, 0) AS value
+          FROM months m
+          LEFT JOIN invoice_totals it ON it.month_start = m.month_start::date
+          ORDER BY m.month_start
+        `),
       ]);
       res.json({
         inward:            parseInt(inward.rows[0].count),
@@ -8962,6 +9003,11 @@ Return ONLY valid JSON (no markdown, no explanation):
         lastInwardDate:    inward.rows[0].last_date   || null,
         lastDespatchDate:  despatch.rows[0].last_date || null,
         lastInvoiceDate:   invoice.rows[0].last_date  || null,
+        salesTrend: salesTrend.rows.map((row: any) => ({
+          month: row.month,
+          label: row.label,
+          value: parseFloat(row.value) || 0,
+        })),
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

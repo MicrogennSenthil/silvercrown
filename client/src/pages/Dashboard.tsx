@@ -1,25 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, Legend
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid
 } from "recharts";
-import { TrendingUp, Bell, Eye } from "lucide-react";
+import { TrendingUp, TrendingDown, Bell, Eye } from "lucide-react";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed", accent: "#f96a0b" };
-
-const TOP_PRODUCTS = [
-  { name: "A1101", value: 85 }, { name: "A1102", value: 70 }, { name: "A1103", value: 60 },
-  { name: "A1104", value: 90 }, { name: "A1105", value: 45 }, { name: "A1106", value: 75 },
-  { name: "A1107", value: 55 }, { name: "A1108", value: 65 }, { name: "A1109", value: 80 },
-];
-const BAR_COLORS = ["#027fa5","#d74700","#f96a0b","#2563eb","#16a34a","#9333ea","#dc2626","#ca8a04","#0891b2"];
-
-const JOB_WORK_PIE = [
-  { name: "Inward",   value: 15, color: "#d74700" },
-  { name: "Despatch", value: 40, color: "#027fa5" },
-  { name: "Invoice",  value: 45, color: "#f96a0b" },
-];
 
 const AGEING_RANGES = "0-15,15-30,30-45,45-60,60-9999";
 
@@ -151,14 +138,6 @@ function StatCard({ label, value, amount, lastDate }: { label: string; value: nu
       </div>
     </div>
   );
-}
-
-const RADIAN = Math.PI / 180;
-function PieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) {
-  const r = innerRadius + (outerRadius - innerRadius) * 0.5;
-  const x = cx + r * Math.cos(-midAngle * RADIAN);
-  const y = cy + r * Math.sin(-midAngle * RADIAN);
-  return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">{`${(percent * 100).toFixed(0)}%`}</text>;
 }
 
 function WipCircle({ pct }: { pct: number }) {
