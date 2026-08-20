@@ -11,6 +11,13 @@ import { insertSupplierSchema, insertCustomerSchema, insertInventoryItemSchema, 
 
 const upload = multer({ dest: "uploads/", limits: { fileSize: 10 * 1024 * 1024 } });
 
+class InsufficientStockError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InsufficientStockError";
+  }
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
 
   // Startup: ensure critical GL gl_type values are correct in all environments
@@ -7777,32 +7784,46 @@ Return ONLY valid JSON (no markdown, no explanation):
   async function adjustSiiStock(client: any, items: any[], delta: number) {
     for (const it of items) {
       if (it.item_code && +(it.issued_qty || 0) !== 0) {
-        // Validate sufficient stock when reducing
+        const quantity = +(it.issued_qty || 0);
+
         if (delta < 0) {
-          const sr = await client.query(
-            `SELECT COALESCE(current_stock,0) AS cs FROM products WHERE code=$1`,
-            [it.item_code]
+          // The stock check and deduction must be one atomic operation. PostgreSQL
+          // locks the matching product row while updating it, then re-checks the
+          // condition after any concurrent transaction releases that lock.
+          const deduction = await client.query(
+            `UPDATE products
+             SET current_stock = COALESCE(current_stock,0) - $1
+             WHERE code = $2 AND COALESCE(current_stock,0) >= $1
+             RETURNING current_stock`,
+            [quantity, it.item_code]
           );
-          const available = sr.rows[0] ? +(sr.rows[0].cs) : 0;
-          const needed    = +(it.issued_qty || 0);
-          if (available < needed) {
-            throw new Error(
-              `Insufficient stock for "${it.item_name || it.item_code}": available ${available}, required ${needed}`
+          if (deduction.rowCount !== 1) {
+            // Read only for a useful error message; the conditional UPDATE above
+            // is what enforces the invariant under concurrency.
+            const sr = await client.query(
+              `SELECT COALESCE(current_stock,0) AS cs FROM products WHERE code=$1`,
+              [it.item_code]
+            );
+            const available = sr.rows[0] ? +(sr.rows[0].cs) : 0;
+            throw new InsufficientStockError(
+              `Insufficient stock for "${it.item_name || it.item_code}": available ${available}, required ${quantity}`
             );
           }
+        } else {
+          // Restore stock for edits/deletes.
+          await client.query(
+            `UPDATE products SET current_stock = COALESCE(current_stock,0) + $1 WHERE code = $2`,
+            [delta * quantity, it.item_code]
+          );
         }
-        // Update item-level running stock
-        await client.query(
-          `UPDATE products SET current_stock = GREATEST(0, COALESCE(current_stock,0) + $1) WHERE code = $2`,
-          [delta * +(it.issued_qty || 0), it.item_code]
-        );
+
         // ── KEY FIX: also keep item_batch_stock in sync per batch ──────────
         if (it.batch_no) {
           await client.query(
             `UPDATE item_batch_stock
              SET closing_qty = GREATEST(0, closing_qty + $1), updated_at = NOW()
              WHERE item_code = $2 AND batch_no = $3`,
-            [delta * +(it.issued_qty || 0), it.item_code, it.batch_no]
+            [delta * quantity, it.item_code, it.batch_no]
           );
         }
       }
@@ -7840,7 +7861,9 @@ Return ONLY valid JSON (no markdown, no explanation):
         res.status(201).json({ ...hdr, items: b.items||[], linked_srns: b.linked_srns||[] });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
       finally { client.release(); }
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      res.status(e instanceof InsufficientStockError ? 400 : 500).json({ message: e.message });
+    }
   });
 
   app.patch("/api/store-issue-indents/:id", requireAuth, async (req, res) => {
@@ -7873,7 +7896,9 @@ Return ONLY valid JSON (no markdown, no explanation):
         res.json({ ok: true });
       } catch (e) { await client.query("ROLLBACK"); throw e; }
       finally { client.release(); }
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      res.status(e instanceof InsufficientStockError ? 400 : 500).json({ message: e.message });
+    }
   });
 
   app.delete("/api/store-issue-indents/:id", requireAuth, async (req, res) => {
