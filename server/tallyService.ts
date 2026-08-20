@@ -550,34 +550,50 @@ export async function resolveMappings(
 
 export async function postInboundVoucher(
   inboxId: string,
-  userId: string
+  userId: string,
+  configId: string
 ): Promise<{ voucherMasId: string; voucherNo: string }> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    // Load inbox record — must be in 'approved' status
+    // Lock before checking or changing review state. Concurrent approval
+    // requests serialize on this row, so only one transaction can post it.
     const inboxRes = await client.query(
-      `SELECT * FROM tally_voucher_inbox WHERE id=$1 AND status='approved' FOR UPDATE`,
-      [inboxId]
+      `SELECT * FROM tally_voucher_inbox
+       WHERE id=$1 AND config_id=$2
+       FOR UPDATE`,
+      [inboxId, configId]
     );
-    if (!inboxRes.rows[0]) throw new Error("Inbox record not found or not in approved status");
+    if (!inboxRes.rows[0]) throw new Error("Inbox record not found");
     const inbox = inboxRes.rows[0];
 
-    // Idempotency: if already posted, return existing
-    if (inbox.posted_voucher_mas_id) {
-      await client.query("ROLLBACK");
-      const existing = await pool.query(
+    // A repeated approval after a successful commit is idempotent.
+    if (inbox.status === "posted" && inbox.posted_voucher_mas_id) {
+      const existing = await client.query(
         `SELECT id, voucher_no FROM voucher_mas WHERE id=$1`,
         [inbox.posted_voucher_mas_id]
       );
       if (existing.rows[0]) {
+        await client.query("COMMIT");
         return { voucherMasId: existing.rows[0].id, voucherNo: existing.rows[0].voucher_no };
       }
+      throw new Error("Posted inbox record is missing its ERP voucher");
+    }
+    if (inbox.status !== "review") {
+      throw new Error(`Inbox record is ${inbox.status}; only review records can be approved`);
     }
 
     const payload: InboundVoucher = inbox.raw_payload as InboundVoucher;
-    const configId: string = inbox.config_id;
+
+    // Claim review state inside the same transaction that creates the ERP
+    // voucher. Any posting error rolls this change back to review.
+    await client.query(
+      `UPDATE tally_voucher_inbox
+       SET status='approved', reviewed_by=$1, reviewed_at=now(), updated_at=now()
+       WHERE id=$2 AND config_id=$3 AND status='review'`,
+      [userId, inboxId, configId]
+    );
 
     // Validate fields
     const fieldErrs = validateVoucherFields(payload);
@@ -705,8 +721,8 @@ export async function postInboundVoucher(
     await client.query(
       `UPDATE tally_voucher_inbox
        SET status='posted', posted_voucher_mas_id=$1, reviewed_by=$2, reviewed_at=now(), updated_at=now()
-       WHERE id=$3`,
-      [vmId, userId, inboxId]
+       WHERE id=$3 AND config_id=$4 AND status='approved'`,
+      [vmId, userId, inboxId, configId]
     );
 
     // Create/update external ref (idempotent)

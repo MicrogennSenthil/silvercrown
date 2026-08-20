@@ -1434,35 +1434,13 @@ export async function registerTallyRoutes(app: Express): Promise<void> {
         const inboxId = String(req.params.id);
         const cfg = await getActiveConfig();
         if (!cfg) return res.status(404).json({ error: "No active Tally configuration" });
-        // Mark approved before posting (postInboundVoucher requires this status)
-        const upd = await pool.query(
-          `UPDATE tally_voucher_inbox
-           SET status='approved', reviewed_by=$1, reviewed_at=now(), updated_at=now()
-           WHERE id=$2 AND config_id=$3 AND status NOT IN ('posted')
-           RETURNING id`,
-          [user?.id, inboxId, cfg.id]
+        const { voucherMasId, voucherNo } = await postInboundVoucher(
+          inboxId,
+          user?.id || "",
+          cfg.id
         );
-        if (!upd.rows[0]) {
-          // Already posted?
-          const cur = await pool.query(
-            `SELECT status, posted_voucher_mas_id
-             FROM tally_voucher_inbox WHERE id=$1 AND config_id=$2`,
-            [inboxId, cfg.id]
-          );
-          if (cur.rows[0]?.status === "posted") {
-            return res.json({ ok: true, idempotent: true, voucherMasId: cur.rows[0].posted_voucher_mas_id });
-          }
-          return res.status(400).json({ error: "Inbox record not found" });
-        }
-
-        const { voucherMasId, voucherNo } = await postInboundVoucher(inboxId, user?.id || "");
         res.json({ ok: true, voucherMasId, voucherNo });
       } catch (e: any) {
-        // Revert to review on failure so user can retry
-        await pool.query(
-          `UPDATE tally_voucher_inbox SET status='review', conflict_reason=$1, updated_at=now() WHERE id=$2`,
-          [e.message, String(req.params.id)]
-        ).catch(() => {});
         res.status(400).json({ error: e.message });
       }
     }
