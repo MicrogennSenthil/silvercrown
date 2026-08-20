@@ -74,6 +74,7 @@ import SupplierPayables        from "@/pages/reports/SupplierPayables";
 import AgeingList              from "@/pages/reports/AgeingList";
 import LedgerReport            from "@/pages/reports/LedgerReport";
 import TrialBalance            from "@/pages/reports/TrialBalance";
+import TallyFinanceReport      from "@/pages/reports/TallyFinanceReport";
 import Reprint                 from "@/pages/Reprint";
 // User Management
 import Users from "@/pages/usermgmt/Users";
@@ -138,7 +139,7 @@ function Router() {
       <Route path="/journal"><ProtectedRoute component={Accounts} /></Route>
       <Route path="/reports"><ProtectedRoute component={Reports} /></Route>
       <Route path="/tasks"><ProtectedRoute component={Tasks} /></Route>
-      <Route path="/tally"><ProtectedRoute component={TallyIntegration} /></Route>
+      <Route path="/tally"><ProtectedRoute component={TallyIntegration} moduleKey="tally_integration" /></Route>
       {/* Masters */}
       <Route path="/masters/suppliers"><ProtectedRoute component={Suppliers} /></Route>
       <Route path="/masters/customers"><ProtectedRoute component={Customers} /></Route>
@@ -209,6 +210,9 @@ function Router() {
       <Route path="/reports/accounts/ageing-list"><ProtectedRoute component={AgeingList} /></Route>
       <Route path="/reports/accounts/ledger"><ProtectedRoute component={LedgerReport} /></Route>
       <Route path="/reports/accounts/trial-balance"><ProtectedRoute component={TrialBalance} /></Route>
+      <Route path="/reports/accounts/profit-loss"><ProtectedRoute component={TallyFinanceReport} moduleKey="report_acc_profit_loss" /></Route>
+      <Route path="/reports/accounts/outstanding"><ProtectedRoute component={TallyFinanceReport} moduleKey="report_acc_outstanding" /></Route>
+      <Route path="/reports/accounts/bank-reconciliation"><ProtectedRoute component={TallyFinanceReport} moduleKey="report_acc_bank_reconciliation" /></Route>
       <Route path="/reprint"><ProtectedRoute component={Reprint} /></Route>
       {/* Keep old routes for backwards compatibility */}
       <Route path="/suppliers"><ProtectedRoute component={Suppliers} /></Route>

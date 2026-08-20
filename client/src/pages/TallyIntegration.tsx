@@ -1,125 +1,103 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, CheckCircle, XCircle, Loader2, Settings, Clock, Database, ArrowRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Check, CheckCircle2, Clipboard, Copy, Download, Eye, FileCheck2, Gauge, History, Link2, Loader2, MapPinned, Plus, RefreshCw, RotateCcw, Save, Search, Server, Settings2, ShieldCheck, Trash2, Unplug, X, XCircle } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
-const SC = { primary: "#027fa5", orange: "#d74700" };
+const C = { ink: "#16323a", teal: "#087f8c", deep: "#07545f", coral: "#d95d39", paper: "#f6f4ef", line: "#dce5e2", mint: "#e6f2ef" };
+type Config = { displayName: string; tallyHost: string; tallyPort: string; companyName: string; financialYear: string; syncIntervalMinutes: number; importMasters: boolean; importVouchers: boolean; exportSales: boolean; exportPurchases: boolean; stockSyncEnabled: boolean; enabled: boolean };
+const blank: Config = { displayName: "", tallyHost: "localhost", tallyPort: "9000", companyName: "", financialYear: "", syncIntervalMinutes: 30, importMasters: true, importVouchers: true, exportSales: false, exportPurchases: false, stockSyncEnabled: false, enabled: false };
+const types = [["general_ledger", "General ledger"], ["sub_ledger", "Sub-ledger"], ["customer", "Customers"], ["supplier", "Suppliers"], ["bank", "Bank ledgers"], ["voucher_type", "Voucher types"], ["gst_ledger", "GST ledgers"], ["round_off_ledger", "Round-off ledger"], ["freight_ledger", "Freight ledger"], ["discount_ledger", "Discount ledger"], ["stock_item", "Stock items"]] as const;
+const jobs = ["import_masters", "import_vouchers", "export_sales", "export_purchases", "full"];
+const mappingInternalType = (type: string) =>
+  ["sub_ledger", "customer", "supplier"].includes(type) ? "sub_ledger"
+  : type === "voucher_type" ? "voucher_type"
+  : type === "stock_item" ? "product"
+  : "general_ledger";
+const mappingMasterType = (type: string) =>
+  type === "voucher_type" ? "voucher_type" : type === "stock_item" ? "stock_item" : "ledger";
 
-const SYNC_TYPES = [
-  { key: "purchases", label: "Purchase Vouchers", desc: "Sync all purchase invoices to Tally" },
-  { key: "sales", label: "Sales Vouchers", desc: "Sync all sales invoices to Tally" },
-  { key: "inventory", label: "Stock Items", desc: "Sync inventory items and categories" },
-  { key: "accounts", label: "Ledger Accounts", desc: "Sync chart of accounts" },
-  { key: "full", label: "Full Sync", desc: "Sync everything to Tally" },
-];
+async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(url, { credentials: "include", ...init });
+  if (!r.ok) {
+    let message = `Request failed (${r.status})`;
+    try { const body = await r.json(); message = body.error || body.message || message; } catch { /* non-json error */ }
+    throw new Error(message);
+  }
+  return r.status === 204 ? undefined as T : r.json();
+}
+const date = (v?: string) => v ? new Date(v).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—";
+const n = (v: unknown) => Number(v || 0).toLocaleString("en-IN");
+function Badge({ value }: { value?: string }) { const s = String(value || "pending").toLowerCase(); const good = ["success", "completed", "approved"].includes(s); const bad = ["failed", "rejected", "error"].includes(s); return <span className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-bold uppercase ${good ? "bg-[#e3f3eb] text-[#26704c]" : bad ? "bg-[#fae8e3] text-[#a63f27]" : "bg-[#f5ead0] text-[#8c6a22]"}`}>{good ? <CheckCircle2 size={12} /> : bad ? <XCircle size={12} /> : <History size={12} />}{value || "pending"}</span>; }
+function Stat({ label, value, note, tone = C.teal }: { label: string; value: unknown; note: string; tone?: string }) { return <div className="rounded-xl border bg-white p-4" style={{ borderColor: C.line }}><div className="text-[11px] font-bold uppercase tracking-wider text-[#668087]">{label}</div><div className="mt-2 font-mono text-2xl font-bold" style={{ color: tone }}>{n(value)}</div><div className="mt-1 text-xs text-[#789096]">{note}</div></div>; }
 
 export default function TallyIntegration() {
-  const [syncing, setSyncing] = useState<string | null>(null);
-  const [tallyConfig, setTallyConfig] = useState({ host: "localhost", port: "9000", company: "Pioneer Prism" });
   const qc = useQueryClient();
-
-  const { data: logs = [] } = useQuery<any[]>({ queryKey: ["/api/tally/logs"] });
-
-  const syncMut = useMutation({
-    mutationFn: (syncType: string) => fetch("/api/tally/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ syncType }), credentials: "include" }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/tally/logs"] }); setSyncing(null); },
-    onError: () => setSyncing(null)
-  });
-
-  async function handleSync(type: string) {
-    setSyncing(type); syncMut.mutate(type);
-  }
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Tally Integration</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Sync your ERP data with Tally accounting software</p>
-      </div>
-
-      {/* Connection Config */}
-      <div className="bg-white rounded-xl p-5" style={{ boxShadow: "1px 1px 2px 2px rgba(0,0,0,0.1)" }}>
-        <div className="flex items-center gap-2 mb-4">
-          <Settings size={18} style={{ color: SC.primary }} />
-          <h2 className="font-semibold text-gray-700">Tally Connection Settings</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[["Tally Host", "host", "e.g. localhost"], ["Port", "port", "e.g. 9000"], ["Company Name", "company", "Company in Tally"]].map(([label, key, placeholder]) => (
-            <div key={key}>
-              <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>{label}</label>
-              <input value={(tallyConfig as any)[key]} onChange={e => setTallyConfig(c => ({ ...c, [key]: e.target.value }))}
-                placeholder={placeholder}
-                className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid={`input-tally-${key}`} />
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-green-400"></div>
-          <span className="text-sm text-gray-600">Tally ERP 9 / TallyPrime compatible</span>
-          <span className="text-xs text-gray-400">· Ensure Tally is running with Remote Access enabled</span>
-        </div>
-      </div>
-
-      {/* Sync Options */}
-      <div>
-        <h2 className="font-semibold text-gray-700 mb-3">Sync Operations</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {SYNC_TYPES.map(({ key, label, desc }) => (
-            <div key={key} className="bg-white rounded-xl p-5" style={{ boxShadow: "1px 1px 2px 2px rgba(0,0,0,0.1)" }}>
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#d2f1fa" }}>
-                  <Database size={18} style={{ color: SC.primary }} />
-                </div>
-                {key === "full" && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">Recommended</span>}
-              </div>
-              <div className="font-semibold text-gray-700 mb-1">{label}</div>
-              <div className="text-xs text-gray-500 mb-4">{desc}</div>
-              <button
-                onClick={() => handleSync(key)}
-                disabled={syncing !== null}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded text-white text-sm font-medium transition-opacity disabled:opacity-60"
-                style={{ background: key === "full" ? SC.orange : SC.primary }}
-                data-testid={`button-sync-${key}`}>
-                {syncing === key ? <><Loader2 size={14} className="animate-spin" /> Syncing...</> : <><RefreshCw size={14} /> Sync Now <ArrowRight size={12} /></>}
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Sync History */}
-      <div className="bg-white rounded-xl overflow-hidden" style={{ boxShadow: "1px 1px 2px 2px rgba(0,0,0,0.1)" }}>
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
-          <Clock size={16} style={{ color: SC.primary }} />
-          <h2 className="font-semibold text-gray-700">Sync History</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr style={{ background: "#d2f1fa" }}>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Sync Type</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Status</th>
-              <th className="text-right px-5 py-3 font-semibold text-gray-600">Records</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Time</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600">Error</th>
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {logs.length ? logs.map((log: any) => (
-                <tr key={log.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-3 font-medium text-gray-700 capitalize">{log.syncType.replace("_", " ")}</td>
-                  <td className="px-5 py-3">
-                    <span className={`flex items-center gap-1 text-xs font-medium w-fit px-2 py-0.5 rounded-full ${log.status === "success" ? "bg-green-100 text-green-700" : log.status === "partial" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>
-                      {log.status === "success" ? <CheckCircle size={11} /> : <XCircle size={11} />}
-                      {log.status}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-right text-gray-600">{log.recordsSynced}</td>
-                  <td className="px-5 py-3 text-gray-400 text-xs">{new Date(log.syncedAt).toLocaleString("en-IN")}</td>
-                  <td className="px-5 py-3 text-red-500 text-xs">{log.errorMessage || "—"}</td>
-                </tr>
-              )) : <tr><td colSpan={5} className="px-5 py-12 text-center text-gray-400">No sync history yet. Click Sync Now to start.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+  const { user } = useAuth();
+  const [tab, setTab] = useState("control");
+  const [config, setConfig] = useState(blank);
+  const [message, setMessage] = useState<{ ok: boolean; text: string }>();
+  const [syncType, setSyncType] = useState("full");
+  const [range, setRange] = useState({ fromDate: "", toDate: "" });
+  const [mapType, setMapType] = useState("general_ledger");
+  const [search, setSearch] = useState("");
+  const [mapForm, setMapForm] = useState({ internalId: "", internalType: "general_ledger", tallyName: "", tallyGuid: "", notes: "" });
+  const [token, setToken] = useState("");
+  const [detail, setDetail] = useState<any>();
+  const [busy, setBusy] = useState(false);
+  const rights = useQuery<any>({ queryKey: ["/api/my-rights"], queryFn: () => api<any>("/api/my-rights") });
+  const fullAccess = !!rights.data?.fullAccess || (user as any)?.role === "admin";
+  const permit = (module: string, action: "canView" | "canCreate" | "canEdit" | "canDelete" | "canApprove" = "canView") => fullAccess || !!(rights.data?.rights || []).find((r: any) => r.module === module)?.[action];
+  const canConfig = permit("tally_configuration"), canMapping = permit("tally_mapping"), canSync = permit("tally_sync");
+  const cfg = useQuery<Config>({ queryKey: ["/api/tally/config"], queryFn: () => api<Config>("/api/tally/config"), enabled: canConfig });
+  const dash = useQuery<any>({ queryKey: ["/api/tally/dashboard"], queryFn: () => api<any>("/api/tally/dashboard"), enabled: permit("tally_integration"), refetchInterval: 30000 });
+  const inbox = useQuery<any>({ queryKey: ["/api/tally/inbox"], queryFn: () => api<any>("/api/tally/inbox"), enabled: canSync && tab === "review" });
+  const syncJobs = useQuery<any>({ queryKey: ["/api/tally/sync/jobs"], queryFn: () => api<any>("/api/tally/sync/jobs"), enabled: canSync && (tab === "control" || tab === "history") });
+  const outbox = useQuery<any>({ queryKey: ["/api/tally/outbox"], queryFn: () => api<any>("/api/tally/outbox"), enabled: canSync && tab === "history" });
+  const maps = useQuery<any>({ queryKey: ["/api/tally/mappings", mapType], queryFn: () => api<any>(`/api/tally/mappings?type=${mapType}`), enabled: canMapping && tab === "mappings" });
+  const options = useQuery<any>({ queryKey: ["/api/tally/master-options"], queryFn: () => api<any>("/api/tally/master-options"), enabled: canMapping && tab === "mappings" });
+  useEffect(() => { if (cfg.data) setConfig({ ...blank, ...cfg.data }); }, [cfg.data]);
+  const data = dash.data || {}, summary = data.summary || {};
+  const reviewRows = Array.isArray(inbox.data) ? inbox.data : inbox.data?.records || inbox.data?.inbox || [];
+  const jobRows = Array.isArray(syncJobs.data) ? syncJobs.data : syncJobs.data?.jobs || [];
+  const outRows = Array.isArray(outbox.data) ? outbox.data : outbox.data?.records || outbox.data?.outbox || [];
+  const mapRows = (Array.isArray(maps.data) ? maps.data : maps.data?.mappings || []).filter((m: any) => `${m.tally_name || ""} ${m.internal_id || ""}`.toLowerCase().includes(search.toLowerCase()));
+  const mutate = async (url: string, init?: RequestInit, success = "Saved") => { setBusy(true); try { await api(url, init); setMessage({ ok: true, text: success }); qc.invalidateQueries(); } catch (e) { setMessage({ ok: false, text: (e as Error).message }); } finally { setBusy(false); } };
+  function save() { if (!config.companyName || !config.financialYear || !config.tallyHost || !config.tallyPort) return setMessage({ ok: false, text: "Company, financial year, Tally host, and port are required." }); mutate("/api/tally/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) }); }
+  function queue() { if (range.fromDate && range.toDate && range.fromDate > range.toDate) return setMessage({ ok: false, text: "From date cannot be later than To date." }); mutate("/api/tally/sync/enqueue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobType: syncType, ...range }) }, "Sync job queued"); }
+  async function rotate() { setBusy(true); try { const r = await api<any>("/api/tally/config/rotate-token", { method: "POST" }); setToken(r.token || r.connectorToken || ""); setMessage({ ok: true, text: "Token generated. Copy or download it now; it cannot be retrieved again." }); } catch (e) { setMessage({ ok: false, text: (e as Error).message }); } finally { setBusy(false); } }
+  async function act(id: string, action: "approve" | "reject" | "retry") { const reason = action === "reject" ? window.prompt("Reason for rejecting this import?") : undefined; if (action === "reject" && !reason) return; const base = action === "retry" ? `/api/tally/sync/jobs/${id}/retry` : `/api/tally/inbox/${id}/${action}`; mutate(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: reason ? JSON.stringify({ reason }) : undefined }, action === "retry" ? "Retry queued" : `Import ${action}d`); }
+  async function openInbox(id: string) { try { setDetail(await api<any>(`/api/tally/inbox/${id}`)); } catch (e) { setMessage({ ok: false, text: (e as Error).message }); } }
+  function addMap() { mutate("/api/tally/mappings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mappingType: mapType, ...mapForm, internalType: mappingInternalType(mapType) }) }, "Mapping added"); }
+  const masterKey = ["general_ledger", "bank", "gst_ledger", "round_off_ledger", "freight_ledger", "discount_ledger"].includes(mapType) ? "generalLedgers" : ["sub_ledger", "customer", "supplier"].includes(mapType) ? "subLedgers" : mapType === "voucher_type" ? "voucherTypes" : "products";
+  const internalOptions = (options.data?.[masterKey] || []).filter((x: any) => mapType !== "customer" || String(x.gl_type).toLowerCase() === "sundry_debtor").filter((x: any) => mapType !== "supplier" || String(x.gl_type).toLowerCase() === "sundry_creditor");
+  const discovered = (options.data?.discoveredMasters || []).filter(
+    (x: any) => (x.master_type || x.masterType || x.type) === mappingMasterType(mapType)
   );
+  const tabs = [["control", "Control room", Gauge, canSync], ["mappings", "Mappings", MapPinned, canMapping], ["review", "Import review", FileCheck2, canSync], ["history", "Sync history", History, canSync], ["settings", "Connection", Settings2, canConfig]].filter((x: any) => x[3]);
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.some((item: any) => item[0] === tab)) {
+      setTab(String(tabs[0][0]));
+    }
+  }, [canConfig, canMapping, canSync, tab]);
+  return <div className="min-h-full rounded-2xl p-3 md:p-5" style={{ background: C.paper, color: C.ink }}><div className="mx-auto max-w-[1500px]">
+    <header className="mb-5 flex flex-wrap items-end justify-between gap-4 border-b pb-5" style={{ borderColor: C.line }}><div><div className="mb-2 text-[11px] font-bold uppercase tracking-[.18em]" style={{ color: C.coral }}>Finance control room</div><h1 className="text-3xl font-bold">Tally bridge</h1><p className="mt-1 text-sm text-[#668087]">Reconcile the local statutory ledger without duplicate entry.</p></div><div className="flex items-center gap-3"><button onClick={() => dash.refetch()} className="rounded-lg border bg-white p-2.5" style={{ borderColor: C.line }}><RefreshCw size={16} className={dash.isFetching ? "animate-spin" : ""} /></button><span className="rounded-lg border bg-white px-3 py-2 text-xs" style={{ borderColor: C.line }}>{data.connector?.status || data.connector?.connectorStatus || "Not connected"}</span></div></header>
+    {message && <div className={`mb-4 flex justify-between rounded-lg border px-3 py-2 text-sm ${message.ok ? "border-[#b9dccc] bg-[#eff9f3] text-[#26704c]" : "border-[#efc5b9] bg-[#fff3ef] text-[#a63f27]"}`}>{message.text}<button onClick={() => setMessage(undefined)}><X size={15} /></button></div>}
+    <nav className="mb-5 flex gap-1 overflow-x-auto rounded-xl border bg-[#edf2ef] p-1" style={{ borderColor: C.line }}>{tabs.map(([key, label, Icon]: any) => <button key={key} onClick={() => setTab(key)} className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold ${tab === key ? "bg-white text-[#07545f] shadow-sm" : "text-[#668087]"}`}><Icon size={16} />{label}{key === "review" && reviewRows.length > 0 && <b className="rounded-full bg-[#d95d39] px-1.5 text-[10px] text-white">{reviewRows.length}</b>}</button>)}</nav>
+    {tab === "control" && <><div className="grid grid-cols-2 gap-3 lg:grid-cols-5"><Stat label="Processed" value={summary.processed} note="records processed" /><Stat label="Review" value={summary.review} note="held safely" tone="#a37a21" /><Stat label="Failed" value={summary.failed} note="needs attention" tone={C.coral} /><Stat label="Pending" value={summary.pending} note="in queue" tone={C.ink} /><Stat label="Mappings" value={summary.mappings} note="active links" /></div><div className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_.75fr]"><section className="rounded-xl border bg-white p-5" style={{ borderColor: C.line }}><h2 className="font-bold">Queue a controlled sync</h2><div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]"><select value={syncType} onChange={e => setSyncType(e.target.value)} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: C.line }}>{jobs.map(x => <option key={x} value={x}>{x.replaceAll("_", " ")}</option>)}</select><input type="date" value={range.fromDate} onChange={e => setRange({ ...range, fromDate: e.target.value })} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: C.line }} /><input type="date" value={range.toDate} onChange={e => setRange({ ...range, toDate: e.target.value })} className="h-10 rounded-lg border px-3 text-sm" style={{ borderColor: C.line }} />{permit("tally_sync", "canCreate") && <button onClick={queue} disabled={busy} className="rounded-lg px-4 text-sm font-bold text-white disabled:opacity-50" style={{ background: C.teal }}>{busy ? <Loader2 size={15} className="mx-auto animate-spin" /> : "Queue sync"}</button>}</div><div className="mt-4 flex gap-2 rounded-lg bg-[#fffaf0] p-3 text-xs text-[#80672c]"><ShieldCheck size={15} />Unmapped and conflicting entries are never auto-posted.</div></section><section className="rounded-xl border bg-[#07545f] p-5 text-white" style={{ borderColor: C.deep }}><div className="flex items-center justify-between"><h2 className="font-bold">Bridge health</h2><Server size={18} /></div><div className="mt-4 space-y-3 text-sm"><div className="flex justify-between"><span className="text-white/60">Tally</span><b>{data.connector?.tallyStatus || "Unknown"}</b></div><div className="flex justify-between"><span className="text-white/60">Last seen</span><b className="text-xs">{date(data.connector?.lastSeen)}</b></div><div className="flex justify-between"><span className="text-white/60">Last sync</span><b className="text-xs">{date(data.lastSyncAt)}</b></div>{data.connector?.tallyError && <p className="text-xs text-[#ffc3b5]">{data.connector.tallyError}</p>}</div>{canConfig && permit("tally_sync", "canCreate") && <button onClick={() => mutate("/api/tally/test-connection", { method: "POST" }, "Connection test queued")} className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 py-2.5 text-xs font-bold"><Link2 size={14} />Test connection</button>}</section></div><JobTable rows={jobRows.slice(0, 8)} onRetry={act} allowRetry={permit("tally_sync", "canApprove")} /></>}
+    {tab === "review" && <><div className="mb-4 rounded-lg border border-[#ead9a9] bg-[#fffaf0] p-3 text-sm text-[#80672c]"><AlertTriangle size={15} className="mr-2 inline" />Import review only. Sync jobs are shown separately under Sync history.</div><InboxTable rows={reviewRows} onAction={act} onOpen={openInbox} allowAction={permit("tally_sync", "canApprove")} /></>}
+    {tab === "history" && <><JobTable rows={jobRows} onRetry={act} allowRetry={permit("tally_sync", "canApprove")} /><div className="mt-5"><OutboxTable rows={outRows} allowRetry={permit("tally_sync", "canApprove")} retry={(id: string) => mutate(`/api/tally/outbox/${id}/retry`, { method: "POST" }, "Export retry queued")} /></div></>}
+    {tab === "mappings" && <MappingPanel type={mapType} setType={setMapType} rows={mapRows} options={internalOptions} discovered={discovered} form={mapForm} setForm={setMapForm} search={search} setSearch={setSearch} add={addMap} canCreate={permit("tally_mapping", "canCreate")} canDelete={permit("tally_mapping", "canDelete")} remove={(id: string) => mutate(`/api/tally/mappings/${id}`, { method: "DELETE" }, "Mapping deleted")} />}
+    {tab === "settings" && <Settings config={config} setConfig={setConfig} save={save} rotate={rotate} token={token} canSave={permit("tally_configuration", "canEdit")} canRotate={permit("tally_configuration", "canCreate")} />}
+    {detail && <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#16323a]/40 p-4"><div className="max-h-[85vh] w-full max-w-2xl overflow-auto rounded-xl bg-white p-5"><div className="flex justify-between"><h2 className="font-bold">Import detail</h2><button onClick={() => setDetail(undefined)}><X size={18} /></button></div><pre className="mt-4 overflow-auto rounded-lg bg-[#edf2ef] p-4 text-xs">{JSON.stringify(detail, null, 2)}</pre></div></div>}
+  </div></div>;
 }
+
+function JobTable({ rows, onRetry, allowRetry }: { rows: any[]; onRetry: (id: string, action: "retry") => void; allowRetry: boolean }) { return <section className="mt-5 overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.line }}><div className="border-b p-5" style={{ borderColor: C.line }}><h2 className="font-bold">Sync job history</h2><p className="mt-1 text-xs text-[#789096]">Queue status and export outcomes. Approvals are not available here.</p></div><TableHead cols={["Job", "Direction", "Status", "Created", ""]} />{rows.length ? rows.map((j: any) => <div key={j.id} className="grid grid-cols-[1.4fr_.8fr_.8fr_1fr_.4fr] items-center border-t px-5 py-3 text-sm" style={{ borderColor: C.line }}><span className="font-semibold">{j.job_type || j.jobType || "sync"} <small className="ml-2 font-mono text-[#789096]">#{j.id}</small></span><span className="text-xs uppercase text-[#668087]">{j.direction || "—"}</span><Badge value={j.status} /><span className="text-xs text-[#789096]">{date(j.created_at || j.createdAt)}</span>{allowRetry && String(j.status).toLowerCase() === "failed" ? <button onClick={() => onRetry(j.id, "retry")} title="Retry" className="text-[#087f8c]"><RotateCcw size={15} /></button> : null}</div>) : <Empty text="No sync jobs yet." />}</section>; }
+function InboxTable({ rows, onAction, onOpen, allowAction }: { rows: any[]; onAction: (id: string, action: "approve" | "reject") => void; onOpen: (id: string) => void; allowAction: boolean }) { return <section className="overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.line }}><TableHead cols={["Voucher", "Type / date", "Conflict reason", "Status", "Decision"]} />{rows.length ? rows.map((r: any) => <div key={r.id} className="grid grid-cols-[1.2fr_1.1fr_1.4fr_.7fr_.8fr] items-center border-t px-5 py-3 text-sm" style={{ borderColor: C.line }}><button onClick={() => onOpen(r.id)} className="text-left font-semibold text-[#07545f] hover:underline">{r.voucher_number || r.voucherNumber || r.record_identifier || "View record"}<small className="block font-mono text-[11px] text-[#789096]">#{r.id}</small></button><span className="text-xs text-[#668087]">{r.voucher_type || r.voucherType || "—"}<br />{r.voucher_date || r.voucherDate || "—"}</span><span className="text-xs text-[#a63f27]">{r.conflict_reason || r.conflictReason || r.review_reason || "—"}</span><Badge value={r.status} /><div className="flex gap-2">{allowAction && ["pending", "review"].includes(String(r.status).toLowerCase()) && <><button onClick={() => onAction(r.id, "approve")} title="Approve" className="text-[#26704c]"><Check size={16} /></button><button onClick={() => onAction(r.id, "reject")} title="Reject" className="text-[#a63f27]"><X size={16} /></button></>}</div></div>) : <Empty text="No imports are waiting for review." />}</section>; }
+function OutboxTable({ rows, allowRetry, retry }: { rows: any[]; allowRetry: boolean; retry: (id: string) => void }) { return <section className="overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.line }}><TableHead cols={["Export record", "Type", "Status", "Updated", "Result"]} />{rows.length ? rows.map((r: any) => <div key={r.id} className="grid grid-cols-[1.4fr_1fr_.8fr_1fr_1.4fr] border-t px-5 py-3 text-sm" style={{ borderColor: C.line }}><span>{r.record_identifier || r.source_id || r.recordIdentifier || `#${r.id}`}</span><span>{r.source_type || r.entity_type || r.entityType || "—"}</span><Badge value={r.status} /><span className="text-xs text-[#789096]">{date(r.updated_at || r.updatedAt)}</span><span className="text-xs text-[#a63f27]">{r.error_message || r.review_reason || r.error || r.result || "—"}{allowRetry && String(r.status).toLowerCase() === "failed" && <button onClick={() => retry(r.id)} className="ml-2 text-[#087f8c]" title="Retry export"><RotateCcw size={14} /></button>}</span></div>) : <Empty text="No exports recorded yet." />}</section>; }
+function TableHead({ cols }: { cols: string[] }) { return <div className="grid grid-cols-5 bg-[#edf2ef] px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-[#668087]">{cols.map(x => <span key={x}>{x}</span>)}</div>; }
+function Empty({ text }: { text: string }) { return <div className="p-12 text-center text-sm text-[#789096]"><Clipboard size={23} className="mx-auto mb-2 opacity-40" />{text}</div>; }
+
+function MappingPanel({ type, setType, rows, options, discovered, form, setForm, search, setSearch, add, remove, canCreate, canDelete }: any) { return <section className="rounded-xl border bg-white" style={{ borderColor: C.line }}><div className="flex flex-wrap justify-between gap-3 border-b p-5" style={{ borderColor: C.line }}><div><h2 className="font-bold">Mapping register</h2><p className="mt-1 text-xs text-[#789096]">Select ERP records from live master options before linking Tally.</p></div><div className="flex gap-2"><select value={type} onChange={e => { const nextType = e.target.value; setType(nextType); setForm({ ...form, internalId: "", internalType: mappingInternalType(nextType), tallyName: "", tallyGuid: "" }); }} className="h-9 rounded-lg border px-3 text-sm" style={{ borderColor: C.line }}>{types.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select><div className="flex items-center gap-2 rounded-lg border px-2" style={{ borderColor: C.line }}><Search size={14} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter" className="w-24 text-sm outline-none" /></div></div></div>{canCreate && <div className="grid gap-3 border-b bg-[#fbfcfa] p-4 md:grid-cols-[1fr_1fr_1fr_auto]"><select value={form.internalId} onChange={e => setForm({ ...form, internalId: e.target.value, internalType: mappingInternalType(type) })} className="h-9 rounded-lg border px-3 text-sm" style={{ borderColor: C.line }}><option value="">Select ERP record</option>{options.map((o: any) => <option key={o.id || o.value} value={o.id || o.value}>{o.name || o.label || o.ledger_name || o.title || o.id}</option>)}</select><select value={form.tallyName} onChange={e => { const selected = discovered.find((d: any) => (d.tally_name || d.tallyName) === e.target.value); setForm({ ...form, tallyName: e.target.value, tallyGuid: selected?.tally_guid || selected?.tallyGuid || "" }); }} className="h-9 rounded-lg border px-3 text-sm" style={{ borderColor: C.line }}><option value="">Select discovered Tally master</option>{discovered.map((d: any) => <option key={`${d.master_type || d.masterType}:${d.tally_name || d.tallyName}`} value={d.tally_name || d.tallyName}>{d.tally_name || d.tallyName}</option>)}</select><input value={form.tallyName} onChange={e => setForm({ ...form, tallyName: e.target.value, tallyGuid: "" })} placeholder="Or enter exact Tally name" className="h-9 rounded-lg border px-3 text-sm" style={{ borderColor: C.line }} /><button onClick={add} disabled={!form.internalId || !form.tallyName} className="rounded-lg px-4 text-sm font-bold text-white disabled:opacity-40" style={{ background: C.teal }}><Plus size={15} className="mr-1 inline" />Add</button></div>}<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-[#edf2ef] text-left text-[11px] uppercase text-[#668087]"><tr><th className="px-5 py-3">ERP internal ID</th><th className="px-5 py-3">Tally name</th><th className="px-5 py-3">Type</th><th className="px-5 py-3 text-right">Delete</th></tr></thead><tbody>{rows.length ? rows.map((m: any) => <tr key={m.id} className="border-t" style={{ borderColor: C.line }}><td className="px-5 py-3 font-mono text-xs">{m.internal_id || m.internalId || "—"}</td><td className="px-5 py-3 font-semibold text-[#07545f]">{m.tally_name || m.tallyName || "—"}</td><td className="px-5 py-3 text-xs">{m.mapping_type || m.mappingType || type}</td><td className="px-5 py-3 text-right">{canDelete && <button onClick={() => remove(m.id)} className="text-[#a63f27]" title="Delete mapping"><Trash2 size={15} /></button>}</td></tr>) : <tr><td colSpan={4}><Empty text="No mappings for this type." /></td></tr>}</tbody></table></div></section>; }
+
+function Settings({ config, setConfig, save, rotate, token, canSave, canRotate }: any) { const toggles = [["enabled", "Enable bridge"], ["importMasters", "Import masters"], ["importVouchers", "Import vouchers"], ["exportSales", "Export sales"], ["exportPurchases", "Export purchases"], ["stockSyncEnabled", "Stock sync (optional)"]]; return <section className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]"><div className="rounded-xl border bg-white p-5" style={{ borderColor: C.line }}><div className="flex justify-between"><div><h2 className="font-bold">Connection profile</h2><p className="mt-1 text-xs text-[#789096]">Saved directly to the authenticated ERP account.</p></div>{canSave && <button onClick={save} className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold text-white" style={{ background: C.teal }}><Save size={15} />Save</button>}</div><div className="mt-5 grid gap-4 md:grid-cols-2">{[["displayName", "Display name"], ["tallyHost", "Tally host"], ["tallyPort", "Tally port"], ["companyName", "Company name"], ["financialYear", "Financial year"], ["syncIntervalMinutes", "Sync interval (minutes)"]].map(([k, l]) => <label key={k} className="text-xs font-bold uppercase text-[#668087]">{l}<input disabled={!canSave} type={k === "syncIntervalMinutes" ? "number" : "text"} value={config[k]} onChange={e => setConfig({ ...config, [k]: k === "syncIntervalMinutes" ? Number(e.target.value) : e.target.value })} className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-normal normal-case disabled:bg-slate-50" style={{ borderColor: C.line }} /></label>)}</div><div className="mt-5 border-t pt-2" style={{ borderColor: C.line }}>{toggles.map(([k, l]) => <label key={k} className="flex justify-between border-b py-3 text-sm" style={{ borderColor: C.line }}>{l}<input disabled={!canSave} type="checkbox" checked={config[k]} onChange={e => setConfig({ ...config, [k]: e.target.checked })} className="accent-[#087f8c]" /></label>)}</div></div><div className="space-y-5"><div className="rounded-xl border bg-[#07545f] p-5 text-white" style={{ borderColor: C.deep }}><div className="flex items-center gap-2"><Unplug size={18} /><h2 className="font-bold">Connector token</h2></div><p className="mt-3 text-sm text-white/70">Rotate to generate a new credential. The token is shown once.</p>{canRotate && <button onClick={rotate} className="mt-5 w-full rounded-lg bg-white py-2.5 text-sm font-bold text-[#07545f]">Rotate token</button>}{token && <div className="mt-4 rounded-lg bg-black/20 p-3"><input readOnly value={token} className="w-full rounded bg-white/10 p-2 font-mono text-xs" /><div className="mt-2 flex gap-2"><button onClick={() => navigator.clipboard?.writeText(token)} className="rounded bg-white/10 p-2"><Copy size={14} /></button><button onClick={() => { const url = URL.createObjectURL(new Blob([token])); const a = document.createElement("a"); a.href = url; a.download = "tally-connector-token.txt"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 0); }} className="rounded bg-white/10 p-2"><Download size={14} /></button></div></div>}</div><div className="rounded-xl border bg-white p-5 text-sm text-[#668087]" style={{ borderColor: C.line }}><ShieldCheck size={18} className="mb-2" style={{ color: C.teal }} /><p>Connection health is not reconciliation. Review imports and export outcomes before closing the books.</p></div></div></section>; }

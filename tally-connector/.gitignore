@@ -1,0 +1,12 @@
+# Secrets — NEVER commit these
+.env
+connector-config.json
+
+# Runtime
+node_modules/
+*.log
+logs/
+
+# Windows artifacts
+Thumbs.db
+Desktop.ini

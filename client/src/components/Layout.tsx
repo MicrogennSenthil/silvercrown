@@ -134,6 +134,9 @@ const NAV: any[] = [
           { label: "Ledger Report",       href: "/reports/accounts/ledger",              moduleKey: "report_acc_ledger_report" },
           { label: "Trial Balance",       href: "/reports/accounts/trial-balance",       moduleKey: "report_acc_trial_balance" },
           { label: "Ageing List",         href: "/reports/accounts/ageing-list",         moduleKey: "report_acc_ageing_list" },
+          { label: "Profit & Loss",       href: "/reports/accounts/profit-loss",         moduleKey: "report_acc_profit_loss" },
+          { label: "Outstanding Bills",   href: "/reports/accounts/outstanding",         moduleKey: "report_acc_outstanding" },
+          { label: "Bank Reconciliation", href: "/reports/accounts/bank-reconciliation", moduleKey: "report_acc_bank_reconciliation" },
         ],
       },
     ],
@@ -152,7 +155,17 @@ const NAV: any[] = [
 // ─── Rights filtering ──────────────────────────────────────────────────────────
 // Newly added sensitive reports must not be exposed to existing custom roles until
 // an administrator has explicitly granted access in Role Rights.
-const DEFAULT_DENY_MODULES = new Set(["report_eng_sales_statement", "report_inv_purchase_statement"]);
+const DEFAULT_DENY_MODULES = new Set([
+  "report_eng_sales_statement",
+  "report_inv_purchase_statement",
+  "tally_integration",
+  "tally_configuration",
+  "tally_mapping",
+  "tally_sync",
+  "report_acc_profit_loss",
+  "report_acc_outstanding",
+  "report_acc_bank_reconciliation",
+]);
 
 function buildCanView(fullAccess: boolean, rights: { module: string; canView: boolean }[]) {
   if (fullAccess) return (_key: string) => true;

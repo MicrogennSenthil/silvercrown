@@ -1,0 +1,15 @@
+{
+  "_comment": "Copy this file to connector-config.json (gitignored). Fill in real values. NEVER commit connector-config.json.",
+  "erpBaseUrl":           "https://your-erp-server.example.com",
+  "erpConnectorToken":    "REPLACE_WITH_TOKEN_FROM_ERP_ADMIN",
+  "tallyHost":            "localhost",
+  "tallyPort":            9000,
+  "tallyCompany":         "",
+  "pollIntervalMs":       30000,
+  "pollJobLimit":         10,
+  "heartbeatIntervalMs":  60000,
+  "backoffInitialMs":     5000,
+  "backoffMaxMs":         300000,
+  "logLevel":             "info",
+  "connectorId":          ""
+}

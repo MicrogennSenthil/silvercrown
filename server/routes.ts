@@ -1084,15 +1084,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true });
   });
 
-  // Tally Sync Logs
-  app.get("/api/tally/logs", requireAuth, async (_req, res) => res.json(await storage.listTallySyncLogs()));
-  app.post("/api/tally/sync", requireAuth, async (req, res) => {
-    const { syncType } = req.body;
-    // Simulate Tally sync
-    await new Promise(r => setTimeout(r, 1500));
-    const log = await storage.createTallySyncLog({ syncType: syncType || "full", status: "success", recordsSynced: Math.floor(Math.random() * 50) + 1, errorMessage: "" });
-    res.json(log);
-  });
+  // Register full Tally Prime integration routes
+  {
+    const { registerTallyRoutes } = await import("./tallyRoutes");
+    await registerTallyRoutes(app);
+  }
 
   // Users
   app.get("/api/users", requireAuth, requireExplicitModulePermission("usermgmt_users", "can_view"), async (_req, res) => {

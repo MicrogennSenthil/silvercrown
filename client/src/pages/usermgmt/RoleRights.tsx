@@ -105,11 +105,20 @@ const MODULES: ModuleEntry[] = [
   { type: "item",   key: "report_acc_ledger_report",            label: "Ledger Report" },
   { type: "item",   key: "report_acc_trial_balance",            label: "Trial Balance" },
   { type: "item",   key: "report_acc_ageing_list",              label: "Ageing List" },
+  { type: "item",   key: "report_acc_profit_loss",               label: "Profit & Loss" },
+  { type: "item",   key: "report_acc_outstanding",               label: "Outstanding Bills" },
+  { type: "item",   key: "report_acc_bank_reconciliation",       label: "Bank Reconciliation" },
+
+  // ── Tally Integration ──
+  { type: "header",                                             label: "Tally Integration" },
+  { type: "item",   key: "tally_integration",                   label: "Tally Dashboard" },
+  { type: "item",   key: "tally_configuration",                 label: "Tally Configuration" },
+  { type: "item",   key: "tally_mapping",                       label: "Tally Mapping" },
+  { type: "item",   key: "tally_sync",                          label: "Tally Sync & Review" },
 
   // ── Other ──
   { type: "header",                                             label: "Other" },
   { type: "item",   key: "tasks_reminders",                     label: "Tasks & Reminders" },
-  { type: "item",   key: "tally_integration",                   label: "Tally Integration" },
   { type: "item",   key: "reprint",                             label: "Reprint" },
 
   // ── User Management ──

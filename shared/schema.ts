@@ -878,3 +878,206 @@ export const billAdjustments = pgTable("bill_adjustments", {
 export const insertBillAdjustmentSchema = createInsertSchema(billAdjustments).omit({ id: true, createdAt: true });
 export type InsertBillAdjustment = z.infer<typeof insertBillAdjustmentSchema>;
 export type BillAdjustment = typeof billAdjustments.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════
+// TALLY PRIME INTEGRATION TABLES
+// ═══════════════════════════════════════════════════════════════════
+
+// Tally Configuration — one row per company (singleton pattern, keyed by company)
+export const tallyConfig = pgTable("tally_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: text("company_name").notNull(),           // Tally company name (user-configured)
+  displayName: text("display_name").notNull().default(""), // friendly display name
+  tallyHost: text("tally_host").notNull().default("localhost"),
+  tallyPort: integer("tally_port").notNull().default(9000),
+  financialYear: text("financial_year").default(""),     // e.g. "2025-26"
+  enableStockSync: boolean("enable_stock_sync").default(false),
+  importMastersEnabled: boolean("import_masters_enabled").default(true),
+  importVouchersEnabled: boolean("import_vouchers_enabled").default(true),
+  exportSalesEnabled: boolean("export_sales_enabled").default(false),
+  exportPurchasesEnabled: boolean("export_purchases_enabled").default(false),
+  autoApproveMapped: boolean("auto_approve_mapped").default(false),
+  syncIntervalMinutes: integer("sync_interval_minutes").default(0),
+  lastScheduledAt: timestamp("last_scheduled_at"),
+  lastTallyStatus: text("last_tally_status").default(""),
+  lastTallyError: text("last_tally_error").default(""),
+  isActive: boolean("is_active").default(true),
+  // Connector token: only SHA-256 hash stored here; plaintext returned only at generation
+  connectorTokenHash: text("connector_token_hash").default(""),
+  connectorTokenHint: text("connector_token_hint").default(""),  // last 6 chars
+  connectorTokenRotatedAt: timestamp("connector_token_rotated_at"),
+  lastHeartbeatAt: timestamp("last_heartbeat_at"),
+  connectorVersion: text("connector_version").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertTallyConfigSchema = createInsertSchema(tallyConfig).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTallyConfig = z.infer<typeof insertTallyConfigSchema>;
+export type TallyConfig = typeof tallyConfig.$inferSelect;
+
+// Discovered masters from Tally (ledgers, voucher types, stock items, cost centres)
+// Populated by connector after discover_masters job; used for mapping UI dropdowns.
+export const tallyDiscoveredMasters = pgTable("tally_discovered_masters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id").references(() => tallyConfig.id),
+  masterType: text("master_type").notNull(),   // ledger | voucher_type | stock_item | cost_centre
+  tallyName: text("tally_name").notNull(),
+  tallyGuid: text("tally_guid").default(""),
+  tallyGroup: text("tally_group").default(""),
+  extra: json("extra").$type<Record<string, any>>().default({}),
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type TallyDiscoveredMaster = typeof tallyDiscoveredMasters.$inferSelect;
+
+// Ledger / party / tax / bank / stock mappings from Tally names → internal IDs
+export const tallyMappings = pgTable("tally_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id").references(() => tallyConfig.id),
+  mappingType: text("mapping_type").notNull(), // general_ledger | sub_ledger | customer | supplier | bank | voucher_type | gst_ledger | round_off_ledger | freight_ledger | discount_ledger | stock | party | ledger
+  tallyName: text("tally_name").notNull(),     // exact Tally ledger/group/item name
+  tallyGuid: text("tally_guid").default(""),
+  internalId: varchar("internal_id"),          // FK to internal GL/SL/tax/bank/product
+  internalType: text("internal_type").default(""), // general_ledger | sub_ledger | tax_rate | bank | product
+  notes: text("notes").default(""),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertTallyMappingSchema = createInsertSchema(tallyMappings).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTallyMapping = z.infer<typeof insertTallyMappingSchema>;
+export type TallyMapping = typeof tallyMappings.$inferSelect;
+
+// Sync Jobs — queued commands for connector (import/export)
+export const tallySyncJobs = pgTable("tally_sync_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id").references(() => tallyConfig.id),
+  jobType: text("job_type").notNull(), // import_masters | import_vouchers | export_sales | export_purchases | full
+  direction: text("direction").notNull().default("inbound"), // inbound | outbound
+  status: text("status").notNull().default("queued"), // queued | leased | completed | failed | cancelled
+  priority: integer("priority").notNull().default(5),
+  fromDate: date("from_date"),
+  toDate: date("to_date"),
+  payload: json("payload").$type<Record<string, any>>().default({}),
+  leasedAt: timestamp("leased_at"),
+  leasedBy: text("leased_by").default(""),  // connector instance ID
+  completedAt: timestamp("completed_at"),
+  resultSummary: text("result_summary").default(""),
+  errorMessage: text("error_message").default(""),
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(3),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertTallySyncJobSchema = createInsertSchema(tallySyncJobs).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTallySyncJob = z.infer<typeof insertTallySyncJobSchema>;
+export type TallySyncJob = typeof tallySyncJobs.$inferSelect;
+
+// Inbound voucher inbox — raw vouchers received from Tally connector, pending review
+export const tallyVoucherInbox = pgTable("tally_voucher_inbox", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id").references(() => tallyConfig.id),
+  jobId: varchar("job_id").references(() => tallySyncJobs.id),
+  externalId: text("external_id").notNull(),        // Tally GUID / alteration ID
+  alterationId: text("alteration_id").default(""),
+  voucherType: text("voucher_type").notNull(),
+  voucherNumber: text("voucher_number").notNull(),
+  voucherDate: date("voucher_date").notNull(),
+  narration: text("narration").default(""),
+  company: text("company").default(""),
+  financialYear: text("financial_year").default(""),
+  checksum: text("checksum").default(""),
+  rawPayload: json("raw_payload").$type<Record<string, any>>().default({}),
+  status: text("status").notNull().default("review"), // review | approved | rejected | posted | conflict
+  reviewNotes: text("review_notes").default(""),
+  conflictReason: text("conflict_reason").default(""),
+  postedVoucherMasId: varchar("posted_voucher_mas_id"),
+  reviewedBy: varchar("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertTallyVoucherInboxSchema = createInsertSchema(tallyVoucherInbox).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTallyVoucherInbox = z.infer<typeof insertTallyVoucherInboxSchema>;
+export type TallyVoucherInbox = typeof tallyVoucherInbox.$inferSelect;
+
+// Outbound job records — per-record export tasks for ERP → Tally
+export const tallyOutbox = pgTable("tally_outbox", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id").references(() => tallyConfig.id),
+  syncJobId: varchar("sync_job_id").references(() => tallySyncJobs.id),
+  sourceType: text("source_type").notNull(),  // job_work_invoice | grn
+  sourceId: varchar("source_id").notNull(),
+  voucherType: text("voucher_type").notNull(), // Sales Invoice | Purchase Invoice
+  status: text("status").notNull().default("queued"), // queued | review | sent | failed | cancelled
+  payload: json("payload").$type<Record<string, any>>().default({}),
+  reviewReason: text("review_reason").default(""),
+  sentAt: timestamp("sent_at"),
+  leasedAt: timestamp("leased_at"),
+  leasedBy: text("leased_by").default(""),
+  errorMessage: text("error_message").default(""),
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(3),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertTallyOutboxSchema = createInsertSchema(tallyOutbox).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTallyOutbox = z.infer<typeof insertTallyOutboxSchema>;
+export type TallyOutbox = typeof tallyOutbox.$inferSelect;
+
+// External references — permanent link between internal records and Tally GUIDs
+export const tallyExternalRefs = pgTable("tally_external_refs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id").references(() => tallyConfig.id),
+  internalTable: text("internal_table").notNull(),   // voucher_mas | job_work_invoices | goods_receipt_notes
+  internalId: varchar("internal_id").notNull(),
+  externalSystem: text("external_system").notNull().default("tally"),
+  externalId: text("external_id").notNull(),          // Tally GUID
+  externalRef: text("external_ref").default(""),      // Tally voucher number
+  syncedAt: timestamp("synced_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export const insertTallyExternalRefSchema = createInsertSchema(tallyExternalRefs).omit({ id: true, createdAt: true });
+export type InsertTallyExternalRef = z.infer<typeof insertTallyExternalRefSchema>;
+export type TallyExternalRef = typeof tallyExternalRefs.$inferSelect;
+
+// Audit log for all Tally integration events
+export const tallyAuditLog = pgTable("tally_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id"),
+  eventType: text("event_type").notNull(), // config_change | token_rotate | job_enqueue | voucher_import | voucher_approve | voucher_reject | export_sent | heartbeat
+  entityType: text("entity_type").default(""),
+  entityId: varchar("entity_id"),
+  actorType: text("actor_type").notNull().default("user"), // user | connector
+  actorId: varchar("actor_id"),
+  description: text("description").default(""),
+  meta: json("meta").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type TallyAuditLog = typeof tallyAuditLog.$inferSelect;
+
+// Bank reconciliation records
+export const tallyBankRecon = pgTable("tally_bank_recon", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configId: varchar("config_id").references(() => tallyConfig.id),
+  bankLedgerName: text("bank_ledger_name").notNull(),  // Tally bank ledger name
+  internalGlId: varchar("internal_gl_id"),
+  externalId: text("external_id").notNull().default(""),
+  voucherNumber: text("voucher_number").notNull().default(""),
+  instrumentNumber: text("instrument_number").notNull().default(""),
+  transactionType: text("transaction_type").notNull().default(""),
+  allocationKey: text("allocation_key").notNull().default(""),
+  statementDate: date("statement_date").notNull(),
+  statementBalance: decimal("statement_balance", { precision: 15, scale: 2 }).notNull().default("0"),
+  bookBalance: decimal("book_balance", { precision: 15, scale: 2 }).default("0"),
+  difference: decimal("difference", { precision: 15, scale: 2 }).default("0"),
+  reconStatus: text("recon_status").notNull().default("pending"), // pending | matched | unmatched
+  tallyData: json("tally_data").$type<Record<string, any>>().default({}),
+  lastSyncAt: timestamp("last_sync_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertTallyBankReconSchema = createInsertSchema(tallyBankRecon).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTallyBankRecon = z.infer<typeof insertTallyBankReconSchema>;
+export type TallyBankRecon = typeof tallyBankRecon.$inferSelect;
