@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import passport from "passport";
 import multer from "multer";
@@ -270,6 +270,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
        VALUES (gen_random_uuid()::text,$1,$2,$3,'BillToBill',true) RETURNING id`,
       [`SL-${Date.now()}`, name, glId]);
     return res.rows[0].id;
+  }
+
+  function requireModuleView(module: string) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      const user = req.user as any;
+      const roleId = user?.userRoleId || user?.user_role_id;
+      // Sales data is sensitive: only an administrator or an explicit custom-role
+      // view grant may access it. Accounts without a custom role are denied.
+      if (user?.role === "admin") return next();
+      if (!roleId) {
+        return res.status(403).json({ message: "You do not have permission to view this report." });
+      }
+      try {
+        const { pool } = await import("./db");
+        const right = (await pool.query(
+          `SELECT can_view FROM role_rights WHERE role_id=$1 AND module=$2 LIMIT 1`,
+          [roleId, module],
+        )).rows[0];
+        if (!right?.can_view) {
+          return res.status(403).json({ message: "You do not have permission to view this report." });
+        }
+        next();
+      } catch (e: any) {
+        res.status(500).json({ message: e.message });
+      }
+    };
+  }
+
+  function requireExplicitModulePermission(
+    module: "usermgmt_users" | "usermgmt_roles" | "usermgmt_role_rights",
+    permission: "can_view" | "can_create" | "can_edit" | "can_delete",
+  ) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      const user = req.user as any;
+      const roleId = user?.userRoleId || user?.user_role_id;
+      if (user?.role === "admin") return next();
+      if (!roleId) {
+        return res.status(403).json({ message: "You do not have permission to manage role access." });
+      }
+      try {
+        const { pool } = await import("./db");
+        const right = (await pool.query(
+          `SELECT can_view, can_create, can_edit, can_delete
+           FROM role_rights
+           WHERE role_id=$1 AND module=$2
+           LIMIT 1`,
+          [roleId, module],
+        )).rows[0];
+        if (!right?.[permission]) {
+          return res.status(403).json({ message: "You do not have permission to manage role access." });
+        }
+        next();
+      } catch (e: any) {
+        res.status(500).json({ message: e.message });
+      }
+    };
   }
 
   // Shared fields from supplier/customer for cross-creation
@@ -1039,26 +1095,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Users
-  app.get("/api/users", requireAuth, async (_req, res) => {
+  app.get("/api/users", requireAuth, requireExplicitModulePermission("usermgmt_users", "can_view"), async (_req, res) => {
     const list = await storage.listUsers();
     res.json(list.map(({ password: _, ...u }) => u));
   });
-  app.post("/api/users", requireAuth, async (req, res) => {
+  app.post("/api/users", requireAuth, requireExplicitModulePermission("usermgmt_users", "can_create"), async (req, res) => {
     try {
-      const u = await storage.createUser(req.body);
+      const data = (req.user as any)?.role === "admin"
+        ? req.body
+        : { ...req.body, role: "user", userRoleId: null, user_role_id: null };
+      const u = await storage.createUser(data);
       const { password: _, ...safe } = u;
       res.json(safe);
     } catch (err: any) { res.status(400).json({ message: err.message }); }
   });
-  app.patch("/api/users/:id", requireAuth, async (req, res) => {
+  app.patch("/api/users/:id", requireAuth, requireExplicitModulePermission("usermgmt_users", "can_edit"), async (req, res) => {
     try {
-      const u = await storage.updateUser(req.params.id, req.body);
+      const data = { ...req.body };
+      const requester = req.user as any;
+      const userId = String(req.params.id);
+      if (requester?.role !== "admin") {
+        const target = await storage.getUser(userId);
+        if (!target || target.role === "admin") {
+          return res.status(403).json({ message: "You cannot modify an administrator account." });
+        }
+        delete data.role;
+        delete data.userRoleId;
+        delete data.user_role_id;
+        delete data.password;
+      }
+      const u = await storage.updateUser(userId, data);
       const { password: _, ...safe } = u;
       res.json(safe);
     } catch (err: any) { res.status(400).json({ message: err.message }); }
   });
-  app.delete("/api/users/:id", requireAuth, async (req, res) => {
-    await storage.deleteUser(req.params.id); res.json({ ok: true });
+  app.delete("/api/users/:id", requireAuth, requireExplicitModulePermission("usermgmt_users", "can_delete"), async (req, res) => {
+    const userId = String(req.params.id);
+    const requester = req.user as any;
+    if (requester?.role !== "admin") {
+      const target = await storage.getUser(userId);
+      if (!target || target.role === "admin") {
+        return res.status(403).json({ message: "You cannot delete an administrator account." });
+      }
+    }
+    await storage.deleteUser(userId); res.json({ ok: true });
   });
 
   // Employees
@@ -1074,32 +1154,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // User Roles
-  app.get("/api/user-roles", requireAuth, async (_req, res) => res.json(await storage.listUserRoles()));
-  app.post("/api/user-roles", requireAuth, async (req, res) => {
+  app.get("/api/user-roles", requireAuth, requireExplicitModulePermission("usermgmt_roles", "can_view"), async (_req, res) => res.json(await storage.listUserRoles()));
+  app.post("/api/user-roles", requireAuth, requireExplicitModulePermission("usermgmt_roles", "can_create"), async (req, res) => {
     try { res.json(await storage.createUserRole(req.body)); } catch (err: any) { res.status(400).json({ message: err.message }); }
   });
-  app.patch("/api/user-roles/:id", requireAuth, async (req, res) => {
-    res.json(await storage.updateUserRole(req.params.id, req.body));
+  app.patch("/api/user-roles/:id", requireAuth, requireExplicitModulePermission("usermgmt_roles", "can_edit"), async (req, res) => {
+    res.json(await storage.updateUserRole(String(req.params.id), req.body));
   });
-  app.delete("/api/user-roles/:id", requireAuth, async (req, res) => {
-    await storage.deleteUserRole(req.params.id); res.json({ ok: true });
+  app.delete("/api/user-roles/:id", requireAuth, requireExplicitModulePermission("usermgmt_roles", "can_delete"), async (req, res) => {
+    await storage.deleteUserRole(String(req.params.id)); res.json({ ok: true });
   });
 
   // Role Rights
-  app.get("/api/user-roles/:id/rights", requireAuth, async (req, res) => {
-    res.json(await storage.listRoleRights(req.params.id));
+  app.get("/api/user-roles/:id/rights", requireAuth, requireExplicitModulePermission("usermgmt_role_rights", "can_view"), async (req, res) => {
+    res.json(await storage.listRoleRights(String(req.params.id)));
   });
-  app.put("/api/user-roles/:id/rights", requireAuth, async (req, res) => {
-    res.json(await storage.upsertRoleRights(req.params.id, req.body.rights));
+  app.put("/api/user-roles/:id/rights", requireAuth, requireExplicitModulePermission("usermgmt_role_rights", "can_edit"), async (req, res) => {
+    const targetRoleId = String(req.params.id);
+    const requester = req.user as any;
+    const requesterRoleId = requester?.userRoleId || requester?.user_role_id;
+    if (requester?.role !== "admin" && requesterRoleId === targetRoleId) {
+      return res.status(403).json({ message: "You cannot change permissions for your own role." });
+    }
+    res.json(await storage.upsertRoleRights(targetRoleId, req.body.rights));
   });
 
   // Current user's effective rights (used by sidebar to filter menu items)
   app.get("/api/my-rights", requireAuth, async (req, res) => {
     const user = req.user as any;
-    if (user.role === "admin" || !user.userRoleId) {
+    if (user.role === "admin") {
       return res.json({ fullAccess: true, rights: [] });
     }
-    const rights = await storage.listRoleRights(user.userRoleId);
+    const roleId = user.userRoleId || user.user_role_id;
+    const rights = roleId ? await storage.listRoleRights(roleId) : [];
     res.json({ fullAccess: false, rights });
   });
 
@@ -4191,6 +4278,152 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         ORDER BY d.despatch_date, d.created_at, di.seq_no
       `, [from, to])).rows;
       res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/reports/consolidated-sales-statement — job work invoice sales, in summary or item-detail form
+  app.get("/api/reports/consolidated-sales-statement", requireAuth, requireModuleView("report_eng_sales_statement"), async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const from      = (req.query.from       as string) || "2000-01-01";
+      const to        = (req.query.to         as string) || "2099-12-31";
+      const partyId   = (req.query.party_id   as string) || "";
+      const partyName = (req.query.party_name as string) || "";
+      const itemId    = (req.query.item_id    as string) || "";
+      const itemName  = (req.query.item_name  as string) || "";
+      const taxMode   = req.query.tax_mode === "without_tax" ? "without_tax" : "with_tax";
+      const mode      = req.query.mode === "detailed" ? "detailed" : "summary";
+      const params    = [from, to, partyId, partyName, itemId, itemName, taxMode];
+
+      const summarySql = `
+        WITH invoice_charges AS (
+          SELECT invoice_id, COALESCE(SUM(amount), 0) AS charge_amount
+          FROM job_work_invoice_charges
+          GROUP BY invoice_id
+        )
+        SELECT
+          inv.id AS invoice_id,
+          inv.invoice_date,
+          inv.voucher_no AS invoice_no,
+          inv.party_id,
+          COALESCE(c.name, inv.party_name_manual, '') AS party_name,
+          COALESCE(SUM(ii.amount), 0) AS taxable_amount,
+          CASE WHEN $7 = 'without_tax' THEN 0
+               ELSE COALESCE(SUM(COALESCE(ii.cgst_amt, 0) + COALESCE(ii.sgst_amt, 0) + COALESCE(ii.igst_amt, 0)), 0)
+          END AS tax_amount,
+          COALESCE(ic.charge_amount, 0) AS charge_amount,
+          COALESCE(SUM(ii.amount), 0)
+            + COALESCE(ic.charge_amount, 0)
+            + CASE WHEN $7 = 'without_tax' THEN 0
+                   ELSE COALESCE(SUM(COALESCE(ii.cgst_amt, 0) + COALESCE(ii.sgst_amt, 0) + COALESCE(ii.igst_amt, 0)), 0)
+              END AS invoice_total
+        FROM job_work_invoices inv
+        JOIN job_work_invoice_items ii ON ii.invoice_id = inv.id
+        LEFT JOIN customers c ON c.id = inv.party_id
+        LEFT JOIN invoice_charges ic ON ic.invoice_id = inv.id
+        WHERE inv.invoice_date BETWEEN $1 AND $2
+          AND UPPER(COALESCE(inv.status, 'SAVED')) <> 'CANCELLED'
+          AND ($3 = '' OR inv.party_id = $3)
+          AND ($4 = '' OR COALESCE(c.name, inv.party_name_manual, '') = $4)
+          AND (
+            ($5 = '' AND $6 = '')
+            OR EXISTS (
+              SELECT 1
+              FROM job_work_invoice_items matched_item
+              WHERE matched_item.invoice_id = inv.id
+                AND ($5 = '' OR matched_item.item_id = $5)
+                AND ($6 = '' OR matched_item.item_name = $6)
+            )
+          )
+        GROUP BY inv.id, inv.invoice_date, inv.voucher_no, inv.party_id,
+                 c.name, inv.party_name_manual, inv.created_at, ic.charge_amount
+        ORDER BY inv.invoice_date DESC, inv.created_at DESC, inv.voucher_no DESC
+      `;
+
+      const detailSql = `
+        WITH invoice_charges AS (
+          SELECT invoice_id, COALESCE(SUM(amount), 0) AS charge_amount
+          FROM job_work_invoice_charges
+          GROUP BY invoice_id
+        ),
+        invoice_totals AS (
+          SELECT
+            invoice_id,
+            COALESCE(SUM(amount), 0) AS taxable_amount,
+            COALESCE(SUM(COALESCE(cgst_amt, 0) + COALESCE(sgst_amt, 0) + COALESCE(igst_amt, 0)), 0) AS tax_amount
+          FROM job_work_invoice_items
+          GROUP BY invoice_id
+        )
+        SELECT
+          inv.id AS invoice_id,
+          inv.invoice_date,
+          inv.voucher_no AS invoice_no,
+          inv.party_id,
+          COALESCE(c.name, inv.party_name_manual, '') AS party_name,
+          ii.id AS invoice_item_id,
+          ii.item_id,
+          ii.item_code,
+          ii.item_name,
+          ii.unit,
+          ii.qty_despatched AS qty,
+          ii.rate,
+          COALESCE(ii.amount, 0) AS taxable_amount,
+          CASE WHEN $7 = 'without_tax' THEN 0
+               ELSE COALESCE(ii.cgst_amt, 0) + COALESCE(ii.sgst_amt, 0) + COALESCE(ii.igst_amt, 0)
+          END AS tax_amount,
+          COALESCE(ic.charge_amount, 0) AS charge_amount,
+          COALESCE(it.taxable_amount, 0)
+            + COALESCE(ic.charge_amount, 0)
+            + CASE WHEN $7 = 'without_tax' THEN 0
+                   ELSE COALESCE(it.tax_amount, 0)
+              END AS invoice_total
+        FROM job_work_invoices inv
+        JOIN job_work_invoice_items ii ON ii.invoice_id = inv.id
+        JOIN invoice_totals it ON it.invoice_id = inv.id
+        LEFT JOIN customers c ON c.id = inv.party_id
+        LEFT JOIN invoice_charges ic ON ic.invoice_id = inv.id
+        WHERE inv.invoice_date BETWEEN $1 AND $2
+          AND UPPER(COALESCE(inv.status, 'SAVED')) <> 'CANCELLED'
+          AND ($3 = '' OR inv.party_id = $3)
+          AND ($4 = '' OR COALESCE(c.name, inv.party_name_manual, '') = $4)
+          AND (
+            ($5 = '' AND $6 = '')
+            OR EXISTS (
+              SELECT 1
+              FROM job_work_invoice_items matched_item
+              WHERE matched_item.invoice_id = inv.id
+                AND ($5 = '' OR matched_item.item_id = $5)
+                AND ($6 = '' OR matched_item.item_name = $6)
+            )
+          )
+        ORDER BY inv.invoice_date DESC, inv.created_at DESC, inv.voucher_no DESC, ii.seq_no
+      `;
+
+      const [report, parties, items] = await Promise.all([
+        pool.query(mode === "detailed" ? detailSql : summarySql, params),
+        pool.query(`
+          SELECT DISTINCT
+            inv.party_id,
+            COALESCE(c.name, inv.party_name_manual, '') AS party_name
+          FROM job_work_invoices inv
+          LEFT JOIN customers c ON c.id = inv.party_id
+          WHERE inv.invoice_date BETWEEN $1 AND $2
+            AND UPPER(COALESCE(inv.status, 'SAVED')) <> 'CANCELLED'
+            AND COALESCE(c.name, inv.party_name_manual, '') <> ''
+          ORDER BY party_name
+        `, [from, to]),
+        pool.query(`
+          SELECT DISTINCT ii.item_id, ii.item_name
+          FROM job_work_invoice_items ii
+          JOIN job_work_invoices inv ON inv.id = ii.invoice_id
+          WHERE inv.invoice_date BETWEEN $1 AND $2
+            AND UPPER(COALESCE(inv.status, 'SAVED')) <> 'CANCELLED'
+            AND COALESCE(ii.item_name, '') <> ''
+          ORDER BY ii.item_name
+        `, [from, to]),
+      ]);
+
+      res.json({ rows: report.rows, parties: parties.rows, items: items.rows });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

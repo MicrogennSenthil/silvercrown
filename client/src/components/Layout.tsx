@@ -106,6 +106,7 @@ const NAV: any[] = [
           { label: "Despatch Pending",       href: "/reports/engineering/despatch-pending",       moduleKey: "report_eng_despatch_pending" },
           { label: "Invoice Pending",        href: "/reports/engineering/invoice-pending",        moduleKey: "report_eng_invoice_pending" },
           { label: "Despatch Register",      href: "/reports/engineering/despatch-register",      moduleKey: "report_eng_despatch_register" },
+          { label: "Sales Statement",        href: "/reports/engineering/sales-statement",        moduleKey: "report_eng_sales_statement" },
           { label: "Process Outward Report", href: "/reports/engineering/process-outward-register", moduleKey: "report_eng_process_outward" },
           { label: "Process Inward Report",  href: "/reports/engineering/process-inward-register",  moduleKey: "report_eng_process_inward" },
         ],
@@ -148,12 +149,17 @@ const NAV: any[] = [
 ];
 
 // ─── Rights filtering ──────────────────────────────────────────────────────────
+// Newly added sensitive reports must not be exposed to existing custom roles until
+// an administrator has explicitly granted access in Role Rights.
+const DEFAULT_DENY_MODULES = new Set(["report_eng_sales_statement"]);
+
 function buildCanView(fullAccess: boolean, rights: { module: string; canView: boolean }[]) {
   if (fullAccess) return (_key: string) => true;
   const map = new Map(rights.map(r => [r.module, r.canView]));
   // If a module has no entry saved yet, default to true so existing menus aren't
-  // silently hidden when admin hasn't explicitly configured the role yet.
-  return (key: string) => map.has(key) ? (map.get(key) ?? false) : true;
+  // silently hidden when admin hasn't explicitly configured the role yet. Sensitive
+  // additions are the exception: they remain hidden until explicitly granted.
+  return (key: string) => map.has(key) ? (map.get(key) ?? false) : !DEFAULT_DENY_MODULES.has(key);
 }
 
 function filterNav(items: any[], canView: (key: string) => boolean): any[] {

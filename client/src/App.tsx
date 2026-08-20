@@ -1,6 +1,6 @@
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
@@ -56,6 +56,7 @@ import JobWorkPendingReport from "@/pages/reports/JobWorkPending";
 import DespatchPendingReport from "@/pages/reports/DespatchPending";
 import InvoicePendingReport   from "@/pages/reports/InvoicePending";
 import DespatchRegisterReport from "@/pages/reports/DespatchRegister";
+import ConsolidatedSalesStatement from "@/pages/reports/ConsolidatedSalesStatement";
 import ProcessOutwardRegister from "@/pages/reports/ProcessOutwardRegister";
 import ProcessInwardRegister  from "@/pages/reports/ProcessInwardRegister";
 import StockReport             from "@/pages/reports/StockReport";
@@ -78,8 +79,16 @@ import Users from "@/pages/usermgmt/Users";
 import Roles from "@/pages/usermgmt/Roles";
 import RoleRights from "@/pages/usermgmt/RoleRights";
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
-  const { isAuthenticated, isLoading } = useAuth();
+function ProtectedRoute({ component: Component, moduleKey }: { component: React.ComponentType; moduleKey?: string }) {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const { data: rightsData, isLoading: isRightsLoading } = useQuery<{
+    fullAccess: boolean;
+    rights: { module: string; canView: boolean }[];
+  }>({
+    queryKey: ["/api/my-rights"],
+    enabled: !!moduleKey && isAuthenticated,
+    staleTime: 60_000,
+  });
   if (isLoading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "#f5f0ed" }}>
       <div className="flex flex-col items-center gap-4">
@@ -89,6 +98,16 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     </div>
   );
   if (!isAuthenticated) return <Redirect to="/" />;
+  if (moduleKey && isRightsLoading) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#f5f0ed" }}>
+      <div className="w-8 h-8 border-4 rounded-full animate-spin" style={{ borderColor: "#027fa5", borderTopColor: "transparent" }} />
+    </div>
+  );
+  if (moduleKey) {
+    const canView = user?.role === "admin"
+      || rightsData?.rights.find(right => right.module === moduleKey)?.canView === true;
+    if (!canView) return <Redirect to="/dashboard" />;
+  }
   return <Layout><Component /></Layout>;
 }
 
@@ -170,6 +189,7 @@ function Router() {
       <Route path="/reports/engineering/despatch-pending"><ProtectedRoute component={DespatchPendingReport} /></Route>
       <Route path="/reports/engineering/invoice-pending"><ProtectedRoute component={InvoicePendingReport} /></Route>
       <Route path="/reports/engineering/despatch-register"><ProtectedRoute component={DespatchRegisterReport} /></Route>
+      <Route path="/reports/engineering/sales-statement"><ProtectedRoute component={ConsolidatedSalesStatement} moduleKey="report_eng_sales_statement" /></Route>
       <Route path="/reports/engineering/process-outward-register"><ProtectedRoute component={ProcessOutwardRegister} /></Route>
       <Route path="/reports/engineering/process-inward-register"><ProtectedRoute component={ProcessInwardRegister} /></Route>
       {/* Inventory Reports */}
