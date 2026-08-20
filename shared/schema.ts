@@ -1002,6 +1002,18 @@ export const insertTallyVoucherInboxSchema = createInsertSchema(tallyVoucherInbo
 export type InsertTallyVoucherInbox = z.infer<typeof insertTallyVoucherInboxSchema>;
 export type TallyVoucherInbox = typeof tallyVoucherInbox.$inferSelect;
 
+// Permanent idempotency claim for Tally voucher posting. This remains after a
+// successful post so an inbox record can never create a second ERP voucher.
+export const tallyPostingClaims = pgTable("tally_posting_claims", {
+  inboxId: varchar("inbox_id").primaryKey().references(() => tallyVoucherInbox.id, { onDelete: "cascade" }),
+  configId: varchar("config_id").notNull().references(() => tallyConfig.id, { onDelete: "cascade" }),
+  externalId: text("external_id").notNull(),
+  voucherMasId: varchar("voucher_mas_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type TallyPostingClaim = typeof tallyPostingClaims.$inferSelect;
+
 // Outbound job records — per-record export tasks for ERP → Tally
 export const tallyOutbox = pgTable("tally_outbox", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -166,6 +166,27 @@ export async function ensureTallySchema(): Promise<void> {
     `CREATE UNIQUE INDEX IF NOT EXISTS tally_voucher_inbox_ext_uidx
        ON tally_voucher_inbox(config_id, external_id)`,
 
+    `CREATE TABLE IF NOT EXISTS tally_posting_claims (
+      inbox_id       varchar PRIMARY KEY REFERENCES tally_voucher_inbox(id) ON DELETE CASCADE,
+      config_id      varchar  NOT NULL REFERENCES tally_config(id) ON DELETE CASCADE,
+      external_id    text     NOT NULL,
+      voucher_mas_id varchar,
+      created_at     timestamp DEFAULT now(),
+      updated_at     timestamp DEFAULT now()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS tally_posting_claims_ext_uidx
+       ON tally_posting_claims(config_id, external_id)`,
+    `INSERT INTO tally_posting_claims
+       (inbox_id, config_id, external_id, voucher_mas_id)
+     SELECT id, config_id, external_id, posted_voucher_mas_id
+     FROM tally_voucher_inbox
+     WHERE status='posted'
+       AND config_id IS NOT NULL
+       AND posted_voucher_mas_id IS NOT NULL
+     ON CONFLICT (inbox_id) DO UPDATE SET
+       voucher_mas_id=EXCLUDED.voucher_mas_id,
+       updated_at=now()`,
+
     // tally_outbox
     `CREATE TABLE IF NOT EXISTS tally_outbox (
       id              varchar  PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -546,6 +567,45 @@ export async function resolveMappings(
   return { resolved, unmapped: Object.keys(unmappedMap) };
 }
 
+export async function updateInboundVoucherForReview(opts: {
+  inboxId: string;
+  configId: string;
+  voucher: InboundVoucher;
+  conflictReason: string;
+}): Promise<"updated" | "already_posted" | "missing"> {
+  const { inboxId, configId, voucher, conflictReason } = opts;
+  const updated = await pool.query(
+    `UPDATE tally_voucher_inbox
+     SET alteration_id=$1, voucher_type=$2, voucher_number=$3, voucher_date=$4,
+         narration=$5, company=$6, financial_year=$7, checksum=$8,
+         raw_payload=$9::jsonb, status='review', conflict_reason=$10, updated_at=now()
+     WHERE id=$11 AND config_id=$12 AND status!='posted'
+     RETURNING id`,
+    [
+      voucher.alterationId || "",
+      voucher.voucherType,
+      voucher.voucherNumber,
+      voucher.voucherDate,
+      voucher.narration || "",
+      voucher.company,
+      voucher.financialYear || "",
+      voucher.checksum || "",
+      JSON.stringify(voucher),
+      conflictReason,
+      inboxId,
+      configId,
+    ]
+  );
+  if (updated.rows[0]) return "updated";
+
+  const current = await pool.query(
+    `SELECT status FROM tally_voucher_inbox WHERE id=$1 AND config_id=$2`,
+    [inboxId, configId]
+  );
+  if (current.rows[0]?.status === "posted") return "already_posted";
+  return "missing";
+}
+
 // ─── Post approved inbound voucher transactionally ────────────────────────────
 
 export async function postInboundVoucher(
@@ -585,6 +645,46 @@ export async function postInboundVoucher(
     }
 
     const payload: InboundVoucher = inbox.raw_payload as InboundVoucher;
+
+    // Permanent database backstop: one posting claim per inbox/external voucher.
+    // If a future code path ever reopens a posted inbox, this claim repairs the
+    // state and returns the existing voucher instead of posting a duplicate.
+    const claim = await client.query(
+      `INSERT INTO tally_posting_claims
+         (inbox_id, config_id, external_id)
+       VALUES ($1,$2,$3)
+       ON CONFLICT DO NOTHING
+       RETURNING inbox_id`,
+      [inboxId, configId, payload.externalId]
+    );
+    if (!claim.rows[0]) {
+      const existingClaim = await client.query(
+        `SELECT voucher_mas_id FROM tally_posting_claims
+         WHERE inbox_id=$1 AND config_id=$2`,
+        [inboxId, configId]
+      );
+      const claimedVoucherId = existingClaim.rows[0]?.voucher_mas_id;
+      if (claimedVoucherId) {
+        const existing = await client.query(
+          `SELECT id, voucher_no FROM voucher_mas WHERE id=$1`,
+          [claimedVoucherId]
+        );
+        if (existing.rows[0]) {
+          await client.query(
+            `UPDATE tally_voucher_inbox
+             SET status='posted', posted_voucher_mas_id=$1, updated_at=now()
+             WHERE id=$2 AND config_id=$3`,
+            [claimedVoucherId, inboxId, configId]
+          );
+          await client.query("COMMIT");
+          return {
+            voucherMasId: existing.rows[0].id,
+            voucherNo: existing.rows[0].voucher_no,
+          };
+        }
+      }
+      throw new Error("This Tally voucher already has an active posting claim");
+    }
 
     // Claim review state inside the same transaction that creates the ERP
     // voucher. Any posting error rolls this change back to review.
@@ -639,6 +739,12 @@ export async function postInboundVoucher(
       ]
     );
     const vmId: string = vmRes.rows[0].id;
+    await client.query(
+      `UPDATE tally_posting_claims
+       SET voucher_mas_id=$1, updated_at=now()
+       WHERE inbox_id=$2 AND config_id=$3`,
+      [vmId, inboxId, configId]
+    );
 
     // Insert voucher_det lines
     for (let i = 0; i < resolved.length; i++) {

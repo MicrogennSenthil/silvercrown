@@ -29,6 +29,7 @@ import {
   validateVoucherFields,
   validateVoucherBalance,
   resolveMappings,
+  updateInboundVoucherForReview,
   postInboundVoucher,
   enqueueExportJobs,
   auditLog,
@@ -564,16 +565,23 @@ export async function registerTallyRoutes(app: Express): Promise<void> {
             const { unmapped } = await resolveMappings(configId, v.lines || []);
             const conflict = [balErr || "", unmapped.length > 0 ? `Unmapped: ${unmapped.join(", ")}` : ""]
               .filter(Boolean).join("; ");
-            await pool.query(
-              `UPDATE tally_voucher_inbox
-               SET alteration_id=$1, voucher_type=$2, voucher_number=$3, voucher_date=$4,
-                   narration=$5, company=$6, financial_year=$7, checksum=$8,
-                   raw_payload=$9::jsonb, status='review', conflict_reason=$10, updated_at=now()
-               WHERE id=$11`,
-              [v.alterationId || "", v.voucherType, v.voucherNumber, v.voucherDate,
-               v.narration || "", v.company, v.financialYear || "", v.checksum || "",
-               JSON.stringify(v), conflict, ex.id]
-            );
+            const updateResult = await updateInboundVoucherForReview({
+              inboxId: ex.id,
+              configId,
+              voucher: v,
+              conflictReason: conflict,
+            });
+            if (updateResult === "already_posted") {
+              results.push({
+                externalId: v.externalId,
+                status: "skipped",
+                reason: "Already posted",
+              });
+              continue;
+            }
+            if (updateResult === "missing") {
+              throw new Error("Inbox record disappeared before alteration update");
+            }
             results.push({ externalId: v.externalId, status: "updated" });
             continue;
           }
