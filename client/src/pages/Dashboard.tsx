@@ -100,7 +100,13 @@ function formatChartValue(value: number) {
   return `₹ ${Math.round(value).toLocaleString("en-IN")}`;
 }
 
-function StatCard({ label, value, amount, lastDate }: { label: string; value: number; amount: number; lastDate?: string | null }) {
+function StatCard({ label, value, amount, lastMonthAmount, lastDate }: {
+  label: string;
+  value: number;
+  amount: number;
+  lastMonthAmount: number;
+  lastDate?: string | null;
+}) {
   const formattedDate = lastDate
     ? new Date(lastDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
     : null;
@@ -126,14 +132,24 @@ function StatCard({ label, value, amount, lastDate }: { label: string; value: nu
           <TrendingUp size={20} className="text-green-500 mt-1 flex-shrink-0" />
         </div>
         <div className="flex items-center gap-1 mt-2 min-w-0">
-          <span className="text-xs text-gray-400 shrink-0">Value:</span>
+          <span className="text-xs text-gray-400 shrink-0">This month:</span>
           <span
             className="text-xs font-semibold truncate"
             style={{ color: SC.primary }}
             title={formatMonthlyValue(amount)}
-            data-testid={`dashboard-${label.toLowerCase()}-monthly-value`}
+            data-testid={`dashboard-${label.toLowerCase()}-this-month-value`}
           >
             {formatMonthlyValue(amount)}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 mt-1 min-w-0">
+          <span className="text-xs text-gray-400 shrink-0">Last month:</span>
+          <span
+            className="text-xs font-semibold truncate text-gray-600"
+            title={formatMonthlyValue(lastMonthAmount)}
+            data-testid={`dashboard-${label.toLowerCase()}-last-month-value`}
+          >
+            {formatMonthlyValue(lastMonthAmount)}
           </span>
         </div>
         {formattedDate && (
@@ -215,9 +231,9 @@ export default function Dashboard() {
 
       {/* ── Top Stat Cards ── */}
       <div className="flex gap-4">
-        <StatCard label="Inward"   value={tabCounts.inward}   amount={Number(counts.inwardValue) || 0}   lastDate={counts.lastInwardDate} />
-        <StatCard label="GRN"      value={Number(counts.grnCount) || 0} amount={Number(counts.grnValue) || 0} lastDate={counts.lastGrnDate} />
-        <StatCard label="Invoice"  value={tabCounts.invoice}  amount={Number(counts.invoiceValue) || 0}  lastDate={counts.lastInvoiceDate} />
+        <StatCard label="Inward"   value={tabCounts.inward}   amount={Number(counts.inwardValue) || 0}   lastMonthAmount={Number(counts.inwardLastMonthValue) || 0}  lastDate={counts.lastInwardDate} />
+        <StatCard label="GRN"      value={Number(counts.grnCount) || 0} amount={Number(counts.grnValue) || 0} lastMonthAmount={Number(counts.grnLastMonthValue) || 0} lastDate={counts.lastGrnDate} />
+        <StatCard label="Invoice"  value={tabCounts.invoice}  amount={Number(counts.invoiceValue) || 0}  lastMonthAmount={Number(counts.invoiceLastMonthValue) || 0} lastDate={counts.lastInvoiceDate} />
       </div>
 
       {/* ── Main Two-Column Grid ── */}

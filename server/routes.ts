@@ -8902,12 +8902,23 @@ Return ONLY valid JSON (no markdown, no explanation):
       const [inward, despatch, invoice, po, payments, salesTrend, grn] = await Promise.all([
         pool.query(`
           SELECT
-            COUNT(DISTINCT j.id) AS count,
-            COALESCE(SUM(COALESCE(i.qty, 0) * COALESCE(i.rate, 0)), 0) AS value,
-            MAX(j.inward_date)::text AS last_date
+            COUNT(DISTINCT j.id) FILTER (
+              WHERE j.inward_date >= date_trunc('month', CURRENT_DATE)::date
+                AND j.inward_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            ) AS count,
+            COALESCE(SUM(CASE WHEN j.inward_date >= date_trunc('month', CURRENT_DATE)::date
+              AND j.inward_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+              THEN COALESCE(i.qty, 0) * COALESCE(i.rate, 0) ELSE 0 END), 0) AS value,
+            COALESCE(SUM(CASE WHEN j.inward_date >= (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month')::date
+              AND j.inward_date < date_trunc('month', CURRENT_DATE)::date
+              THEN COALESCE(i.qty, 0) * COALESCE(i.rate, 0) ELSE 0 END), 0) AS last_month_value,
+            MAX(j.inward_date) FILTER (
+              WHERE j.inward_date >= date_trunc('month', CURRENT_DATE)::date
+                AND j.inward_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            )::text AS last_date
           FROM job_work_inward j
           LEFT JOIN job_work_inward_items i ON i.inward_id = j.id
-          WHERE j.inward_date >= date_trunc('month', CURRENT_DATE)::date
+          WHERE j.inward_date >= (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month')::date
             AND j.inward_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
             AND COALESCE(j.status, 'Saved') <> 'Cancelled'
         `),
@@ -8924,9 +8935,20 @@ Return ONLY valid JSON (no markdown, no explanation):
         `),
         pool.query(`
           SELECT
-            COUNT(*) AS count,
-            COALESCE(SUM(COALESCE(lines.amount, 0) + COALESCE(charges.amount, 0)), 0) AS value,
-            MAX(inv.invoice_date)::text AS last_date
+            COUNT(*) FILTER (
+              WHERE inv.invoice_date >= date_trunc('month', CURRENT_DATE)::date
+                AND inv.invoice_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            ) AS count,
+            COALESCE(SUM(CASE WHEN inv.invoice_date >= date_trunc('month', CURRENT_DATE)::date
+              AND inv.invoice_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+              THEN COALESCE(lines.amount, 0) + COALESCE(charges.amount, 0) ELSE 0 END), 0) AS value,
+            COALESCE(SUM(CASE WHEN inv.invoice_date >= (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month')::date
+              AND inv.invoice_date < date_trunc('month', CURRENT_DATE)::date
+              THEN COALESCE(lines.amount, 0) + COALESCE(charges.amount, 0) ELSE 0 END), 0) AS last_month_value,
+            MAX(inv.invoice_date) FILTER (
+              WHERE inv.invoice_date >= date_trunc('month', CURRENT_DATE)::date
+                AND inv.invoice_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            )::text AS last_date
           FROM job_work_invoices inv
           LEFT JOIN LATERAL (
             SELECT SUM(
@@ -8943,7 +8965,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             FROM job_work_invoice_charges ch
             WHERE ch.invoice_id = inv.id
           ) charges ON true
-          WHERE inv.invoice_date >= date_trunc('month', CURRENT_DATE)::date
+          WHERE inv.invoice_date >= (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month')::date
             AND inv.invoice_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
             AND COALESCE(inv.status, 'Saved') <> 'Cancelled'
         `),
@@ -8992,11 +9014,22 @@ Return ONLY valid JSON (no markdown, no explanation):
         `),
         pool.query(`
           SELECT
-            COUNT(*) AS count,
-            COALESCE(SUM(COALESCE(g.grand_total, 0)), 0) AS value,
-            MAX(g.grn_date)::text AS last_date
+            COUNT(*) FILTER (
+              WHERE g.grn_date >= date_trunc('month', CURRENT_DATE)::date
+                AND g.grn_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            ) AS count,
+            COALESCE(SUM(CASE WHEN g.grn_date >= date_trunc('month', CURRENT_DATE)::date
+              AND g.grn_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+              THEN COALESCE(g.grand_total, 0) ELSE 0 END), 0) AS value,
+            COALESCE(SUM(CASE WHEN g.grn_date >= (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month')::date
+              AND g.grn_date < date_trunc('month', CURRENT_DATE)::date
+              THEN COALESCE(g.grand_total, 0) ELSE 0 END), 0) AS last_month_value,
+            MAX(g.grn_date) FILTER (
+              WHERE g.grn_date >= date_trunc('month', CURRENT_DATE)::date
+                AND g.grn_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+            )::text AS last_date
           FROM goods_receipt_notes g
-          WHERE g.grn_date >= date_trunc('month', CURRENT_DATE)::date
+          WHERE g.grn_date >= (date_trunc('month', CURRENT_DATE) - INTERVAL '1 month')::date
             AND g.grn_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
             AND COALESCE(g.status, 'Saved') <> 'Cancelled'
         `),
@@ -9008,6 +9041,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         inwardValue:       parseFloat(inward.rows[0].value) || 0,
         despatchValue:     parseFloat(despatch.rows[0].value) || 0,
         invoiceValue:      parseFloat(invoice.rows[0].value) || 0,
+        inwardLastMonthValue:  parseFloat(inward.rows[0].last_month_value) || 0,
+        invoiceLastMonthValue: parseFloat(invoice.rows[0].last_month_value) || 0,
         purchaseOrder:     parseInt(po.rows[0].count),
         payments:          parseInt(payments.rows[0].count),
         lastInwardDate:    inward.rows[0].last_date   || null,
@@ -9015,6 +9050,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         lastInvoiceDate:   invoice.rows[0].last_date  || null,
         grnCount:          parseInt(grn.rows[0].count),
         grnValue:          parseFloat(grn.rows[0].value) || 0,
+        grnLastMonthValue: parseFloat(grn.rows[0].last_month_value) || 0,
         lastGrnDate:       grn.rows[0].last_date || null,
         salesTrend: salesTrend.rows.map((row: any) => ({
           month: row.month,
