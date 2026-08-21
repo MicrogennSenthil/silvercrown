@@ -423,6 +423,87 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     };
   }
 
+  const SEZ_TAX_EXEMPT_TYPE = "sez_tax_exempt";
+  const isSezTaxExempt = (gstType: unknown) => String(gstType || "").trim().toLowerCase() === SEZ_TAX_EXEMPT_TYPE;
+
+  async function partyIsSezTaxExempt(client: any, partyType: "customer" | "supplier", id?: string | null, name?: string) {
+    const table = partyType === "customer" ? "customers" : "suppliers";
+    const query = id
+      ? `SELECT gst_registered_type FROM ${table} WHERE id=$1 LIMIT 1`
+      : name?.trim()
+        ? `SELECT gst_registered_type FROM ${table} WHERE LOWER(name)=LOWER($1) LIMIT 1`
+        : "";
+    if (!query) return false;
+    const result = await client.query(query, [id || name!.trim()]);
+    return isSezTaxExempt(result.rows[0]?.gst_registered_type);
+  }
+
+  function calculateSimpleInvoice(items: any[], taxExempt: boolean) {
+    const normalizedItems = items.map((item: any) => {
+      const quantity = Number(item.quantity) || 0;
+      const unitPrice = Number(item.unitPrice ?? item.unit_price) || 0;
+      const subtotal = quantity * unitPrice;
+      const taxRate = taxExempt ? 0 : (Number(item.taxRate ?? item.tax_rate) || 0);
+      const taxAmount = subtotal * taxRate / 100;
+      return {
+        ...item,
+        taxRate,
+        taxAmount: taxAmount.toFixed(2),
+        amount: (subtotal + taxAmount).toFixed(2),
+      };
+    });
+    const subtotal = normalizedItems.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice ?? item.unit_price) || 0), 0);
+    const taxAmount = normalizedItems.reduce((sum, item) => sum + (Number(item.taxAmount) || 0), 0);
+    return { items: normalizedItems, subtotal, taxAmount, totalAmount: subtotal + taxAmount };
+  }
+
+  function calculateGrnItems(items: any[], taxExempt: boolean) {
+    return items.map((item: any) => {
+      const qty = Number(item.qty) || 0;
+      const rate = Number(item.rate) || 0;
+      const discountPct = Number(item.discount_pct) || 0;
+      const taxableAmt = qty * rate * (1 - discountPct / 100);
+      const cgstPct = taxExempt ? 0 : (Number(item.cgst_pct) || 0);
+      const sgstPct = taxExempt ? 0 : (Number(item.sgst_pct) || 0);
+      const igstPct = taxExempt ? 0 : (Number(item.igst_pct) || 0);
+      const cgstAmt = taxableAmt * cgstPct / 100;
+      const sgstAmt = taxableAmt * sgstPct / 100;
+      const igstAmt = taxableAmt * igstPct / 100;
+      return {
+        ...item,
+        taxable_amt: taxableAmt,
+        cgst_pct: cgstPct,
+        cgst_amt: cgstAmt,
+        sgst_pct: sgstPct,
+        sgst_amt: sgstAmt,
+        igst_pct: igstPct,
+        igst_amt: igstAmt,
+        total: taxableAmt + cgstAmt + sgstAmt + igstAmt,
+      };
+    });
+  }
+
+  function calculateJobWorkInvoiceItem(item: any, taxExempt: boolean) {
+    const quantity = Number(item.qty_despatched) || 0;
+    const rate = Number(item.rate) || 0;
+    const amount = quantity * rate;
+    const cgstRate = taxExempt ? 0 : (Number(item.cgst_rate) || 0);
+    const sgstRate = taxExempt ? 0 : (Number(item.sgst_rate) || 0);
+    const igstRate = taxExempt ? 0 : (Number(item.igst_rate) || 0);
+    return {
+      ...item,
+      qty_despatched: quantity,
+      rate,
+      amount,
+      cgst_rate: cgstRate,
+      sgst_rate: sgstRate,
+      igst_rate: igstRate,
+      cgst_amt: amount * cgstRate / 100,
+      sgst_amt: amount * sgstRate / 100,
+      igst_amt: amount * igstRate / 100,
+    };
+  }
+
   // Suppliers
   app.get("/api/suppliers", requireAuth, async (_req, res) => {
     try {
@@ -491,8 +572,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await storage.updateCustomer(cust.id, { subLedgerId: cSlId } as any);
         } else {
           const cSlId = await ensureSubLedger(pool, SD_GL, supplier.name, existing.rows[0].sub_ledger_id || null);
-          if (cSlId !== existing.rows[0].sub_ledger_id)
-            await storage.updateCustomer(existing.rows[0].id, { subLedgerId: cSlId } as any);
+          await storage.updateCustomer(existing.rows[0].id, {
+            subLedgerId: cSlId,
+            gstRegisteredType: (data as any).gstRegisteredType,
+          } as any);
         }
       }
       return res.json({ ...updated, subLedgerId: slId, isAlsoCustomer: !!isAlsoCustomer });
@@ -515,8 +598,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await storage.updateCustomer(cust.id, { subLedgerId: cSlId } as any);
         } else {
           const cSlId = await ensureSubLedger(pool, SD_GL, supName, existing.rows[0].sub_ledger_id || null);
-          if (cSlId !== existing.rows[0].sub_ledger_id)
-            await storage.updateCustomer(existing.rows[0].id, { subLedgerId: cSlId } as any);
+          await storage.updateCustomer(existing.rows[0].id, {
+            subLedgerId: cSlId,
+            gstRegisteredType: rest.gstRegisteredType,
+          } as any);
         }
       }
       res.json(updated);
@@ -605,8 +690,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await storage.updateSupplier(sup.id, { subLedgerId: sSlId } as any);
         } else {
           const sSlId = await ensureSubLedger(pool, SC_GL_PARTY, customer.name, existing.rows[0].sub_ledger_id || null);
-          if (sSlId !== existing.rows[0].sub_ledger_id)
-            await storage.updateSupplier(existing.rows[0].id, { subLedgerId: sSlId } as any);
+          await storage.updateSupplier(existing.rows[0].id, {
+            subLedgerId: sSlId,
+            gstRegisteredType: (data as any).gstRegisteredType,
+          } as any);
         }
       }
       return res.json({ ...updated, subLedgerId: slId, isAlsoSupplier: !!isAlsoSupplier });
@@ -629,8 +716,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           await storage.updateSupplier(sup.id, { subLedgerId: sSlId } as any);
         } else {
           const sSlId = await ensureSubLedger(pool, SC_GL_PARTY, custName, existing.rows[0].sub_ledger_id || null);
-          if (sSlId !== existing.rows[0].sub_ledger_id)
-            await storage.updateSupplier(existing.rows[0].id, { subLedgerId: sSlId } as any);
+          await storage.updateSupplier(existing.rows[0].id, {
+            subLedgerId: sSlId,
+            gstRegisteredType: rest.gstRegisteredType,
+          } as any);
         }
       }
       res.json(updated);
@@ -683,6 +772,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       await client.query("BEGIN");
       const { items = [], ...invData } = req.body;
+      const taxExempt = await partyIsSezTaxExempt(
+        client,
+        "supplier",
+        invData.supplierId || invData.supplier_id || null,
+        invData.supplierName || invData.supplier_name || "",
+      );
+      const calculated = calculateSimpleInvoice(items, taxExempt);
       const invRes = await client.query(`
         INSERT INTO purchase_invoices
           (id, invoice_number, supplier_id, supplier_name, invoice_date, due_date,
@@ -694,13 +790,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           invData.supplierName || invData.supplier_name || "",
           invData.invoiceDate || invData.invoice_date || null,
           invData.dueDate || invData.due_date || null,
-          invData.subtotal || 0, invData.taxAmount || invData.tax_amount || 0,
-          invData.totalAmount || invData.total_amount || 0,
+          calculated.subtotal, calculated.taxAmount, calculated.totalAmount,
           invData.paidAmount || invData.paid_amount || 0,
           invData.status || "pending", invData.notes || "",
           invData.scannedImageUrl || invData.scanned_image_url || null]);
       const inv = invRes.rows[0];
-      for (const item of items) {
+      for (const item of calculated.items) {
         await client.query(`
           INSERT INTO purchase_invoice_items
             (id, invoice_id, item_id, description, quantity, unit, unit_price, tax_rate, tax_amount, amount)
@@ -722,7 +817,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const { items, ...invData } = req.body;
+      const { items = [], ...invData } = req.body;
+      const taxExempt = await partyIsSezTaxExempt(
+        client,
+        "supplier",
+        invData.supplierId || invData.supplier_id || null,
+        invData.supplierName || invData.supplier_name || "",
+      );
+      const calculated = calculateSimpleInvoice(items, taxExempt);
       const invRes = await client.query(`
         UPDATE purchase_invoices SET
           invoice_number=$1, supplier_id=$2, supplier_name=$3, invoice_date=$4, due_date=$5,
@@ -731,12 +833,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=$12 RETURNING *
       `, [invData.invoiceNumber, invData.supplierId || null, invData.supplierName || "",
           invData.invoiceDate || null, invData.dueDate || null,
-          invData.subtotal || 0, invData.taxAmount || 0, invData.totalAmount || 0,
+          calculated.subtotal, calculated.taxAmount, calculated.totalAmount,
           invData.paidAmount || 0, invData.status || "Pending", invData.notes || "",
           req.params.id]);
       if (items !== undefined) {
         await client.query(`DELETE FROM purchase_invoice_items WHERE invoice_id=$1`, [req.params.id]);
-        for (const item of items || []) {
+        for (const item of calculated.items) {
           await client.query(`
             INSERT INTO purchase_invoice_items
               (id, invoice_id, item_id, description, quantity, unit, unit_price, tax_rate, tax_amount, amount)
@@ -824,6 +926,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       await client.query("BEGIN");
       const { items = [], ...invData } = req.body;
+      const taxExempt = await partyIsSezTaxExempt(
+        client,
+        "customer",
+        invData.customerId || invData.customer_id || null,
+        invData.customerName || invData.customer_name || "",
+      );
+      const calculated = calculateSimpleInvoice(items, taxExempt);
       const invRes = await client.query(`
         INSERT INTO sales_invoices
           (id, invoice_number, customer_id, customer_name, invoice_date, due_date,
@@ -835,12 +944,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           invData.customerName || invData.customer_name || "",
           invData.invoiceDate || invData.invoice_date || null,
           invData.dueDate || invData.due_date || null,
-          invData.subtotal || 0, invData.taxAmount || invData.tax_amount || 0,
-          invData.totalAmount || invData.total_amount || 0,
+          calculated.subtotal, calculated.taxAmount, calculated.totalAmount,
           invData.paidAmount || invData.paid_amount || 0,
           invData.status || "pending", invData.notes || ""]);
       const inv = invRes.rows[0];
-      for (const item of items) {
+      for (const item of calculated.items) {
         await client.query(`
           INSERT INTO sales_invoice_items
             (id, invoice_id, item_id, description, quantity, unit, unit_price, tax_rate, tax_amount, amount)
@@ -862,7 +970,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const { items, ...invData } = req.body;
+      const { items = [], ...invData } = req.body;
+      const taxExempt = await partyIsSezTaxExempt(
+        client,
+        "customer",
+        invData.customerId || invData.customer_id || null,
+        invData.customerName || invData.customer_name || "",
+      );
+      const calculated = calculateSimpleInvoice(items, taxExempt);
       const invRes = await client.query(`
         UPDATE sales_invoices SET
           invoice_number=$1, customer_id=$2, customer_name=$3, invoice_date=$4, due_date=$5,
@@ -871,12 +986,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE id=$12 RETURNING *
       `, [invData.invoiceNumber, invData.customerId || null, invData.customerName || "",
           invData.invoiceDate || null, invData.dueDate || null,
-          invData.subtotal || 0, invData.taxAmount || 0, invData.totalAmount || 0,
+          calculated.subtotal, calculated.taxAmount, calculated.totalAmount,
           invData.paidAmount || 0, invData.status || "Pending", invData.notes || "",
           req.params.id]);
       if (items !== undefined) {
         await client.query(`DELETE FROM sales_invoice_items WHERE invoice_id=$1`, [req.params.id]);
-        for (const item of items || []) {
+        for (const item of calculated.items) {
           await client.query(`
             INSERT INTO sales_invoice_items
               (id, invoice_id, item_id, description, quantity, unit, unit_price, tax_rate, tax_amount, amount)
@@ -5812,6 +5927,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const { generateVoucherNo } = await import("./voucher");
       const voucherNo = await generateVoucherNo("job_work_invoice", client);
       const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
+      const taxExempt = await partyIsSezTaxExempt(
+        client,
+        "customer",
+        resolvedPartyId,
+        data.party_name_manual || "",
+      );
+      const calculatedItems = items.map((item: any) => calculateJobWorkInvoiceItem(item, taxExempt));
       const hRes = await client.query(`
         INSERT INTO job_work_invoices
           (id, voucher_no, invoice_date, party_id, party_name_manual, vehicle_no, invoice_type,
@@ -5826,7 +5948,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           data.same_as_company || false, data.remark || ""]);
       const invoiceId = hRes.rows[0].id;
       let seq = 1;
-      for (const it of items) {
+      for (const it of calculatedItems) {
         if (!it.item_name?.trim()) continue;
         const iqty = parseFloat(it.qty_despatched || 0);
         const irate = parseFloat(it.rate || 0);
@@ -5886,6 +6008,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query("BEGIN");
       const { items = [], charges = [], ...data } = req.body;
       const resolvedPartyId = await resolvePartyMaster(client, data.party_id || null, data.party_name_manual || "");
+      const taxExempt = await partyIsSezTaxExempt(
+        client,
+        "customer",
+        resolvedPartyId,
+        data.party_name_manual || "",
+      );
+      const calculatedItems = items.map((item: any) => calculateJobWorkInvoiceItem(item, taxExempt));
       await client.query(`
         UPDATE job_work_invoices SET
           invoice_date=$1, party_id=$2, party_name_manual=$3, vehicle_no=$4, invoice_type=$5,
@@ -5901,7 +6030,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query(`DELETE FROM job_work_invoice_items WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoice_charges WHERE invoice_id=$1`, [req.params.id]);
       let seq = 1;
-      for (const it of items) {
+      for (const it of calculatedItems) {
         if (!it.item_name?.trim()) continue;
         const iqty = parseFloat(it.qty_despatched || 0);
         const irate = parseFloat(it.rate || 0);
@@ -7262,7 +7391,13 @@ Return ONLY valid JSON (no markdown, no explanation):
       const voucher_no = await generateVoucherNo("purchase_receipt", client);
 
       // Compute totals from items
-      const items = b.items || [];
+      const taxExempt = await partyIsSezTaxExempt(
+        client,
+        "supplier",
+        b.supplier_id || null,
+        b.supplier_name_manual || "",
+      );
+      const items = calculateGrnItems(b.items || [], taxExempt);
       const total_qty      = items.reduce((s: number, it: any) => s + (+it.qty||0), 0);
       const taxable_amount = items.reduce((s: number, it: any) => s + (+it.taxable_amt||0), 0);
       const cgst_amount    = items.reduce((s: number, it: any) => s + (+it.cgst_amt||0), 0);
@@ -7272,7 +7407,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const charges        = b.charges || [];
       const terms          = b.terms || [];
       const charges_total  = charges.reduce((s: number, c: any) => (c.charge_type && +c.amount > 0) ? s + (+c.amount) : s, 0);
-      const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + charges_total + round_off);
+      const grand_total    = taxable_amount + cgst_amount + sgst_amount + igst_amount + charges_total + round_off;
 
       // Accept status from client — only 'Draft' or 'Saved' allowed
       const status = (b.status === "Saved") ? "Saved" : "Draft";
@@ -7367,7 +7502,13 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       await client.query("BEGIN");
       const b = req.body;
-      const items = b.items || [];
+      const taxExempt = await partyIsSezTaxExempt(
+        client,
+        "supplier",
+        b.supplier_id || null,
+        b.supplier_name_manual || "",
+      );
+      const items = calculateGrnItems(b.items || [], taxExempt);
       const total_qty      = items.reduce((s: number, it: any) => s + (+it.qty||0), 0);
       const taxable_amount = items.reduce((s: number, it: any) => s + (+it.taxable_amt||0), 0);
       const cgst_amount    = items.reduce((s: number, it: any) => s + (+it.cgst_amt||0), 0);
@@ -7377,7 +7518,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const charges        = b.charges || [];
       const terms          = b.terms || [];
       const charges_total  = charges.reduce((s: number, c: any) => (c.charge_type && +c.amount > 0) ? s + (+c.amount) : s, 0);
-      const grand_total    = +(b.grand_total||0) || (taxable_amount + cgst_amount + sgst_amount + igst_amount + charges_total + round_off);
+      const grand_total    = taxable_amount + cgst_amount + sgst_amount + igst_amount + charges_total + round_off;
 
       // Accept new status from client. Draft GRNs can be upgraded to Saved; never downgraded.
       const currentGrnStatus = statusCheck.rows[0]?.status || "Draft";

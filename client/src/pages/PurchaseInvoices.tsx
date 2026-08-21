@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Scan, Trash2, Eye, X, Upload, Loader2, Edit } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
@@ -19,6 +19,12 @@ function InvoiceForm({ initial, items: initItems, onSave, onClose }: any) {
   const [scanError, setScanError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
+  const { data: suppliers = [] } = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
+  const selectedSupplier = suppliers.find((supplier: any) =>
+    supplier.id === form.supplierId ||
+    (!form.supplierId && supplier.name?.trim().toLowerCase() === String(form.supplierName || "").trim().toLowerCase())
+  );
+  const isSezSupplier = String(selectedSupplier?.gstRegisteredType ?? selectedSupplier?.gst_registered_type ?? "").toLowerCase() === "sez_tax_exempt";
 
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
@@ -34,11 +40,19 @@ function InvoiceForm({ initial, items: initItems, onSave, onClose }: any) {
   function calcItem(item: any) {
     const qty = Number(item.quantity) || 0;
     const price = Number(item.unitPrice) || 0;
-    const taxRate = Number(item.taxRate) || 0;
+    const taxRate = isSezSupplier ? 0 : (Number(item.taxRate) || 0);
     const subtotal = qty * price;
     const taxAmount = subtotal * taxRate / 100;
-    return { ...item, taxAmount: taxAmount.toFixed(2), amount: (subtotal + taxAmount).toFixed(2) };
+    return { ...item, taxRate, taxAmount: taxAmount.toFixed(2), amount: (subtotal + taxAmount).toFixed(2) };
   }
+
+  useEffect(() => {
+    if (!isSezSupplier) return;
+    const updated = items.map(item => calcItem({ ...item, taxRate: 0 }));
+    setItems(updated);
+    const subtotal = updated.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice), 0);
+    setForm((current: any) => ({ ...current, subtotal: subtotal.toFixed(2), taxAmount: "0.00", totalAmount: subtotal.toFixed(2) }));
+  }, [isSezSupplier]);
 
   function updateItem(idx: number, field: string, value: any) {
     const updated = items.map((it, i) => i === idx ? calcItem({ ...it, [field]: value }) : it);
@@ -117,6 +131,17 @@ function InvoiceForm({ initial, items: initItems, onSave, onClose }: any) {
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <F label="Invoice Number *" name="invoiceNumber" required half />
+            <div className="col-span-1">
+              <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Supplier</label>
+              <select value={form.supplierId || ""} onChange={e => {
+                const supplier = suppliers.find((s: any) => s.id === e.target.value);
+                setForm((current: any) => ({ ...current, supplierId: e.target.value, supplierName: supplier?.name || "" }));
+              }}
+                className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="select-supplier">
+                <option value="">Select supplier or type below</option>
+                {suppliers.map((supplier: any) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              </select>
+            </div>
             <F label="Supplier Name" name="supplierName" half />
             <F label="Invoice Date *" name="invoiceDate" type="date" required half />
             <F label="Due Date" name="dueDate" type="date" half />
@@ -133,6 +158,11 @@ function InvoiceForm({ initial, items: initItems, onSave, onClose }: any) {
                 className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="input-notes" />
             </div>
           </div>
+          {isSezSupplier && (
+            <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              <strong>SEZ / Tax Exempt supplier.</strong> GST is fixed at ₹0.00 for this invoice.
+            </div>
+          )}
 
           {/* Line Items */}
           <div>
@@ -162,7 +192,7 @@ function InvoiceForm({ initial, items: initItems, onSave, onClose }: any) {
                       <td className="px-1 py-1"><input type="number" value={item.quantity} onChange={e => updateItem(idx, "quantity", e.target.value)} className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400" style={{ borderColor: "#00000030" }} /></td>
                       <td className="px-1 py-1"><input value={item.unit} onChange={e => updateItem(idx, "unit", e.target.value)} className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400" style={{ borderColor: "#00000030" }} /></td>
                       <td className="px-1 py-1"><input type="number" value={item.unitPrice} onChange={e => updateItem(idx, "unitPrice", e.target.value)} className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400" style={{ borderColor: "#00000030" }} /></td>
-                      <td className="px-1 py-1"><input type="number" value={item.taxRate} onChange={e => updateItem(idx, "taxRate", e.target.value)} className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400" style={{ borderColor: "#00000030" }} /></td>
+                       <td className="px-1 py-1"><input type="number" value={item.taxRate} onChange={e => updateItem(idx, "taxRate", e.target.value)} disabled={isSezSupplier} className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-400" style={{ borderColor: "#00000030" }} /></td>
                       <td className="px-3 py-1 text-gray-600 text-right">{Number(item.taxAmount || 0).toFixed(2)}</td>
                       <td className="px-3 py-1 font-semibold text-right">{Number(item.amount || 0).toFixed(2)}</td>
                       <td className="px-1 py-1 text-center"><button onClick={() => setItems(i => i.filter((_, j) => j !== idx))} className="p-1 text-red-400 hover:text-red-600"><Trash2 size={14} /></button></td>

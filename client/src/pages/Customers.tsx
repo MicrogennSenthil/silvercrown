@@ -140,6 +140,7 @@ const GST_TYPES = [
   { value: "unregistered",            label: "Unregistered" },
   { value: "consumer",                label: "Consumer" },
   { value: "overseas",                label: "Overseas" },
+  { value: "sez_tax_exempt",          label: "SEZ / Tax Exempt" },
 ];
 
 // ─── Ledger Status Panel ──────────────────────────────────────────────────────

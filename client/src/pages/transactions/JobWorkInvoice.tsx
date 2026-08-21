@@ -281,6 +281,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const filteredParties = customerList.filter((c: any) =>
     !partySearch || c.name?.toLowerCase().includes(partySearch.toLowerCase())
   );
+  const selectedParty = (customerList as any[]).find((c: any) => c.id === partyId);
+  const isSezParty = String(selectedParty?.gstRegisteredType ?? selectedParty?.gst_registered_type ?? "").toLowerCase() === "sez_tax_exempt";
 
   // Despatch Notes mode: despatches for party that are finalised and not yet fully invoiced.
   // During edit mode, also include despatches already used in THIS invoice (checkedIds) — they
@@ -335,23 +337,26 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       })
     : items;
 
-  // Recompute tax amounts when inter-state toggle changes
+  // Recompute tax amounts when the place of supply or party tax type changes.
+  // SEZ parties are always tax-exempt, regardless of item or place-of-supply rates.
   useEffect(() => {
     setItems(prev => prev.map(it => {
       const taxable = parseFloat(it.amount || 0);
-      const cgstR = parseFloat(it.cgst_rate || 0);
-      const sgstR = parseFloat(it.sgst_rate || 0);
+      const cgstR = isSezParty ? 0 : parseFloat(it.cgst_rate || 0);
+      const sgstR = isSezParty ? 0 : parseFloat(it.sgst_rate || 0);
       // derive igst from cgst+sgst if igst_rate is 0
-      const igstR = parseFloat(it.igst_rate || 0) || (cgstR + sgstR);
+      const igstR = isSezParty ? 0 : (parseFloat(it.igst_rate || 0) || (cgstR + sgstR));
       return {
         ...it,
+        cgst_rate: cgstR,
+        sgst_rate: sgstR,
         igst_rate: igstR,
-        cgst_amt: isInterState ? 0 : taxable * cgstR / 100,
-        sgst_amt: isInterState ? 0 : taxable * sgstR / 100,
-        igst_amt: isInterState ? taxable * igstR / 100 : 0,
+        cgst_amt: isSezParty || isInterState ? 0 : taxable * cgstR / 100,
+        sgst_amt: isSezParty || isInterState ? 0 : taxable * sgstR / 100,
+        igst_amt: isSezParty || !isInterState ? 0 : taxable * igstR / 100,
       };
     }));
-  }, [isInterState]);
+  }, [isInterState, isSezParty]);
 
   // Total quantity
   const totalQty     = items.reduce((s, it) => s + parseFloat(it.qty_despatched || 0), 0);
@@ -399,9 +404,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
           const qty    = parseFloat(r.qty_despatched || r.qty || 0);
           const rate   = parseFloat(r.rate || 0);
           const taxable = qty * rate;
-          const cgstR  = parseFloat(r.cgst_rate || 0);
-          const sgstR  = parseFloat(r.sgst_rate || 0);
-          const igstR  = parseFloat(r.igst_rate || 0) || (cgstR + sgstR);
+          const cgstR  = isSezParty ? 0 : parseFloat(r.cgst_rate || 0);
+          const sgstR  = isSezParty ? 0 : parseFloat(r.sgst_rate || 0);
+          const igstR  = isSezParty ? 0 : (parseFloat(r.igst_rate || 0) || (cgstR + sgstR));
           return {
             despatch_id:         isDespatch ? record.id : null,
             inward_id:           isDespatch ? (r.inward_id || null) : (record.id || null),
@@ -423,9 +428,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
             inward_voucher_no:   r.inward_voucher_no || (!isDespatch ? record.voucher_no : "") || "",
             packing_details:     "",
             cgst_rate: cgstR, sgst_rate: sgstR, igst_rate: igstR,
-            cgst_amt:  isInterState ? 0 : taxable * cgstR / 100,
-            sgst_amt:  isInterState ? 0 : taxable * sgstR / 100,
-            igst_amt:  isInterState ? taxable * igstR / 100 : 0,
+            cgst_amt:  isSezParty || isInterState ? 0 : taxable * cgstR / 100,
+            sgst_amt:  isSezParty || isInterState ? 0 : taxable * sgstR / 100,
+            igst_amt:  isSezParty || !isInterState ? 0 : taxable * igstR / 100,
           };
         });
         // Auto-fill vehicle no from despatch record
@@ -521,13 +526,14 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
         const qty = parseFloat(field === "qty_despatched" ? value : updated.qty_despatched) || 0;
         const rate = parseFloat(field === "rate" ? value : updated.rate) || 0;
         const t = qty * rate;
-        const cgR = parseFloat(updated.cgst_rate) || 0;
-        const sgR = parseFloat(updated.sgst_rate) || 0;
-        const igR = parseFloat(updated.igst_rate) || 0;
+        const cgR = isSezParty ? 0 : (parseFloat(updated.cgst_rate) || 0);
+        const sgR = isSezParty ? 0 : (parseFloat(updated.sgst_rate) || 0);
+        const igR = isSezParty ? 0 : (parseFloat(updated.igst_rate) || 0);
         updated.amount   = t;
-        updated.cgst_amt = isInterState ? 0 : t * cgR / 100;
-        updated.sgst_amt = isInterState ? 0 : t * sgR / 100;
-        updated.igst_amt = isInterState ? t * igR / 100 : 0;
+        updated.cgst_rate = cgR; updated.sgst_rate = sgR; updated.igst_rate = igR;
+        updated.cgst_amt = isSezParty || isInterState ? 0 : t * cgR / 100;
+        updated.sgst_amt = isSezParty || isInterState ? 0 : t * sgR / 100;
+        updated.igst_amt = isSezParty || !isInterState ? 0 : t * igR / 100;
       }
       return updated;
     }));
@@ -562,9 +568,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     //   hsn_code col      → product.hsnCode
     //   unit / uom        → product.unit / product.uom
     const rate  = parseFloat(product.rate || 0) || parseFloat(product.sellingPrice ?? product.selling_price ?? 0);
-    const cgstR = parseFloat(product.cgstRate ?? product.cgst_rate ?? 0);
-    const sgstR = parseFloat(product.sgstRate ?? product.sgst_rate ?? 0);
-    const igstR = parseFloat(product.igstRate ?? product.igst_rate ?? 0) || (cgstR + sgstR);
+    const cgstR = isSezParty ? 0 : parseFloat(product.cgstRate ?? product.cgst_rate ?? 0);
+    const sgstR = isSezParty ? 0 : parseFloat(product.sgstRate ?? product.sgst_rate ?? 0);
+    const igstR = isSezParty ? 0 : (parseFloat(product.igstRate ?? product.igst_rate ?? 0) || (cgstR + sgstR));
     const qty     = parseFloat(items[realIdx]?.qty_despatched || 0);
     const taxable = qty * rate;
     setItems(prev => prev.map((it, i) => i !== realIdx ? it : {
@@ -581,9 +587,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       cgst_rate: cgstR,
       sgst_rate: sgstR,
       igst_rate: igstR,
-      cgst_amt:  isInterState ? 0 : taxable * cgstR / 100,
-      sgst_amt:  isInterState ? 0 : taxable * sgstR / 100,
-      igst_amt:  isInterState ? taxable * igstR / 100 : 0,
+      cgst_amt:  isSezParty || isInterState ? 0 : taxable * cgstR / 100,
+      sgst_amt:  isSezParty || isInterState ? 0 : taxable * sgstR / 100,
+      igst_amt:  isSezParty || !isInterState ? 0 : taxable * igstR / 100,
     }));
     setDirectSearch(prev => ({ ...prev, [realIdx]: product.name || "" }));
     setDirectDrop(null);
@@ -655,7 +661,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
         setSaveError(`Item "${it.item_name}" has no rate. Please enter the rate.`);
         return;
       }
-      const gstMissing = isInterState ? !(igst > 0) : !(cgst > 0 && sgst > 0);
+      const gstMissing = !isSezParty && (isInterState ? !(igst > 0) : !(cgst > 0 && sgst > 0));
       if (gstMissing) {
         setSaveError(`Item "${it.item_name}" is missing ${isInterState ? "IGST" : "GST"} rate. Please set the tax percentage.`);
         return;
@@ -845,6 +851,11 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
                 </div>
               );
             })()}
+            {isSezParty && (
+              <div className="mt-2 px-3 py-2.5 rounded-lg border border-emerald-200 bg-emerald-50 text-sm text-emerald-800">
+                <strong>SEZ / Tax Exempt party.</strong> GST is fixed at ₹0.00 for this invoice and no GST ledger posting will be created.
+              </div>
+            )}
 
             {/* Credit warning banner */}
             {creditWarn?.warning && (

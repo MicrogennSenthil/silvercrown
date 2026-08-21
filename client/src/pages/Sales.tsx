@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Trash2, Edit, X, Loader2 } from "lucide-react";
 
@@ -12,6 +12,11 @@ function SalesForm({ initial, items: initItems, onClose }: any) {
   const [items, setItems] = useState<any[]>(initItems?.length ? initItems : [{ ...EMPTY_ITEM }]);
   const qc = useQueryClient();
   const { data: customers = [] } = useQuery<any[]>({ queryKey: ["/api/customers"] });
+  const selectedCustomer = customers.find((customer: any) =>
+    customer.id === form.customerId ||
+    (!form.customerId && customer.name?.trim().toLowerCase() === String(form.customerName || "").trim().toLowerCase())
+  );
+  const isSezCustomer = String(selectedCustomer?.gstRegisteredType ?? selectedCustomer?.gst_registered_type ?? "").toLowerCase() === "sez_tax_exempt";
 
   const saveMut = useMutation({
     mutationFn: async (data: any) => {
@@ -24,10 +29,18 @@ function SalesForm({ initial, items: initItems, onClose }: any) {
   });
 
   function calcItem(item: any) {
-    const qty = Number(item.quantity) || 0, price = Number(item.unitPrice) || 0, tax = Number(item.taxRate) || 0;
+    const qty = Number(item.quantity) || 0, price = Number(item.unitPrice) || 0, tax = isSezCustomer ? 0 : (Number(item.taxRate) || 0);
     const sub = qty * price, taxAmt = sub * tax / 100;
-    return { ...item, taxAmount: taxAmt.toFixed(2), amount: (sub + taxAmt).toFixed(2) };
+    return { ...item, taxRate: tax, taxAmount: taxAmt.toFixed(2), amount: (sub + taxAmt).toFixed(2) };
   }
+
+  useEffect(() => {
+    if (!isSezCustomer) return;
+    const updated = items.map(item => calcItem({ ...item, taxRate: 0 }));
+    setItems(updated);
+    const subtotal = updated.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unitPrice), 0);
+    setForm((current: any) => ({ ...current, subtotal: subtotal.toFixed(2), taxAmount: "0.00", totalAmount: subtotal.toFixed(2) }));
+  }, [isSezCustomer]);
 
   function updateItem(idx: number, field: string, value: any) {
     const updated = items.map((it, i) => i === idx ? calcItem({ ...it, [field]: value }) : it);
@@ -68,6 +81,11 @@ function SalesForm({ initial, items: initItems, onClose }: any) {
               <input value={form.customerName || ""} onChange={e => setForm((f: any) => ({ ...f, customerName: e.target.value }))}
                 className="w-full border-2 rounded px-3 py-2 text-sm focus:outline-none" style={{ borderColor: "#00000040" }} data-testid="input-customerName" />
             </div>
+            {isSezCustomer && (
+              <div className="col-span-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                <strong>SEZ / Tax Exempt customer.</strong> GST is fixed at ₹0.00 for this invoice.
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: "#5b5e66" }}>Status</label>
               <select value={form.status} onChange={e => setForm((f: any) => ({ ...f, status: e.target.value }))}
@@ -102,6 +120,7 @@ function SalesForm({ initial, items: initItems, onClose }: any) {
                         <td key={field} className="px-1 py-1">
                           <input type={["quantity", "unitPrice", "taxRate"].includes(field) ? "number" : "text"} value={item[field]}
                             onChange={e => updateItem(idx, field, e.target.value)}
+                            disabled={field === "taxRate" && isSezCustomer}
                             className="w-full border rounded px-2 py-1 text-sm focus:outline-none" style={{ borderColor: "#00000030" }} />
                         </td>
                       ))}

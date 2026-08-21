@@ -49,14 +49,17 @@ const grnKey     = () => `k${Date.now()}_${_grnKeySeq++}`;
 const newTerm    = (): GrnTerm   => ({ _key: grnKey(), term_type:"", terms:"" });
 const newCharge  = (): GrnCharge => ({ _key: grnKey(), charge_type:"", amount:"" });
 
-function calcItem(it: GrnItem): GrnItem {
+function calcItem(it: GrnItem, taxExempt = false): GrnItem {
   const discountedRate = p2(it.rate) * (1 - p2(it.discount_pct) / 100);
   const taxable_amt = p2(it.qty) * discountedRate;
-  const cgst_amt    = taxable_amt * p2(it.cgst_pct) / 100;
-  const sgst_amt    = taxable_amt * p2(it.sgst_pct) / 100;
-  const igst_amt    = taxable_amt * p2(it.igst_pct) / 100;
+  const cgst_pct    = taxExempt ? 0 : p2(it.cgst_pct);
+  const sgst_pct    = taxExempt ? 0 : p2(it.sgst_pct);
+  const igst_pct    = taxExempt ? 0 : p2(it.igst_pct);
+  const cgst_amt    = taxable_amt * cgst_pct / 100;
+  const sgst_amt    = taxable_amt * sgst_pct / 100;
+  const igst_amt    = taxable_amt * igst_pct / 100;
   const total       = taxable_amt + cgst_amt + sgst_amt + igst_amt;
-  return { ...it, taxable_amt, cgst_amt, sgst_amt, igst_amt, total };
+  return { ...it, taxable_amt, cgst_pct, cgst_amt, sgst_pct, sgst_amt, igst_pct, igst_amt, total };
 }
 
 // Supplier search dropdown
@@ -239,12 +242,15 @@ export default function GoodsReceiptNote() {
   const { data: allTerms = [] } = useQuery<any[]>({ queryKey: ["/api/terms"] });
   const { data: expenseSleds = [] } = useQuery<any[]>({ queryKey: ["/api/sub-ledgers/expense"] });
   const { data: warehouses = [] } = useQuery<any[]>({ queryKey: ["/api/stores"] });
+  const { data: suppliers = [] }  = useQuery<any[]>({ queryKey: ["/api/suppliers"] });
   const { data: allInvItems = [] }    = useQuery<any[]>({ queryKey: ["/api/inventory/items"] });
   const { data: allProducts = [] }    = useQuery<any[]>({ queryKey: ["/api/products"] });
   const { data: allCategories = [] }  = useQuery<any[]>({ queryKey: ["/api/categories"] });
   const { data: appSettings = [] }    = useQuery<any[]>({ queryKey: ["/api/settings"] });
   const grnDiscountEnabled = (appSettings as any[]).find((s: any) => s.key === "grn_item_discount")?.value === "true";
   const rawMatCatIds = new Set((allCategories as any[]).filter((c: any) => c.isRawMaterial || c.is_raw_material).map((c: any) => c.id));
+  const selectedSupplier = (suppliers as any[]).find((supplier: any) => supplier.id === form.supplier_id);
+  const isSezSupplier = String(selectedSupplier?.gstRegisteredType ?? selectedSupplier?.gst_registered_type ?? "").toLowerCase() === "sez_tax_exempt";
 
   // Merge inventory items + engineering products for GRN item search
   const rawMaterials = [
@@ -290,18 +296,19 @@ export default function GoodsReceiptNote() {
   // Backward-compat alias
   function lookupExpiry(item_code: string): boolean { return lookupItemFlags(item_code).expiry_required; }
 
-  // When tax type toggles, zero out the inactive tax on all rows and recalculate
+  // When the place of supply or supplier tax type changes, recalculate all rows.
+  // SEZ suppliers are tax-exempt and always have zero CGST, SGST and IGST.
   useEffect(() => {
     setForm(f => ({
       ...f,
       items: f.items.map(it => calcItem({
         ...it,
-        cgst_pct: grnInterState ? 0 : (it.igst_pct > 0 ? it.igst_pct / 2 : it.cgst_pct),
-        sgst_pct: grnInterState ? 0 : (it.igst_pct > 0 ? it.igst_pct / 2 : it.sgst_pct),
-        igst_pct: grnInterState ? (it.cgst_pct > 0 ? it.cgst_pct * 2 : it.igst_pct) : 0,
-      }))
+        cgst_pct: isSezSupplier || grnInterState ? 0 : (it.igst_pct > 0 ? it.igst_pct / 2 : it.cgst_pct),
+        sgst_pct: isSezSupplier || grnInterState ? 0 : (it.igst_pct > 0 ? it.igst_pct / 2 : it.sgst_pct),
+        igst_pct: isSezSupplier ? 0 : (grnInterState ? (it.cgst_pct > 0 ? it.cgst_pct * 2 : it.igst_pct) : 0),
+      }, isSezSupplier))
     }));
-  }, [grnInterState]);
+  }, [grnInterState, isSezSupplier]);
 
   // Close item dropdown on outside click — exclude portal dropdown too
   useEffect(() => {
@@ -512,7 +519,7 @@ export default function GoodsReceiptNote() {
       if (key === "sgst_pct" && !grnInterState) patch.cgst_pct = val;
       // For inter-state: changing IGST clears CGST/SGST and vice versa
       if (key === "igst_pct" && grnInterState) { patch.cgst_pct = 0; patch.sgst_pct = 0; }
-      const updated = calcItem({ ...items[i], ...patch });
+      const updated = calcItem({ ...items[i], ...patch }, isSezSupplier);
       items[i] = updated;
       return { ...f, items };
     });
@@ -528,9 +535,9 @@ export default function GoodsReceiptNote() {
   function pickProductForGrn(i: number, prod: any) {
     const rate = parseFloat(prod.purchase_price) || parseFloat(prod.cost_price) || 0;
     const totalTax = parseFloat(prod.taxRate ?? prod.tax_rate ?? "0") || 0;
-    const cgst = grnInterState ? 0 : (parseFloat(prod.cgst_rate) || totalTax / 2);
-    const sgst = grnInterState ? 0 : (parseFloat(prod.sgst_rate) || totalTax / 2);
-    const igst = grnInterState ? (parseFloat(prod.igst_rate) || totalTax) : 0;
+    const cgst = isSezSupplier || grnInterState ? 0 : (parseFloat(prod.cgst_rate) || totalTax / 2);
+    const sgst = isSezSupplier || grnInterState ? 0 : (parseFloat(prod.sgst_rate) || totalTax / 2);
+    const igst = isSezSupplier ? 0 : (grnInterState ? (parseFloat(prod.igst_rate) || totalTax) : 0);
     const expiry_required = !!(prod.expiryRequired ?? prod.expiry_required);
     const batch_required  = !!(prod.batchRequired  ?? prod.batch_required);
     setForm(f => {
@@ -542,7 +549,7 @@ export default function GoodsReceiptNote() {
         expiry_required, batch_required,
         expiry_date: expiry_required ? items[i].expiry_date : "",
         batch_no:    batch_required  ? items[i].batch_no   : "",
-      });
+      }, isSezSupplier);
       return { ...f, items };
     });
     setItemSearch(p => ({ ...p, [i]: prod.name }));
@@ -594,10 +601,12 @@ export default function GoodsReceiptNote() {
         .filter(c => c.charge_type && p2(c.amount) > 0)
         .map(c => ({ charge_type: c.charge_type, amount: p2(c.amount) })),
       items: form.items.map(({ _poId, ...rest }) => {
-        const it = grnInterState
+        const it = isSezSupplier
+          ? { ...rest, cgst_pct: 0, cgst_amt: 0, sgst_pct: 0, sgst_amt: 0, igst_pct: 0, igst_amt: 0 }
+          : grnInterState
           ? { ...rest, cgst_pct: 0, cgst_amt: 0, sgst_pct: 0, sgst_amt: 0 }
           : { ...rest, igst_pct: 0, igst_amt: 0 };
-        return { ...it, total: rowTotal(rest) };
+        return { ...it, total: isSezSupplier ? p2(rest.taxable_amt) : rowTotal(rest) };
       }),
     };
     const url = editId ? `/api/goods-receipt-notes/${editId}` : "/api/goods-receipt-notes";
@@ -788,6 +797,11 @@ export default function GoodsReceiptNote() {
                     placeholder="DC2110" data-testid="input-dcno"/>
                 </div>
               </div>
+              {isSezSupplier && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                  <strong>SEZ / Tax Exempt supplier.</strong> GST is fixed at ₹0.00 for this GRN and no input-tax ledger posting will be created.
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
