@@ -49,6 +49,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS irn text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_no text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_date date`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS item_reference_layout jsonb DEFAULT '{}'::jsonb`).catch(()=>{});
     // Cancellation audit values are retained so cancelled invoices can be reported accurately.
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS cancelled_at timestamp`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS cancelled_by text DEFAULT ''`).catch(()=>{});
@@ -425,6 +426,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   const SEZ_TAX_EXEMPT_TYPE = "sez_tax_exempt";
   const isSezTaxExempt = (gstType: unknown) => String(gstType || "").trim().toLowerCase() === SEZ_TAX_EXEMPT_TYPE;
+  const itemReferenceLayoutFields = ["partyDcNo", "dcDate", "poDate", "poNo", "refNo", "packing", "process"] as const;
+
+  function normalizeItemReferenceLayout(value: unknown) {
+    let source: any = value;
+    if (typeof source === "string") {
+      try { source = JSON.parse(source); } catch { source = {}; }
+    }
+    return itemReferenceLayoutFields.reduce((layout, key) => {
+      layout[key] = source?.[key] === "next_line" ? "next_line" : "same_line";
+      return layout;
+    }, {} as Record<string, "same_line" | "next_line">);
+  }
 
   async function partyIsSezTaxExempt(client: any, partyType: "customer" | "supplier", id?: string | null, name?: string) {
     const table = partyType === "customer" ? "customers" : "suppliers";
@@ -5922,10 +5935,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       if (!h) return res.status(404).json({ message: "Not found" });
        const items = (await pool.query(`
          SELECT ii.*,
-           COALESCE(NULLIF(i.drg_no,''), NULLIF(p.drg_no,''), '') AS drawing_no
+           COALESCE(NULLIF(i.drg_no,''), NULLIF(p.drg_no,''), '') AS drawing_no,
+           inward.party_dc_date AS dc_date,
+           NULL::date AS po_date
          FROM job_work_invoice_items ii
          LEFT JOIN job_work_inward_items i ON i.id = ii.inward_item_id
          LEFT JOIN products p ON p.id = ii.item_id
+         LEFT JOIN job_work_inward inward ON inward.id = ii.inward_id
          WHERE ii.invoice_id=$1
          ORDER BY ii.seq_no
        `, [req.params.id])).rows;
@@ -5954,15 +5970,16 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       const hRes = await client.query(`
         INSERT INTO job_work_invoices
           (id, voucher_no, invoice_date, party_id, party_name_manual, vehicle_no, invoice_type,
-           is_inter_state, is_eway_bill, term_of_delivery, transport, freight, delivery_address, same_as_company, remark, status)
-        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'Saved') RETURNING *
+           is_inter_state, is_eway_bill, term_of_delivery, transport, freight, delivery_address, same_as_company, remark, item_reference_layout, status)
+        VALUES (gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'Saved') RETURNING *
       `, [voucherNo, data.invoice_date || new Date().toISOString().split("T")[0],
           resolvedPartyId, data.party_name_manual || "",
           (data.vehicle_no || "").toUpperCase(), data.invoice_type || "despatch_notes",
           data.is_inter_state || false, data.is_eway_bill || false,
           data.term_of_delivery || "", data.transport || "",
           data.freight || "to_pay", data.delivery_address || "",
-          data.same_as_company || false, data.remark || ""]);
+          data.same_as_company || false, data.remark || "",
+          JSON.stringify(normalizeItemReferenceLayout(data.item_reference_layout))]);
       const invoiceId = hRes.rows[0].id;
       let seq = 1;
       for (const it of calculatedItems) {
@@ -6036,14 +6053,19 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         UPDATE job_work_invoices SET
           invoice_date=$1, party_id=$2, party_name_manual=$3, vehicle_no=$4, invoice_type=$5,
           is_inter_state=$6, is_eway_bill=$7, term_of_delivery=$8, transport=$9, freight=$10,
-          delivery_address=$11, same_as_company=$12, remark=$13
-        WHERE id=$14
+          delivery_address=$11, same_as_company=$12, remark=$13,
+          item_reference_layout=COALESCE($14::jsonb, item_reference_layout)
+        WHERE id=$15
       `, [data.invoice_date, resolvedPartyId, data.party_name_manual || "",
           (data.vehicle_no || "").toUpperCase(), data.invoice_type || "despatch_notes",
           data.is_inter_state || false, data.is_eway_bill || false,
           data.term_of_delivery || "", data.transport || "",
           data.freight || "to_pay", data.delivery_address || "",
-          data.same_as_company || false, data.remark || "", req.params.id]);
+          data.same_as_company || false, data.remark || "",
+          data.item_reference_layout === undefined
+            ? null
+            : JSON.stringify(normalizeItemReferenceLayout(data.item_reference_layout)),
+          req.params.id]);
       await client.query(`DELETE FROM job_work_invoice_items WHERE invoice_id=$1`, [req.params.id]);
       await client.query(`DELETE FROM job_work_invoice_charges WHERE invoice_id=$1`, [req.params.id]);
       let seq = 1;
@@ -6099,6 +6121,22 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       await client.query("ROLLBACK");
       res.status(400).json({ message: e.message });
     } finally { client.release(); }
+  });
+
+  // PATCH /api/job-work-invoice/:id/item-reference-layout — save print placement choices
+  app.patch("/api/job-work-invoice/:id/item-reference-layout", requireAuth, async (req, res) => {
+    const { pool } = await import("./db");
+    try {
+      const layout = normalizeItemReferenceLayout(req.body?.item_reference_layout);
+      const updated = await pool.query(
+        `UPDATE job_work_invoices SET item_reference_layout=$1 WHERE id=$2 RETURNING item_reference_layout`,
+        [JSON.stringify(layout), req.params.id],
+      );
+      if (!updated.rows[0]) return res.status(404).json({ message: "Invoice not found" });
+      res.json({ item_reference_layout: updated.rows[0].item_reference_layout });
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
   });
 
   // PATCH /api/job-work-invoice/:id/e-invoice — save IRN/Ack data

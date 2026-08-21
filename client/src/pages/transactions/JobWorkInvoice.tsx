@@ -1,9 +1,16 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Loader2, AlertCircle, CheckCircle2, Trash2, Plus, PencilLine, Printer, X } from "lucide-react";
 import DatePicker from "@/components/DatePicker";
 import { apiRequest } from "@/lib/queryClient";
-import { buildTaxInvoiceHTML } from "@/lib/printTaxInvoice";
+import {
+  buildTaxInvoiceHTML,
+  DEFAULT_ITEM_REFERENCE_LAYOUT,
+  ITEM_REFERENCE_FIELDS,
+  normaliseItemReferenceLayout,
+  type ItemReferenceLayout,
+} from "@/lib/printTaxInvoice";
 
 const SC = { primary: "#027fa5", orange: "#d74700", tonal: "#d2f1fa", bg: "#f5f0ed" };
 
@@ -28,6 +35,41 @@ function parseVehicle(s: string) {
 }
 
 
+function ItemReferenceLayoutControls({
+  layout,
+  onChange,
+}: {
+  layout: ItemReferenceLayout;
+  onChange: (layout: ItemReferenceLayout) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+      <div className="mb-2">
+        <p className="text-xs font-bold text-gray-700">Item reference layout</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">
+          First line is fixed: <b>DRG No.</b> and <b>Item Description</b>.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+        {ITEM_REFERENCE_FIELDS.map(field => (
+          <label key={field.key} className="flex items-center justify-between gap-2 text-[11px] text-gray-600">
+            <span>{field.label}</span>
+            <select
+              value={layout[field.key]}
+              onChange={event => onChange({ ...layout, [field.key]: event.target.value as ItemReferenceLayout[typeof field.key] })}
+              className="rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:border-[#027fa5]"
+              data-testid={`select-item-reference-layout-${field.key}`}
+            >
+              <option value="same_line">Same line</option>
+              <option value="next_line">Next line</option>
+            </select>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Invoice Print Dialog ──────────────────────────────────────────── */
 function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; isNew: boolean; onDone: () => void }) {
   const [mode,    setMode]    = useState<"pick" | "einvoice">("pick");
@@ -35,12 +77,55 @@ function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; i
   const [ackNo,   setAckNo]   = useState("");
   const [ackDate, setAckDate] = useState("");
   const [loading, setLoading] = useState(false);
+  const [itemReferenceLayout, setItemReferenceLayout] = useState<ItemReferenceLayout>(DEFAULT_ITEM_REFERENCE_LAYOUT);
+  const [layoutDirty, setLayoutDirty] = useState(false);
+  const [layoutError, setLayoutError] = useState("");
+
+  useEffect(() => {
+    fetch(`/api/reprint/invoice/${invoiceId}`, { credentials: "include" })
+      .then(response => response.ok ? response.json() : null)
+      .then(doc => {
+        if (doc?.item_reference_layout) {
+          setItemReferenceLayout(normaliseItemReferenceLayout(doc.item_reference_layout));
+        }
+      })
+      .catch(() => {});
+  }, [invoiceId]);
+
+  async function persistLayout(): Promise<boolean> {
+    if (!layoutDirty) return true;
+    setLayoutError("");
+    try {
+      const saveLayout = await fetch(`/api/job-work-invoice/${invoiceId}/item-reference-layout`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item_reference_layout: itemReferenceLayout }),
+      });
+      if (!saveLayout.ok) throw new Error("Could not save item reference layout");
+      setLayoutDirty(false);
+      return true;
+    } catch (error: any) {
+      setLayoutError(error?.message || "Could not save item reference layout.");
+      return false;
+    }
+  }
+
+  async function closeDialog() {
+    setLoading(true);
+    const saved = await persistLayout();
+    setLoading(false);
+    if (saved) onDone();
+  }
 
   async function doPrint(isEInvoice: boolean) {
     setLoading(true);
+    let printed = false;
     try {
+      if (!await persistLayout()) return;
       const res = await fetch(`/api/reprint/invoice/${invoiceId}`, { credentials: "include" });
       const doc = await res.json();
+      doc.item_reference_layout = itemReferenceLayout;
       const html = buildTaxInvoiceHTML(doc, isEInvoice, isEInvoice ? { irn, ack_no: ackNo, ack_date: ackDate } : undefined);
       const win = window.open("", "_blank", "width=900,height=760");
       if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 600); }
@@ -51,24 +136,30 @@ function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; i
           body: JSON.stringify({ irn, ack_no: ackNo, ack_date: ackDate }),
         });
       }
+      printed = true;
     } finally {
       setLoading(false);
-      onDone();
+      if (printed) onDone();
     }
   }
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onDone}/>
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 z-10 p-6">
+      <div className="absolute inset-0 bg-black/40" onClick={() => { void closeDialog(); }}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 z-10 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-1">
           <div>
             <h3 className="text-base font-bold text-gray-800">Invoice Saved!</h3>
             <p className="text-xs text-gray-400 mt-0.5">Would you like to print?</p>
           </div>
-          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={15}/></button>
+          <button onClick={() => { void closeDialog(); }} disabled={loading} className="p-1 rounded hover:bg-gray-100 text-gray-400 disabled:opacity-50"><X size={15}/></button>
         </div>
         <div className="mt-4 flex flex-col gap-3">
+          <ItemReferenceLayoutControls
+            layout={itemReferenceLayout}
+            onChange={layout => { setItemReferenceLayout(layout); setLayoutDirty(true); setLayoutError(""); }}
+          />
+          {layoutError && <p className="text-xs text-red-600">{layoutError}</p>}
           {mode === "pick" ? (
             <>
               <button onClick={() => doPrint(false)} disabled={loading}
@@ -83,7 +174,7 @@ function InvoicePrintDialog({ invoiceId, isNew, onDone }: { invoiceId: string; i
                 data-testid="btn-print-einvoice-open">
                 <Printer size={14}/> e-Invoice (with IRN / Ack)
               </button>
-              <button onClick={onDone}
+              <button onClick={() => { void closeDialog(); }} disabled={loading}
                 className="text-xs text-gray-400 hover:text-gray-600 text-center py-1">
                 Skip — don&apos;t print
               </button>
@@ -228,6 +319,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
   const [freight,      setFreight]      = useState<"to_pay" | "paid">("to_pay");
   const [deliveryAddr, setDeliveryAddr] = useState("");
   const [sameAsCompany,setSameAsCompany]= useState(false);
+  const [itemReferenceLayout, setItemReferenceLayout] = useState<ItemReferenceLayout>(DEFAULT_ITEM_REFERENCE_LAYOUT);
+  const [hasSavedItemReferenceLayout, setHasSavedItemReferenceLayout] = useState(false);
 
   // Save state
   const [saveError, setSaveError] = useState("");
@@ -477,6 +570,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       setFreight(data.freight || "to_pay");
       setDeliveryAddr(data.delivery_address || "");
       setSameAsCompany(data.same_as_company || false);
+      setItemReferenceLayout(normaliseItemReferenceLayout(data.item_reference_layout));
+      setHasSavedItemReferenceLayout(!!data.item_reference_layout && Object.keys(data.item_reference_layout).length > 0);
       const pId = data.party_id || "";
       setPartyId(pId);
       const cust = customerList.find((c: any) => c.id === pId);
@@ -700,6 +795,7 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
       delivery_address: deliveryAddr,
       same_as_company:  sameAsCompany,
       remark,
+      item_reference_layout: editingId && !hasSavedItemReferenceLayout ? undefined : itemReferenceLayout,
       items,
       charges:          validCharges,
     };

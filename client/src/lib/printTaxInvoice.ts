@@ -30,6 +30,50 @@ function fmtAmt(n: number) {
   return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+export const ITEM_REFERENCE_FIELDS = [
+  { key: "partyDcNo", label: "Party DC No" },
+  { key: "dcDate", label: "DC Date" },
+  { key: "poDate", label: "PO Date" },
+  { key: "poNo", label: "PO No" },
+  { key: "refNo", label: "Ref No" },
+  { key: "packing", label: "Packing" },
+  { key: "process", label: "Process" },
+] as const;
+
+export type ItemReferenceField = typeof ITEM_REFERENCE_FIELDS[number]["key"];
+export type ItemReferenceLayout = Record<ItemReferenceField, "same_line" | "next_line">;
+
+export const DEFAULT_ITEM_REFERENCE_LAYOUT: ItemReferenceLayout = {
+  partyDcNo: "same_line",
+  dcDate: "same_line",
+  poDate: "same_line",
+  poNo: "same_line",
+  refNo: "same_line",
+  packing: "same_line",
+  process: "same_line",
+};
+
+export function normaliseItemReferenceLayout(value: unknown): ItemReferenceLayout {
+  let source: any = value;
+  if (typeof source === "string") {
+    try { source = JSON.parse(source); } catch { source = {}; }
+  }
+  return ITEM_REFERENCE_FIELDS.reduce((layout, field) => {
+    layout[field.key] = source?.[field.key] === "next_line" ? "next_line" : "same_line";
+    return layout;
+  }, {} as ItemReferenceLayout);
+}
+
+function hasSavedItemReferenceLayout(value: unknown): boolean {
+  let source: any = value;
+  if (typeof source === "string") {
+    try { source = JSON.parse(source); } catch { return false; }
+  }
+  return !!source && typeof source === "object" && ITEM_REFERENCE_FIELDS.some(field =>
+    source[field.key] === "same_line" || source[field.key] === "next_line"
+  );
+}
+
 export function buildTaxInvoiceHTML(
   doc: any,
   isEInvoice: boolean,
@@ -87,11 +131,37 @@ export function buildTaxInvoiceHTML(
       const desc = it.item_code ? `${it.item_code} - ${it.item_name || ""}` : (it.item_name || "");
       const drawingNo = (it.drawing_no || "").trim();
 
-      // ── Reference No (only what the user typed) ──────────────────────
-      const refNo = (it.packing_details || "").trim();
-      const subHTML = refNo
-        ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6;white-space:normal;word-break:break-word">${refNo}</div>`
-        : "";
+    const savedLayout = hasSavedItemReferenceLayout(doc.item_reference_layout)
+      ? normaliseItemReferenceLayout(doc.item_reference_layout)
+      : null;
+    const metadata: Record<ItemReferenceField, string> = {
+      partyDcNo: (it.party_dc || it.dc_no_from_inward || "").trim(),
+      dcDate: fmtDate(it.dc_date || it.party_dc_date || ""),
+      poDate: fmtDate(it.po_date || ""),
+      poNo: (it.po_no || it.po_no_from_inward || "").trim(),
+      refNo: (it.work_order_no || "").trim(),
+      packing: (it.packing_details || "").trim(),
+      process: (it.process || "").trim(),
+    };
+
+    // Old invoices did not have saved placement choices. Keep their original
+    // rendering intact until a user deliberately saves a layout during reprint.
+    const legacySubHTML = metadata.packing
+      ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.6;white-space:normal;word-break:break-word">${metadata.packing}</div>`
+      : "";
+    const sameLine = savedLayout
+      ? ITEM_REFERENCE_FIELDS
+          .filter(field => savedLayout[field.key] === "same_line" && metadata[field.key])
+          .map(field => `${field.label}: ${metadata[field.key]}`)
+      : [];
+    const nextLine = savedLayout
+      ? ITEM_REFERENCE_FIELDS
+          .filter(field => savedLayout[field.key] === "next_line" && metadata[field.key])
+          .map(field => `<div>${field.label}: ${metadata[field.key]}</div>`)
+      : [];
+    const subHTML = savedLayout
+      ? `${sameLine.length ? `<div style="font-size:10px;color:#333;margin-top:3px;line-height:1.5;white-space:normal;word-break:break-word">${sameLine.join(" &nbsp;|&nbsp; ")}</div>` : ""}${nextLine.length ? `<div style="font-size:10px;color:#333;margin-top:2px;line-height:1.5;white-space:normal;word-break:break-word">${nextLine.join("")}</div>` : ""}`
+      : legacySubHTML;
 
       const tdB = "border-left:1px solid #000;border-right:1px solid #000;padding:4px 6px;vertical-align:top";
       return `<tr>

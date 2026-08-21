@@ -3,7 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Printer, Eye, Mail, X, Calendar, AlertCircle, ChevronDown, Send, CheckCircle, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { buildDespatchNoteHTML } from "@/lib/printDespatchNote";
-import { buildTaxInvoiceHTML } from "@/lib/printTaxInvoice";
+import {
+  buildTaxInvoiceHTML,
+  DEFAULT_ITEM_REFERENCE_LAYOUT,
+  ITEM_REFERENCE_FIELDS,
+  normaliseItemReferenceLayout,
+  type ItemReferenceLayout,
+} from "@/lib/printTaxInvoice";
 import { buildPurchaseOrderHTML } from "@/lib/printPurchaseOrder";
 import { buildProcessOutwardHTML } from "@/lib/printProcessOutward";
 import { buildProcessInwardHTML } from "@/lib/printProcessInward";
@@ -47,6 +53,41 @@ function invoiceNumberValue(value: string | null | undefined) {
   const serialSegment = (value || "").split("/")[1] || "";
   const serial = serialSegment.match(/\d+/)?.[0];
   return serial ? Number(serial) : -1;
+}
+
+function ItemReferenceLayoutControls({
+  layout,
+  onChange,
+}: {
+  layout: ItemReferenceLayout;
+  onChange: (layout: ItemReferenceLayout) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+      <div className="mb-2">
+        <p className="text-xs font-bold text-gray-700">Item reference layout</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">
+          First line is fixed: <b>DRG No.</b> and <b>Item Description</b>.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+        {ITEM_REFERENCE_FIELDS.map(field => (
+          <label key={field.key} className="flex items-center justify-between gap-2 text-[11px] text-gray-600">
+            <span>{field.label}</span>
+            <select
+              value={layout[field.key]}
+              onChange={event => onChange({ ...layout, [field.key]: event.target.value as ItemReferenceLayout[typeof field.key] })}
+              className="rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:border-[#027fa5]"
+              data-testid={`select-reprint-item-reference-layout-${field.key}`}
+            >
+              <option value="same_line">Same line</option>
+              <option value="next_line">Next line</option>
+            </select>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /* ── Print helper: opens a new window with formatted doc ──────────── */
@@ -100,6 +141,9 @@ function InvoicePrintPickerModal({ row, onClose }: { row: ListRow; onClose: () =
   const [loading,     setLoading]    = useState(false);
   const [hasSaved,    setHasSaved]   = useState(false); // true if DB already has IRN for this invoice
   const [prefillDone, setPrefillDone]= useState(false); // true after first load attempt
+  const [itemReferenceLayout, setItemReferenceLayout] = useState<ItemReferenceLayout>(DEFAULT_ITEM_REFERENCE_LAYOUT);
+  const [layoutDirty, setLayoutDirty] = useState(false);
+  const [layoutError, setLayoutError] = useState("");
 
   // Load saved IRN on mount so we can show the badge on the pick screen
   useEffect(() => {
@@ -111,14 +155,45 @@ function InvoicePrintPickerModal({ row, onClose }: { row: ListRow; onClose: () =
         const savedDate = doc.ack_date ? doc.ack_date.split("T")[0] : "";
         setIrn(savedIrn); setAckNo(savedAck); setAckDate(savedDate);
         setHasSaved(!!(savedIrn || savedAck || savedDate));
+        if (doc.item_reference_layout) {
+          setItemReferenceLayout(normaliseItemReferenceLayout(doc.item_reference_layout));
+        }
       })
       .catch(() => {})
       .finally(() => setPrefillDone(true));
   }, [row.id]);
 
+  async function persistLayout(): Promise<boolean> {
+    if (!layoutDirty) return true;
+    setLayoutError("");
+    try {
+      const saved = await fetch(`/api/job-work-invoice/${row.id}/item-reference-layout`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item_reference_layout: itemReferenceLayout }),
+      });
+      if (!saved.ok) throw new Error("Could not save item reference layout");
+      setLayoutDirty(false);
+      return true;
+    } catch (error: any) {
+      setLayoutError(error?.message || "Could not save item reference layout.");
+      return false;
+    }
+  }
+
+  async function closeModal() {
+    setLoading(true);
+    const saved = await persistLayout();
+    setLoading(false);
+    if (saved) onClose();
+  }
+
   async function handlePrint(isEInvoice: boolean) {
     setLoading(true);
+    let printed = false;
     try {
+      if (!await persistLayout()) return;
       await openPrint("invoice", row, isEInvoice,
         isEInvoice ? { irn, ack_no: ackNo, ack_date: ackDate } : undefined);
       if (isEInvoice && (irn || ackNo || ackDate)) {
@@ -128,21 +203,30 @@ function InvoicePrintPickerModal({ row, onClose }: { row: ListRow; onClose: () =
           body: JSON.stringify({ irn, ack_no: ackNo, ack_date: ackDate }),
         });
       }
+      printed = true;
     } finally {
       setLoading(false);
-      onClose();
+      if (printed) onClose();
     }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose}/>
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 z-10 p-6">
+      <div className="absolute inset-0 bg-black/40" onClick={() => { void closeModal(); }}/>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 z-10 p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-base font-bold text-gray-800">Print Invoice</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={15}/></button>
+          <button onClick={() => { void closeModal(); }} disabled={loading} className="p-1 rounded hover:bg-gray-100 text-gray-400 disabled:opacity-50"><X size={15}/></button>
         </div>
         <p className="text-xs text-gray-400 mb-5">{row.txn_no} · {fmtDate(row.txn_date)}</p>
+
+        <div className="mb-4">
+          <ItemReferenceLayoutControls
+            layout={itemReferenceLayout}
+            onChange={layout => { setItemReferenceLayout(layout); setLayoutDirty(true); setLayoutError(""); }}
+          />
+          {layoutError && <p className="mt-2 text-xs text-red-600">{layoutError}</p>}
+        </div>
 
         {mode === "pick" ? (
           <div className="flex flex-col gap-3">
