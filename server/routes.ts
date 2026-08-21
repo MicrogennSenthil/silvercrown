@@ -49,6 +49,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS irn text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_no text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS ack_date date`).catch(()=>{});
+    // Cancellation audit values are retained so cancelled invoices can be reported accurately.
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS cancelled_at timestamp`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS cancelled_by text DEFAULT ''`).catch(()=>{});
+    await _pool.query(`ALTER TABLE job_work_invoices ADD COLUMN IF NOT EXISTS cancel_reason text DEFAULT ''`).catch(()=>{});
     await _pool.query(`ALTER TABLE job_work_invoice_items ADD COLUMN IF NOT EXISTS packing_details TEXT DEFAULT ''`).catch(()=>{});
     await _pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS products_code_unique ON products (code)`).catch(()=>{});
     await _pool.query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS approver_user_id varchar`).catch(()=>{});
@@ -3511,7 +3515,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           jwi.id,
           jwi.voucher_no,
           jwi.invoice_date,
-          jwi.updated_at AS cancelled_at,
+          COALESCE(jwi.cancelled_at, jwi.updated_at) AS cancelled_at,
+          COALESCE(jwi.cancelled_by, '') AS cancelled_by,
+          COALESCE(jwi.cancel_reason, jwi.remark, '') AS cancel_reason,
           COALESCE(c.name, jwi.party_name_manual, '') AS party_name,
           COALESCE((
             SELECT SUM(
@@ -3528,12 +3534,11 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             FROM job_work_invoice_charges ch
             WHERE ch.invoice_id = jwi.id
           ), 0) AS total_amount,
-          COALESCE(jwi.remark, '') AS remark
         FROM job_work_invoices jwi
         LEFT JOIN customers c ON c.id = jwi.party_id
         WHERE LOWER(TRIM(COALESCE(jwi.status, ''))) IN ('cancelled', 'canceled')
-          AND jwi.invoice_date BETWEEN $1 AND $2
-        ORDER BY jwi.invoice_date DESC, jwi.voucher_no DESC
+          AND COALESCE(jwi.cancelled_at, jwi.updated_at)::date BETWEEN $1::date AND $2::date
+        ORDER BY COALESCE(jwi.cancelled_at, jwi.updated_at) DESC, jwi.voucher_no DESC
       `, [from, to])).rows;
       res.json(rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -5970,6 +5975,10 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
     const { pool } = await import("./db");
     const client = await pool.connect();
     try {
+      const cancelReason = String(req.body?.reason || "").trim();
+      if (!cancelReason) return res.status(400).json({ message: "Cancellation reason is required" });
+      const currentUser = (req.user as any);
+      const cancelledBy = String(currentUser?.name || currentUser?.username || "Unknown user").trim();
       await client.query("BEGIN");
       const existing = (await client.query(`SELECT status FROM job_work_invoices WHERE id=$1`, [req.params.id])).rows[0];
       if (!existing) return res.status(404).json({ message: "Invoice not found" });
@@ -6001,8 +6010,13 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
             [invRow.voucher_no, invRow.customer_sl_id]);
         }
       }
-      // Mark as Cancelled — keep the record and its items intact
-      await client.query(`UPDATE job_work_invoices SET status='Cancelled', updated_at=NOW() WHERE id=$1`, [req.params.id]);
+      // Mark as Cancelled — keep the record and its items intact, with cancellation audit details.
+      await client.query(
+        `UPDATE job_work_invoices
+         SET status='Cancelled', cancelled_at=NOW(), cancelled_by=$2, cancel_reason=$3, updated_at=NOW()
+         WHERE id=$1`,
+        [req.params.id, cancelledBy, cancelReason],
+      );
       // Refresh despatch + inward invoiced status
       await refreshDespatchInvoicedStatus(client, despIdsD);
       await refreshInwardDirectInvoiceStatus(client, inwIdsD);

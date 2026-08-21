@@ -617,7 +617,8 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
     },
   });
   const deleteMut = useMutation({
-    mutationFn: (id: string) => apiRequest("PATCH", `/api/job-work-invoice/${id}/cancel`),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiRequest("PATCH", `/api/job-work-invoice/${id}/cancel`, { reason }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/job-work-invoice"] });
       qc.invalidateQueries({ queryKey: ["/api/job-work-invoice/invoiced-ids"] });
@@ -1557,7 +1558,9 @@ function InvoiceForm({ onBackToList, editId }: { onBackToList: () => void; editI
               data-testid="btn-delete"
               onClick={() => {
                 if (window.confirm("Cancel this invoice? This will reverse the ledger entries and mark the invoice as Cancelled.")) {
-                  deleteMut.mutate(editingId);
+                  const reason = window.prompt("Enter the reason for cancelling this invoice:");
+                  if (!reason?.trim()) return;
+                  deleteMut.mutate({ id: editingId, reason: reason.trim() });
                 }
               }}
               className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
