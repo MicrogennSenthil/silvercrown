@@ -85,7 +85,9 @@ function DespatchForm({ onBackToList, editId }: { onBackToList: () => void; edit
 
   // ── Computed: pending inwards for selected party ──────────────────────────────
   const partyInwards = inwardList.filter(
-    r => r.party_id === partyId && r.despatch_status !== "Completed"
+    r => r.party_id === partyId &&
+      r.despatch_status !== "Completed" &&
+      (!r.pending_qty || parseFloat(r.pending_qty) > 0)
   );
 
   const filteredParties = customerList.filter((c: any) =>

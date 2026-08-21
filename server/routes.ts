@@ -4899,7 +4899,24 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
                 ) AS invoice_voucher_no
          FROM job_work_inward j
          LEFT JOIN customers c ON c.id = j.party_id
-         ${partyId ? "WHERE j.party_id = $1" : ""}
+         WHERE ${partyId ? "j.party_id = $1 AND" : ""}
+           EXISTS (
+             SELECT 1
+             FROM job_work_inward_items pending_i
+             LEFT JOIN job_work_despatch_items pending_di
+               ON pending_di.inward_item_id = pending_i.id
+             WHERE pending_i.inward_id = j.id
+             GROUP BY pending_i.id, pending_i.qty
+             HAVING pending_i.qty - COALESCE(SUM(pending_di.qty_despatched), 0) > 0
+           )
+           AND NOT EXISTS (
+             SELECT 1
+             FROM job_work_invoice_items direct_ii
+             JOIN job_work_invoices direct_inv ON direct_inv.id = direct_ii.invoice_id
+             WHERE direct_ii.inward_id = j.id
+               AND direct_ii.despatch_id IS NULL
+               AND direct_inv.status <> 'Cancelled'
+           )
          ORDER BY j.created_at DESC`,
         partyId ? [partyId] : []
       );
