@@ -3515,7 +3515,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
           jwi.id,
           jwi.voucher_no,
           jwi.invoice_date,
-          COALESCE(jwi.cancelled_at, jwi.updated_at) AS cancelled_at,
+          jwi.cancelled_at,
           COALESCE(jwi.cancelled_by, '') AS cancelled_by,
           COALESCE(jwi.cancel_reason, jwi.remark, '') AS cancel_reason,
           COALESCE(c.name, jwi.party_name_manual, '') AS party_name,
@@ -3537,8 +3537,9 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         FROM job_work_invoices jwi
         LEFT JOIN customers c ON c.id = jwi.party_id
         WHERE LOWER(TRIM(COALESCE(jwi.status, ''))) IN ('cancelled', 'canceled')
-          AND COALESCE(jwi.cancelled_at, jwi.updated_at)::date BETWEEN $1::date AND $2::date
-        ORDER BY COALESCE(jwi.cancelled_at, jwi.updated_at) DESC, jwi.voucher_no DESC
+          AND jwi.cancelled_at IS NOT NULL
+          AND jwi.cancelled_at::date BETWEEN $1::date AND $2::date
+        ORDER BY jwi.cancelled_at DESC, jwi.voucher_no DESC
       `, [from, to])).rows;
       res.json(rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -6013,7 +6014,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       // Mark as Cancelled — keep the record and its items intact, with cancellation audit details.
       await client.query(
         `UPDATE job_work_invoices
-         SET status='Cancelled', cancelled_at=NOW(), cancelled_by=$2, cancel_reason=$3, updated_at=NOW()
+         SET status='Cancelled', cancelled_at=NOW(), cancelled_by=$2, cancel_reason=$3
          WHERE id=$1`,
         [req.params.id, cancelledBy, cancelReason],
       );

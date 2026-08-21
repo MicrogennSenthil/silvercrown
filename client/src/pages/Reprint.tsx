@@ -42,8 +42,11 @@ function toInput(d: Date) {
 }
 
 function invoiceNumberValue(value: string | null | undefined) {
-  const groups = (value || "").match(/\d+/g);
-  return groups?.length ? Number(groups[groups.length - 1]) : -1;
+  // Invoice vouchers are formatted like IN/01851/26-27.  Sort by the
+  // serial segment, not the financial-year suffix.
+  const serialSegment = (value || "").split("/")[1] || "";
+  const serial = serialSegment.match(/\d+/)?.[0];
+  return serial ? Number(serial) : -1;
 }
 
 /* ── Print helper: opens a new window with formatted doc ──────────── */
