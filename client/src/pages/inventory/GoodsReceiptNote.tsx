@@ -641,15 +641,15 @@ export default function GoodsReceiptNote() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b" style={{ background:"#e8f6fb" }}>
-                  {["GRN No","GRN Date","Supplier","Store","Bill No","Purchase Type","Grand Total ₹","Actions"].map(h => (
+                  {["GRN No","GRN Date","Supplier","Store","Bill No","Bill Date","Purchase Type","Grand Total ₹","Actions"].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-700">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {isLoading && <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>}
+                {isLoading && <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>}
                 {!isLoading && filtered.length === 0 && (
-                  <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-400">No goods receipt notes found</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">No goods receipt notes found</td></tr>
                 )}
                 {filtered.map((g: any) => (
                   <tr key={g.id} className="border-b hover:bg-[#f0f9ff] transition-colors">
@@ -658,6 +658,7 @@ export default function GoodsReceiptNote() {
                     <td className="px-4 py-3 text-gray-800">{g.supplier_name||"—"}</td>
                     <td className="px-4 py-3 text-gray-600">{g.store_name||"—"}</td>
                     <td className="px-4 py-3 text-gray-600">{g.bill_no||"—"}</td>
+                    <td className="px-4 py-3 text-gray-600">{fmt(g.bill_date)}</td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{g.purchase_type==="PO"?"Purchase Order":"Direct Purchase"}</span>
                     </td>
